@@ -2,7 +2,7 @@
 
 {% block content %}
     <h1> Главная страница </h1>
-    <label>Показано {{ count }} cтатей по категории "{{ category }}"</label>
+    <label style="font-size: large;">Показано {{ count }} cтатей по категории "{{ category }}"</label>
     {%for el in articles %}
     <div class="alert alert-warning">
         <h3>{{el.title}}</h3>
