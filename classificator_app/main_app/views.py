@@ -14,9 +14,6 @@ from django.db.utils import OperationalError
 
 # Create your views here.
 
-def handler404(request, exception):
-    return render(request,"handler_404.html")
-
 
 def index(request):
     selected_label = request.GET.get("selected_label", None)
