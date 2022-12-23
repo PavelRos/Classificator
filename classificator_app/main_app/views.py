@@ -1,7 +1,7 @@
 from django.shortcuts import render
 from django.http import HttpResponseRedirect
 from lxml import etree
-from .forms import filterForm
+from .forms import filterForm, textForm
 from .models import (
     Article,
     Authors,
@@ -137,3 +137,22 @@ def removeArticle(request, id):
     selected_article = Article.objects.get(id=id)
     selected_article.delete()
     return HttpResponseRedirect("/")
+
+
+def getTextFromArticle(request, id):
+    if not id:
+        return render(
+            request,
+            "errors.html",
+            {"text": "Статья не выбрана","code":422},
+            status=422
+        )
+    article = Article.objects.get(id=id)
+    if request.method == "POST":
+        new_text = request.POST.get("text")
+        article.text = new_text
+        article.save()
+        return HttpResponseRedirect("/")
+    else:
+        form = textForm(initial={"text": article.text})
+        return render(request, "text_form.html", {"form": form})
