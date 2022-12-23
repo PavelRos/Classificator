@@ -28,7 +28,7 @@ def classificate(request):
         try:
             svc_model = Svc_model.loadModelFromFile()
         except FileNotFoundError:
-            code = 422
+            code = 503
             return render(
                 request,
                 "errors.html",
