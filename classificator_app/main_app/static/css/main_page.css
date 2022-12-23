@@ -2,6 +2,8 @@ body {
     margin-top: 10%;
     background: yellow;
     color: black;
+    font-family: Roboto;
+    font-size: medium;
 }
 
 label[for] {
@@ -10,7 +12,9 @@ label[for] {
 
 body .alert{
     background: #2c2c2c;
-    color: #fff
+    color: #fff;
+    font-family: Roboto;
+    font-size: large;
 }
 
 div .btn {
@@ -22,6 +26,8 @@ div .btn {
     border-radius: 3px; /* Скругляем уголки */
     transition: all .6s ease;
     width: max-content;
+    font-family: Roboto;
+    font-size: medium;
 }
 
 div .btn:hover{
