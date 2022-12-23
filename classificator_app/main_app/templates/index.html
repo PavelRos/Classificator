@@ -1,0 +1,21 @@
+{% extends "layout.html" %}
+
+{% block content %}
+    <h1> Главная страница </h1>
+    <label>Показано {{ count }} cтатей по категории "{{ category }}"</label>
+    {%for el in articles %}
+    <div class="alert alert-warning">
+        <h3>{{el.title}}</h3>
+        <p>{{el.label}}</p>
+        <p>{{el.getOriginalAuthors}}</p>
+        <p>{{el.getAuthors}}</p>
+        <p>{{el.date}}</p>
+        <p>{{el.getCategories}}</p>
+        <p>{{el.getKeyWords}}</p>
+        <p>{{el.link}}</p>
+        <a href="text/{{el.id}}" class="btn">Текст статьи</a>
+        <a href="remove/{{el.id}}" class="btn">Удалить статью</a>
+        <!-- <button style="vertical-align: middle" type="button"> Текст статьи</button> -->
+    </div>
+    {% endfor %}
+{% endblock %}
