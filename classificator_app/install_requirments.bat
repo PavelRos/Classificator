@@ -1,0 +1,1 @@
+python -mpip install -r requirments.txt
