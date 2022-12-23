@@ -123,6 +123,8 @@ STATICFILES_DIRS = [
     BASE_DIR / "main_app/static",
 ]
 
+MODEL_PATH = f"{BASE_DIR}/svc_model.sav"
+
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.0/ref/settings/#default-auto-field
 

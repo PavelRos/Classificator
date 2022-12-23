@@ -30,3 +30,27 @@ class Svc_model:
         lemmatizer = WordNetLemmatizer()
         lemms = [lemmatizer.lemmatize(word) for word in significant_words]
         return " ".join(lemms)
+
+    @classmethod
+    def createModelFromData(cls, texts: list):
+        prepared_texts = [
+            {"label": article.label, "text": cls.prepareText(article.text)}
+            for article in texts
+        ]
+        data = pd.DataFrame(prepared_texts, dtype=object)
+        count_vect = CountVectorizer()
+        counts = count_vect.fit_transform(data["text"])
+        transformer = TfidfTransformer().fit(counts)
+        counts = transformer.transform(counts)
+        model = cls.trainModel(counts, data["label"])
+        dump((model, count_vect, transformer), open(MODEL_PATH, "wb"))
+        return cls(model, count_vect, transformer)
+
+    @classmethod
+    def trainModel(cls, tf_idf: pd.Series, labels: pd.Series):
+        X_train, X_test, y_train, y_test = train_test_split(
+            tf_idf, labels, test_size=0.3, random_state=69
+        )
+        svclassifier = SVC(kernel="rbf", C=3)
+        svclassifier.fit(X_train, y_train)
+        return svclassifier
