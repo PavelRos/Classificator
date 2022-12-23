@@ -19,3 +19,14 @@ class Svc_model:
         self.svclassifier = model
         self.transformer = transformer
         self.vectorizer = vect
+
+    @classmethod
+    def prepareText(cls, text: str):
+        tokenizer = RegexpTokenizer("\w+")
+        words = tokenizer.tokenize(text.lower())
+        significant_words = [
+            word for word in words if word not in stopwords.words("russian")
+        ]
+        lemmatizer = WordNetLemmatizer()
+        lemms = [lemmatizer.lemmatize(word) for word in significant_words]
+        return " ".join(lemms)
