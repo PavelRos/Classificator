@@ -54,3 +54,8 @@ class Svc_model:
         svclassifier = SVC(kernel="rbf", C=3)
         svclassifier.fit(X_train, y_train)
         return svclassifier
+
+    @classmethod
+    def loadModelFromFile(cls):
+        model, vectorizer, transformer = load(open(MODEL_PATH, "rb"))
+        return cls(model, vectorizer, transformer)
