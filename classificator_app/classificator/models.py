@@ -59,3 +59,11 @@ class Svc_model:
     def loadModelFromFile(cls):
         model, vectorizer, transformer = load(open(MODEL_PATH, "rb"))
         return cls(model, vectorizer, transformer)
+
+    def classificateText(self, text: str):
+        prepared_text = self.prepareText(text)
+        df = pd.DataFrame({"text": [prepared_text]}, dtype=object)
+        counts = self.transformer.transform(
+            self.vectorizer.transform(df["text"])
+        )
+        return self.svclassifier.predict(counts)
