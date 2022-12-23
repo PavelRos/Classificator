@@ -19,7 +19,7 @@ def train(request):
             {"text": "Отсутствует соединение с базой данных","code":503},
             status=503
         )
-    return HttpResponseRedirect("/")
+    return render(request, "train_is_complete.html")
 
 
 def classificate(request):
