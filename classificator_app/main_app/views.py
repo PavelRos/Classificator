@@ -124,3 +124,16 @@ def saveFileInDB(request):
         )
     else:
         return render(request, "add_form.html")
+
+
+def removeArticle(request, id):
+    if not id:
+        return render(
+            request,
+            "errors.html",
+            {"text": "Статья не выбрана","code":422},
+            status=422
+        )
+    selected_article = Article.objects.get(id=id)
+    selected_article.delete()
+    return HttpResponseRedirect("/")
