@@ -13,3 +13,4 @@ urlpatterns = [
     re_path(r"^text/(?P<id>.+)", views.getTextFromArticle),
     re_path(r"^remove/(?P<id>.+)", views.removeArticle),
 ] + static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
+handler404 = 'main_app.views.handler404'
