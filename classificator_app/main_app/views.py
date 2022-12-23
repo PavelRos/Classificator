@@ -135,8 +135,17 @@ def removeArticle(request, id):
             status=422
         )
     selected_article = Article.objects.get(id=id)
-    selected_article.delete()
-    return HttpResponseRedirect("/")
+    if request.method == "POST":
+        selected_article.delete()
+        return render(request,
+            "delete_res.html",
+            {"title": selected_article.title}
+        )
+    else:
+        return render(request,
+            "delete_text_form.html",
+            {"title": selected_article.title}
+        )
 
 
 def getTextFromArticle(request, id):
