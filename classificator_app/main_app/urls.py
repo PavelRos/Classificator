@@ -6,4 +6,5 @@ from main_app import views
 
 urlpatterns = [
     path("", views.index),
+    path("add_file", views.saveFileInDB)
 ] + static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
