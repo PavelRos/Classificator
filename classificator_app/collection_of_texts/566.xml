@@ -1,0 +1,1550 @@
+<?xml version="1.0" ?>
+<doc>
+	<label auto="true" type="str" verify="true"><![CDATA[Develop]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[mikhailEvt]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-11-30, 14:24]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/company/pvs-studio/blog/702560/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Как увеличилась производительность LINQ в .NET 7?]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Блог компании PVS-Studio]]></item>
+		<item type="str"><![CDATA[.NET]]></item>
+		<item type="str"><![CDATA[C#]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[.net]]></item>
+		<item type="str"><![CDATA[.net 7]]></item>
+		<item type="str"><![CDATA[c#]]></item>
+		<item type="str"><![CDATA[c# 11]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[В новой версии .NET улучшилась производительность методов Min, Max, Average и Sum для массивов и списков. Как вы думаете, во сколько раз увеличилась скорость их выполнения? В 2 раза, в 5? Нет, они стали гораздо быстрее. Посмотрим, как этого удалось достичь.
+Как же улучшился LINQ?
+LINQ (Language-Integrated Query) представляет простой и удобный язык запросов. Он позволяет в простой форме выражать сложные операции. LINQ использует практически каждый разработчик .NET. Однако за удобство использования приходится платить скоростью выполнения и лишней выделенной памятью. В большинстве ситуаций эти затраты не оказывают существенного влияния. Однако в местах, где производительность является критичной, эти недостатки могут неприятно проявиться.
+Итак, методы, которые получили улучшения производительности: Enumerable.Max, Enumerable.Min, Enumerable.Average, Enumerable.Sum.
+С помощью небольшого бенчмарка проверим, как увеличилась их производительность.
+using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Running;
+using System.Collections.Generic;
+using System.Linq;
+
+
+[MemoryDiagnoser(displayGenColumns: false)]
+public partial class Program
+{
+  static void Main(string[] args) =>
+    BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args);
+
+  [Params (10, 10000)]
+  public int Size { get; set; }
+  private IEnumerable<int> items;
+
+  [GlobalSetup]
+  public void Setup()
+  {
+    items = Enumerable.Range(1, Size).ToArray();
+  }  
+
+  [Benchmark]
+  public int Min() => items.Min();
+
+  [Benchmark]
+  public int Max() => items.Max();
+
+  [Benchmark]
+  public double Average() => items.Average();
+
+  [Benchmark]
+  public int Sum() => items.Sum();
+}
+Результаты бенчмарка:
+Method
+Runtime
+Size
+Mean
+Ratio
+Allocated
+Min
+.NET 6.0
+10
+75.491 ns
+1.00
+32 B
+Min
+.NET 7.0
+10
+7.749 ns
+0.10
+-
+Max
+.NET 6.0
+10
+71.128 ns
+1.00
+32 B
+Max
+.NET 7.0
+10
+6.493 ns
+0.09
+-
+Average
+.NET 6.0
+10
+68.963 ns
+1.00
+32 B
+Average
+.NET 7.0
+10
+7.315 ns
+0.11
+-
+Sum
+.NET 6.0
+10
+69.509 ns
+1.00
+32 B
+Sum
+.NET 7.0
+10
+9.058 ns
+0.13
+-
+Min
+.NET 6.0
+10000
+61,567.392 ns
+1.00
+32 B
+Min
+.NET 7.0
+10000
+2,967.947 ns
+0.05
+-
+Max
+.NET 6.0
+10000
+56,106.592 ns
+1.00
+32 B
+Max
+.NET 7.0
+10000
+2,948.302 ns
+0.05
+-
+Average
+.NET 6.0
+10000
+52,803.907 ns
+1.00
+32 B
+Average
+.NET 7.0
+10000
+2,967.810 ns
+0.06
+-
+Sum
+.NET 6.0
+10000
+52,732.121 ns
+1.00
+32 B
+Sum
+.NET 7.0
+10000
+5,897.220 ns
+0.11
+-
+Из результатов видно, что для небольших массивов время выполнения поиска минимума уменьшилось в 10 раз, а для массива в 10 000 элементов — в 20 раз. Аналогичная ситуация и для остальных методов, кроме нахождения суммы — разница в размере коллекций не так значительно повлияла на результат.
+Также стоит заметить, что в .NET 7 при вызове методов не выделяется дополнительная память.
+Проверим, как эти методы будут работать со списками List<T>.
+Method
+Runtime
+Size
+Mean
+Ratio
+Allocated
+Min
+.NET 6.0
+10
+122.554 ns
+1.00
+40 B
+Min
+.NET 7.0
+10
+8.995 ns
+0.07
+-
+Max
+.NET 6.0
+10
+115.135 ns
+1.00
+40 B
+Max
+.NET 7.0
+10
+9.171 ns
+0.08
+-
+Average
+.NET 6.0
+10
+110.825 ns
+1.00
+40 B
+Average
+.NET 7.0
+10
+8.163 ns
+0.07
+-
+Sum
+.NET 6.0
+10
+113.812 ns
+1.00
+40 B
+Sum
+.NET 7.0
+10
+13.197 ns
+0.12
+-
+Min
+.NET 6.0
+10000
+91,529.841 ns
+1.00
+40 B
+Min
+.NET 7.0
+10000
+2,941.226 ns
+0.03
+-
+Max
+.NET 6.0
+10000
+84,565.787 ns
+1.00
+40 B
+Max
+.NET 7.0
+10000
+2,957.451 ns
+0.03
+-
+Average
+.NET 6.0
+10000
+81,205.103 ns
+1.00
+40 B
+Average
+.NET 7.0
+10000
+2,959.882 ns
+0.04
+-
+Sum
+.NET 6.0
+10000
+81,857.576 ns
+1.00
+40 B
+Sum
+.NET 7.0
+10000
+5,783.370 ns
+0.07
+-
+В .NET 6 операции над массивами быстрее, чем над списками. Это справедливо и в .NET 7 для небольших коллекций. C ростом числа элементов списки сравниваются с массивами по производительности.
+По результатам тестов производительность для списков увеличилась в 31 раз.
+За счёт чего достигается такое преимущество?
+Заглянем в реализацию метода Min и посмотрим, как он устроен.
+Так выглядит реализация метода Min в .NET 6:
+public static int Min(this IEnumerable<int> source)
+{
+  if (source == null)
+  {
+    ThrowHelper.ThrowArgumentNullException(ExceptionArgument.source);
+  }
+
+  int value;
+  using (IEnumerator<int> e = source.GetEnumerator())
+  {
+    if (!e.MoveNext())
+    {
+      ThrowHelper.ThrowNoElementsException();
+    }
+
+    value = e.Current;
+    while (e.MoveNext())
+    {
+      int x = e.Current;
+      if (x < value)
+      {
+        value = x;
+      }
+    }
+  }
+  return value;
+}
+Метод довольно простой. Получаем коллекцию IEnumerable<int>, берём элемент коллекции и с помощью метода MoveNext получаем следующий элемент. Сравниваем их, сохраняем тот, что меньше, повторяем до конца коллекции.
+Новая версия метода Min выглядит иначе:
+public static int Min(this IEnumerable<int> source) => MinInteger(source);
+Для коллекций целых чисел применяется метод MinInteger. Рассмотрим, что в нём происходит.
+private static T MinInteger<T>(this IEnumerable<T> source)
+  where T : struct, IBinaryInteger<T>
+{
+  T value;
+
+  if (source.TryGetSpan(out ReadOnlySpan<T> span))
+  {
+    if (Vector.IsHardwareAccelerated && 
+        span.Length >= Vector<T>.Count * 2)
+    {
+      .... // Оптимизированная реализация
+      return ....;
+    }
+  }
+  .... //Реализация как в .NET 6
+}
+Прежде всего пытаемся получить из предоставленной коллекции объект типа ReadOnlySpan<T>. Если не удалось получить ReadOnlySpan представление коллекции, то выполняется ветвь кода, соответствующая реализации метода Min в .NET 6. В нашем случае мы можем получить ReadOnlySpan, так как используем массивы и списки.
+Что представляет собой ReadOnlySpan? Типы Span и ReadOnlySpan обеспечивают безопасное представление непрерывной области управляемой и неуправляемой памяти. Структура Span определена как ref struct. Это означает, что она может размещаться только на стеке, что позволяет избежать выделения дополнительной памяти и повышает производительность работы с данными.
+В новой версии C# Span тоже немного изменился. С появлением в С# 11 возможности создавать в ref struct поля, хранящиеся по ссылкам, немного изменилось внутреннее представление Span<T>. Раньше для хранения ссылки на начало области памяти применялся специальный внутренний тип ByReference<T>, однако в нём не было проверки безопасности. Сейчас для этого используется ref fields. Это изменение обеспечивает более безопасную работу с памятью. О других нововведениях C# 11 можете прочитать в статье.
+Вернёмся к рассмотрению метода Min. Получив ReadOnlySpan, метод пытается по возможности векторизовать поиск, используя тип Vector<T>. Для этого должно выполняться условие:
+if (Vector.IsHardwareAccelerated && span.Length >= Vector<T>.Count * 2)
+Первая часть условия проверяет, возвращает ли свойство Vector.IsHardwareAccelerated true. Заглянем в реализацию этого свойства.
+public static bool IsHardwareAccelerated
+{
+  [Intrinsic]
+  get => false;
+}
+К геттеру применяется атрибут [Intrinsic]. Он указывает на то, что значение, возвращаемое IsHardwareAccelerated, может быть заменено JIT. Свойство вернёт true, если к операциям над векторами можно применить аппаратное ускорение посредством встроенной поддержки JIT, в противном случае вернётся false. Для включения аппаратного ускорения необходимо запустить сборку для x64 платформы с Release конфигурацией либо собирать под AnyCPU с отключённым Prefer 32-bit.
+Для выполнения второй части условия нужно, чтобы размер Span был как минимум в 2 раза больше размера вектора.
+Как будет вычисляться размер этого вектора?
+В новой реализации метода *Min *для создания вектора используется тип данных Vector<T>. Этот тип представляет собой обёртку над тремя другими: Vector64<T>, Vector128<T> и Vector256<T>. Они содержат векторизованные данные соответствующей длины. Vector128<T> может хранить 16 8-битных, 8 16-битных, 4 32-битных или 2 64-битных значения. Какой тип использовать, выбирается в зависимости от того, поддерживается он процессором или нет.
+Таким образом если при исполнении метода используется тип Vector128<T>, то полученный из массива или списка *Span *должен содержать 8 или больше элементов типа int.
+Если все условия соблюдены, метод использует преимущества ReadOnlySpan и Vector для оптимизации поиска минимума:
+private static T MinInteger<T>(this IEnumerable<T> source)
+where T : struct, IBinaryInteger<T>
+{
+  .... 
+  if (Vector.IsHardwareAccelerated && span.Length >= Vector<T>.Count * 2)
+  {
+    var mins = new Vector<T>(span);
+    index = Vector<T>.Count;
+    do
+    {
+      mins = Vector.Min(mins, new Vector<T>(span.Slice(index)));
+      index += Vector<T>.Count;
+    }
+    while (index + Vector<T>.Count <= span.Length);
+
+    value = mins[0];
+    for (int i = 1; i < Vector<T>.Count; i++)
+    {  
+      if (mins[i] < value)
+      {
+        value = mins[i];
+      }
+    }
+  ....
+}
+Рассмотрим, как работает векторизованная реализация поиска минимума. Из первых N элементов *Span (N зависит от типа вектора; для Vector128<int> *это 4 элемента) создаётся вектор, который в методе Vector.Min сравнивается с вектором из следующих N элементов. Конечный вектор будет содержать минимальное значение каждой пары элементов двух данных векторов. Далее берётся следующая часть Span, и такой поиск продолжается. Остаётся только найти минимальное из значений, хранящихся в конечном векторе. Плюс использования вектора заключается в том, что все операции над его элементами происходят одновременно.
+Выше продемонстрирован пример использования Span и векторизации для оптимизации метода Min. Что с остальными методами? Подобные возможности используются и в методах Max, Average, Sum. Оптимизированные версии этих методов доступны для массивов и списков типов int, long, float, double и decimal.
+Заключение
+Путём использования Span и аппаратного ускорения для работы с векторами разработчикам из Microsoft и сообщества .NET удалось достичь заметных улучшений производительности LINQ. Теперь появляется возможность использовать прокаченные методы в ситуациях, где критичны скорость выполнения кода и выделенная память.
+Вообще .NET 7 получил немало других улучшений производительности. Вы можете прочитать о них в блоге .NET.
+Если хотите поделиться этой статьей с англоязычной аудиторией, то прошу использовать ссылку на перевод: Mikhail Evtihevich. How has LINQ performance enhanced in .NET 7?. В новой версии .NET улучшилась производительность методов Min, Max, Average и Sum для массивов и списков. Как вы думаете, во сколько раз увеличилась скорость их выполнения? В 2 раза, в 5? Нет, они стали гораздо быстрее. Посмотрим, как этого удалось достичь.   Как же улучшился LINQ? LINQ (Language-Integrated Query) представляет простой и удобный язык запросов. Он позволяет в простой форме выражать сложные операции. LINQ использует практически каждый разработчик .NET. Однако за удобство использования приходится платить скоростью выполнения и лишней выделенной памятью. В большинстве ситуаций эти затраты не оказывают существенного влияния. Однако в местах, где производительность является критичной, эти недостатки могут неприятно проявиться. Итак, методы, которые получили улучшения производительности: Enumerable.Max, Enumerable.Min, Enumerable.Average, Enumerable.Sum. Enumerable.Max Enumerable.Min Enumerable.Average Enumerable.Sum С помощью небольшого бенчмарка проверим, как увеличилась их производительность. using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Running;
+using System.Collections.Generic;
+using System.Linq;
+
+
+[MemoryDiagnoser(displayGenColumns: false)]
+public partial class Program
+{
+  static void Main(string[] args) =>
+    BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args);
+
+  [Params (10, 10000)]
+  public int Size { get; set; }
+  private IEnumerable<int> items;
+
+  [GlobalSetup]
+  public void Setup()
+  {
+    items = Enumerable.Range(1, Size).ToArray();
+  }  
+
+  [Benchmark]
+  public int Min() => items.Min();
+
+  [Benchmark]
+  public int Max() => items.Max();
+
+  [Benchmark]
+  public double Average() => items.Average();
+
+  [Benchmark]
+  public int Sum() => items.Sum();
+} using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Running;
+using System.Collections.Generic;
+using System.Linq;
+
+
+[MemoryDiagnoser(displayGenColumns: false)]
+public partial class Program
+{
+  static void Main(string[] args) =>
+    BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args);
+
+  [Params (10, 10000)]
+  public int Size { get; set; }
+  private IEnumerable<int> items;
+
+  [GlobalSetup]
+  public void Setup()
+  {
+    items = Enumerable.Range(1, Size).ToArray();
+  }  
+
+  [Benchmark]
+  public int Min() => items.Min();
+
+  [Benchmark]
+  public int Max() => items.Max();
+
+  [Benchmark]
+  public double Average() => items.Average();
+
+  [Benchmark]
+  public int Sum() => items.Sum();
+} Результаты бенчмарка: Method
+Runtime
+Size
+Mean
+Ratio
+Allocated
+Min
+.NET 6.0
+10
+75.491 ns
+1.00
+32 B
+Min
+.NET 7.0
+10
+7.749 ns
+0.10
+-
+Max
+.NET 6.0
+10
+71.128 ns
+1.00
+32 B
+Max
+.NET 7.0
+10
+6.493 ns
+0.09
+-
+Average
+.NET 6.0
+10
+68.963 ns
+1.00
+32 B
+Average
+.NET 7.0
+10
+7.315 ns
+0.11
+-
+Sum
+.NET 6.0
+10
+69.509 ns
+1.00
+32 B
+Sum
+.NET 7.0
+10
+9.058 ns
+0.13
+-
+Min
+.NET 6.0
+10000
+61,567.392 ns
+1.00
+32 B
+Min
+.NET 7.0
+10000
+2,967.947 ns
+0.05
+-
+Max
+.NET 6.0
+10000
+56,106.592 ns
+1.00
+32 B
+Max
+.NET 7.0
+10000
+2,948.302 ns
+0.05
+-
+Average
+.NET 6.0
+10000
+52,803.907 ns
+1.00
+32 B
+Average
+.NET 7.0
+10000
+2,967.810 ns
+0.06
+-
+Sum
+.NET 6.0
+10000
+52,732.121 ns
+1.00
+32 B
+Sum
+.NET 7.0
+10000
+5,897.220 ns
+0.11
+- Method
+Runtime
+Size
+Mean
+Ratio
+Allocated
+Min
+.NET 6.0
+10
+75.491 ns
+1.00
+32 B
+Min
+.NET 7.0
+10
+7.749 ns
+0.10
+-
+Max
+.NET 6.0
+10
+71.128 ns
+1.00
+32 B
+Max
+.NET 7.0
+10
+6.493 ns
+0.09
+-
+Average
+.NET 6.0
+10
+68.963 ns
+1.00
+32 B
+Average
+.NET 7.0
+10
+7.315 ns
+0.11
+-
+Sum
+.NET 6.0
+10
+69.509 ns
+1.00
+32 B
+Sum
+.NET 7.0
+10
+9.058 ns
+0.13
+-
+Min
+.NET 6.0
+10000
+61,567.392 ns
+1.00
+32 B
+Min
+.NET 7.0
+10000
+2,967.947 ns
+0.05
+-
+Max
+.NET 6.0
+10000
+56,106.592 ns
+1.00
+32 B
+Max
+.NET 7.0
+10000
+2,948.302 ns
+0.05
+-
+Average
+.NET 6.0
+10000
+52,803.907 ns
+1.00
+32 B
+Average
+.NET 7.0
+10000
+2,967.810 ns
+0.06
+-
+Sum
+.NET 6.0
+10000
+52,732.121 ns
+1.00
+32 B
+Sum
+.NET 7.0
+10000
+5,897.220 ns
+0.11
+- Method
+Runtime
+Size
+Mean
+Ratio
+Allocated
+Min
+.NET 6.0
+10
+75.491 ns
+1.00
+32 B
+Min
+.NET 7.0
+10
+7.749 ns
+0.10
+-
+Max
+.NET 6.0
+10
+71.128 ns
+1.00
+32 B
+Max
+.NET 7.0
+10
+6.493 ns
+0.09
+-
+Average
+.NET 6.0
+10
+68.963 ns
+1.00
+32 B
+Average
+.NET 7.0
+10
+7.315 ns
+0.11
+-
+Sum
+.NET 6.0
+10
+69.509 ns
+1.00
+32 B
+Sum
+.NET 7.0
+10
+9.058 ns
+0.13
+-
+Min
+.NET 6.0
+10000
+61,567.392 ns
+1.00
+32 B
+Min
+.NET 7.0
+10000
+2,967.947 ns
+0.05
+-
+Max
+.NET 6.0
+10000
+56,106.592 ns
+1.00
+32 B
+Max
+.NET 7.0
+10000
+2,948.302 ns
+0.05
+-
+Average
+.NET 6.0
+10000
+52,803.907 ns
+1.00
+32 B
+Average
+.NET 7.0
+10000
+2,967.810 ns
+0.06
+-
+Sum
+.NET 6.0
+10000
+52,732.121 ns
+1.00
+32 B
+Sum
+.NET 7.0
+10000
+5,897.220 ns
+0.11
+- Method
+Runtime
+Size
+Mean
+Ratio
+Allocated
+Min
+.NET 6.0
+10
+75.491 ns
+1.00
+32 B
+Min
+.NET 7.0
+10
+7.749 ns
+0.10
+-
+Max
+.NET 6.0
+10
+71.128 ns
+1.00
+32 B
+Max
+.NET 7.0
+10
+6.493 ns
+0.09
+-
+Average
+.NET 6.0
+10
+68.963 ns
+1.00
+32 B
+Average
+.NET 7.0
+10
+7.315 ns
+0.11
+-
+Sum
+.NET 6.0
+10
+69.509 ns
+1.00
+32 B
+Sum
+.NET 7.0
+10
+9.058 ns
+0.13
+-
+Min
+.NET 6.0
+10000
+61,567.392 ns
+1.00
+32 B
+Min
+.NET 7.0
+10000
+2,967.947 ns
+0.05
+-
+Max
+.NET 6.0
+10000
+56,106.592 ns
+1.00
+32 B
+Max
+.NET 7.0
+10000
+2,948.302 ns
+0.05
+-
+Average
+.NET 6.0
+10000
+52,803.907 ns
+1.00
+32 B
+Average
+.NET 7.0
+10000
+2,967.810 ns
+0.06
+-
+Sum
+.NET 6.0
+10000
+52,732.121 ns
+1.00
+32 B
+Sum
+.NET 7.0
+10000
+5,897.220 ns
+0.11
+- Method
+Runtime
+Size
+Mean
+Ratio
+Allocated Method Method Runtime Runtime Size Size Mean Mean Ratio Ratio Allocated Allocated Min
+.NET 6.0
+10
+75.491 ns
+1.00
+32 B Min Min .NET 6.0 .NET 6.0 10 10 75.491 ns 75.491 ns 1.00 1.00 32 B 32 B Min
+.NET 7.0
+10
+7.749 ns
+0.10
+- Min Min .NET 7.0 .NET 7.0 10 10 7.749 ns 7.749 ns 0.10 0.10 - -              Max
+.NET 6.0
+10
+71.128 ns
+1.00
+32 B Max Max .NET 6.0 .NET 6.0 10 10 71.128 ns 71.128 ns 1.00 1.00 32 B 32 B Max
+.NET 7.0
+10
+6.493 ns
+0.09
+- Max Max .NET 7.0 .NET 7.0 10 10 6.493 ns 6.493 ns 0.09 0.09 - -              Average
+.NET 6.0
+10
+68.963 ns
+1.00
+32 B Average Average .NET 6.0 .NET 6.0 10 10 68.963 ns 68.963 ns 1.00 1.00 32 B 32 B Average
+.NET 7.0
+10
+7.315 ns
+0.11
+- Average Average .NET 7.0 .NET 7.0 10 10 7.315 ns 7.315 ns 0.11 0.11 - -              Sum
+.NET 6.0
+10
+69.509 ns
+1.00
+32 B Sum Sum .NET 6.0 .NET 6.0 10 10 69.509 ns 69.509 ns 1.00 1.00 32 B 32 B Sum
+.NET 7.0
+10
+9.058 ns
+0.13
+- Sum Sum .NET 7.0 .NET 7.0 10 10 9.058 ns 9.058 ns 0.13 0.13 - -              Min
+.NET 6.0
+10000
+61,567.392 ns
+1.00
+32 B Min Min .NET 6.0 .NET 6.0 10000 10000 61,567.392 ns 61,567.392 ns 1.00 1.00 32 B 32 B Min
+.NET 7.0
+10000
+2,967.947 ns
+0.05
+- Min Min .NET 7.0 .NET 7.0 10000 10000 2,967.947 ns 2,967.947 ns 0.05 0.05 - -              Max
+.NET 6.0
+10000
+56,106.592 ns
+1.00
+32 B Max Max .NET 6.0 .NET 6.0 10000 10000 56,106.592 ns 56,106.592 ns 1.00 1.00 32 B 32 B Max
+.NET 7.0
+10000
+2,948.302 ns
+0.05
+- Max Max .NET 7.0 .NET 7.0 10000 10000 2,948.302 ns 2,948.302 ns 0.05 0.05 - -              Average
+.NET 6.0
+10000
+52,803.907 ns
+1.00
+32 B Average Average .NET 6.0 .NET 6.0 10000 10000 52,803.907 ns 52,803.907 ns 1.00 1.00 32 B 32 B Average
+.NET 7.0
+10000
+2,967.810 ns
+0.06
+- Average Average .NET 7.0 .NET 7.0 10000 10000 2,967.810 ns 2,967.810 ns 0.06 0.06 - -              Sum
+.NET 6.0
+10000
+52,732.121 ns
+1.00
+32 B Sum Sum .NET 6.0 .NET 6.0 10000 10000 52,732.121 ns 52,732.121 ns 1.00 1.00 32 B 32 B Sum
+.NET 7.0
+10000
+5,897.220 ns
+0.11
+- Sum Sum .NET 7.0 .NET 7.0 10000 10000 5,897.220 ns 5,897.220 ns 0.11 0.11 - - Из результатов видно, что для небольших массивов время выполнения поиска минимума уменьшилось в 10 раз, а для массива в 10 000 элементов — в 20 раз. Аналогичная ситуация и для остальных методов, кроме нахождения суммы — разница в размере коллекций не так значительно повлияла на результат. Также стоит заметить, что в .NET 7 при вызове методов не выделяется дополнительная память. Проверим, как эти методы будут работать со списками List<T>. List<T> Method
+Runtime
+Size
+Mean
+Ratio
+Allocated
+Min
+.NET 6.0
+10
+122.554 ns
+1.00
+40 B
+Min
+.NET 7.0
+10
+8.995 ns
+0.07
+-
+Max
+.NET 6.0
+10
+115.135 ns
+1.00
+40 B
+Max
+.NET 7.0
+10
+9.171 ns
+0.08
+-
+Average
+.NET 6.0
+10
+110.825 ns
+1.00
+40 B
+Average
+.NET 7.0
+10
+8.163 ns
+0.07
+-
+Sum
+.NET 6.0
+10
+113.812 ns
+1.00
+40 B
+Sum
+.NET 7.0
+10
+13.197 ns
+0.12
+-
+Min
+.NET 6.0
+10000
+91,529.841 ns
+1.00
+40 B
+Min
+.NET 7.0
+10000
+2,941.226 ns
+0.03
+-
+Max
+.NET 6.0
+10000
+84,565.787 ns
+1.00
+40 B
+Max
+.NET 7.0
+10000
+2,957.451 ns
+0.03
+-
+Average
+.NET 6.0
+10000
+81,205.103 ns
+1.00
+40 B
+Average
+.NET 7.0
+10000
+2,959.882 ns
+0.04
+-
+Sum
+.NET 6.0
+10000
+81,857.576 ns
+1.00
+40 B
+Sum
+.NET 7.0
+10000
+5,783.370 ns
+0.07
+- Method
+Runtime
+Size
+Mean
+Ratio
+Allocated
+Min
+.NET 6.0
+10
+122.554 ns
+1.00
+40 B
+Min
+.NET 7.0
+10
+8.995 ns
+0.07
+-
+Max
+.NET 6.0
+10
+115.135 ns
+1.00
+40 B
+Max
+.NET 7.0
+10
+9.171 ns
+0.08
+-
+Average
+.NET 6.0
+10
+110.825 ns
+1.00
+40 B
+Average
+.NET 7.0
+10
+8.163 ns
+0.07
+-
+Sum
+.NET 6.0
+10
+113.812 ns
+1.00
+40 B
+Sum
+.NET 7.0
+10
+13.197 ns
+0.12
+-
+Min
+.NET 6.0
+10000
+91,529.841 ns
+1.00
+40 B
+Min
+.NET 7.0
+10000
+2,941.226 ns
+0.03
+-
+Max
+.NET 6.0
+10000
+84,565.787 ns
+1.00
+40 B
+Max
+.NET 7.0
+10000
+2,957.451 ns
+0.03
+-
+Average
+.NET 6.0
+10000
+81,205.103 ns
+1.00
+40 B
+Average
+.NET 7.0
+10000
+2,959.882 ns
+0.04
+-
+Sum
+.NET 6.0
+10000
+81,857.576 ns
+1.00
+40 B
+Sum
+.NET 7.0
+10000
+5,783.370 ns
+0.07
+- Method
+Runtime
+Size
+Mean
+Ratio
+Allocated
+Min
+.NET 6.0
+10
+122.554 ns
+1.00
+40 B
+Min
+.NET 7.0
+10
+8.995 ns
+0.07
+-
+Max
+.NET 6.0
+10
+115.135 ns
+1.00
+40 B
+Max
+.NET 7.0
+10
+9.171 ns
+0.08
+-
+Average
+.NET 6.0
+10
+110.825 ns
+1.00
+40 B
+Average
+.NET 7.0
+10
+8.163 ns
+0.07
+-
+Sum
+.NET 6.0
+10
+113.812 ns
+1.00
+40 B
+Sum
+.NET 7.0
+10
+13.197 ns
+0.12
+-
+Min
+.NET 6.0
+10000
+91,529.841 ns
+1.00
+40 B
+Min
+.NET 7.0
+10000
+2,941.226 ns
+0.03
+-
+Max
+.NET 6.0
+10000
+84,565.787 ns
+1.00
+40 B
+Max
+.NET 7.0
+10000
+2,957.451 ns
+0.03
+-
+Average
+.NET 6.0
+10000
+81,205.103 ns
+1.00
+40 B
+Average
+.NET 7.0
+10000
+2,959.882 ns
+0.04
+-
+Sum
+.NET 6.0
+10000
+81,857.576 ns
+1.00
+40 B
+Sum
+.NET 7.0
+10000
+5,783.370 ns
+0.07
+- Method
+Runtime
+Size
+Mean
+Ratio
+Allocated
+Min
+.NET 6.0
+10
+122.554 ns
+1.00
+40 B
+Min
+.NET 7.0
+10
+8.995 ns
+0.07
+-
+Max
+.NET 6.0
+10
+115.135 ns
+1.00
+40 B
+Max
+.NET 7.0
+10
+9.171 ns
+0.08
+-
+Average
+.NET 6.0
+10
+110.825 ns
+1.00
+40 B
+Average
+.NET 7.0
+10
+8.163 ns
+0.07
+-
+Sum
+.NET 6.0
+10
+113.812 ns
+1.00
+40 B
+Sum
+.NET 7.0
+10
+13.197 ns
+0.12
+-
+Min
+.NET 6.0
+10000
+91,529.841 ns
+1.00
+40 B
+Min
+.NET 7.0
+10000
+2,941.226 ns
+0.03
+-
+Max
+.NET 6.0
+10000
+84,565.787 ns
+1.00
+40 B
+Max
+.NET 7.0
+10000
+2,957.451 ns
+0.03
+-
+Average
+.NET 6.0
+10000
+81,205.103 ns
+1.00
+40 B
+Average
+.NET 7.0
+10000
+2,959.882 ns
+0.04
+-
+Sum
+.NET 6.0
+10000
+81,857.576 ns
+1.00
+40 B
+Sum
+.NET 7.0
+10000
+5,783.370 ns
+0.07
+- Method
+Runtime
+Size
+Mean
+Ratio
+Allocated Method Method Runtime Runtime Size Size Mean Mean Ratio Ratio Allocated Allocated Min
+.NET 6.0
+10
+122.554 ns
+1.00
+40 B Min Min .NET 6.0 .NET 6.0 10 10 122.554 ns 122.554 ns 1.00 1.00 40 B 40 B Min
+.NET 7.0
+10
+8.995 ns
+0.07
+- Min Min .NET 7.0 .NET 7.0 10 10 8.995 ns 8.995 ns 0.07 0.07 - -              Max
+.NET 6.0
+10
+115.135 ns
+1.00
+40 B Max Max .NET 6.0 .NET 6.0 10 10 115.135 ns 115.135 ns 1.00 1.00 40 B 40 B Max
+.NET 7.0
+10
+9.171 ns
+0.08
+- Max Max .NET 7.0 .NET 7.0 10 10 9.171 ns 9.171 ns 0.08 0.08 - -              Average
+.NET 6.0
+10
+110.825 ns
+1.00
+40 B Average Average .NET 6.0 .NET 6.0 10 10 110.825 ns 110.825 ns 1.00 1.00 40 B 40 B Average
+.NET 7.0
+10
+8.163 ns
+0.07
+- Average Average .NET 7.0 .NET 7.0 10 10 8.163 ns 8.163 ns 0.07 0.07 - -              Sum
+.NET 6.0
+10
+113.812 ns
+1.00
+40 B Sum Sum .NET 6.0 .NET 6.0 10 10 113.812 ns 113.812 ns 1.00 1.00 40 B 40 B Sum
+.NET 7.0
+10
+13.197 ns
+0.12
+- Sum Sum .NET 7.0 .NET 7.0 10 10 13.197 ns 13.197 ns 0.12 0.12 - -              Min
+.NET 6.0
+10000
+91,529.841 ns
+1.00
+40 B Min Min .NET 6.0 .NET 6.0 10000 10000 91,529.841 ns 91,529.841 ns 1.00 1.00 40 B 40 B Min
+.NET 7.0
+10000
+2,941.226 ns
+0.03
+- Min Min .NET 7.0 .NET 7.0 10000 10000 2,941.226 ns 2,941.226 ns 0.03 0.03 - -              Max
+.NET 6.0
+10000
+84,565.787 ns
+1.00
+40 B Max Max .NET 6.0 .NET 6.0 10000 10000 84,565.787 ns 84,565.787 ns 1.00 1.00 40 B 40 B Max
+.NET 7.0
+10000
+2,957.451 ns
+0.03
+- Max Max .NET 7.0 .NET 7.0 10000 10000 2,957.451 ns 2,957.451 ns 0.03 0.03 - -              Average
+.NET 6.0
+10000
+81,205.103 ns
+1.00
+40 B Average Average .NET 6.0 .NET 6.0 10000 10000 81,205.103 ns 81,205.103 ns 1.00 1.00 40 B 40 B Average
+.NET 7.0
+10000
+2,959.882 ns
+0.04
+- Average Average .NET 7.0 .NET 7.0 10000 10000 2,959.882 ns 2,959.882 ns 0.04 0.04 - -              Sum
+.NET 6.0
+10000
+81,857.576 ns
+1.00
+40 B Sum Sum .NET 6.0 .NET 6.0 10000 10000 81,857.576 ns 81,857.576 ns 1.00 1.00 40 B 40 B Sum
+.NET 7.0
+10000
+5,783.370 ns
+0.07
+- Sum Sum .NET 7.0 .NET 7.0 10000 10000 5,783.370 ns 5,783.370 ns 0.07 0.07 - - В .NET 6 операции над массивами быстрее, чем над списками. Это справедливо и в .NET 7 для небольших коллекций. C ростом числа элементов списки сравниваются с массивами по производительности. По результатам тестов производительность для списков увеличилась в 31 раз. За счёт чего достигается такое преимущество? Заглянем в реализацию метода Min и посмотрим, как он устроен. Min Так выглядит реализация метода Min в .NET 6: Min public static int Min(this IEnumerable<int> source)
+{
+  if (source == null)
+  {
+    ThrowHelper.ThrowArgumentNullException(ExceptionArgument.source);
+  }
+
+  int value;
+  using (IEnumerator<int> e = source.GetEnumerator())
+  {
+    if (!e.MoveNext())
+    {
+      ThrowHelper.ThrowNoElementsException();
+    }
+
+    value = e.Current;
+    while (e.MoveNext())
+    {
+      int x = e.Current;
+      if (x < value)
+      {
+        value = x;
+      }
+    }
+  }
+  return value;
+} public static int Min(this IEnumerable<int> source)
+{
+  if (source == null)
+  {
+    ThrowHelper.ThrowArgumentNullException(ExceptionArgument.source);
+  }
+
+  int value;
+  using (IEnumerator<int> e = source.GetEnumerator())
+  {
+    if (!e.MoveNext())
+    {
+      ThrowHelper.ThrowNoElementsException();
+    }
+
+    value = e.Current;
+    while (e.MoveNext())
+    {
+      int x = e.Current;
+      if (x < value)
+      {
+        value = x;
+      }
+    }
+  }
+  return value;
+} Метод довольно простой. Получаем коллекцию IEnumerable<int>, берём элемент коллекции и с помощью метода MoveNext получаем следующий элемент. Сравниваем их, сохраняем тот, что меньше, повторяем до конца коллекции. IEnumerable<int> MoveNext Новая версия метода Min выглядит иначе: Min public static int Min(this IEnumerable<int> source) => MinInteger(source); public static int Min(this IEnumerable<int> source) => MinInteger(source); Для коллекций целых чисел применяется метод MinInteger. Рассмотрим, что в нём происходит. MinInteger private static T MinInteger<T>(this IEnumerable<T> source)
+  where T : struct, IBinaryInteger<T>
+{
+  T value;
+
+  if (source.TryGetSpan(out ReadOnlySpan<T> span))
+  {
+    if (Vector.IsHardwareAccelerated && 
+        span.Length >= Vector<T>.Count * 2)
+    {
+      .... // Оптимизированная реализация
+      return ....;
+    }
+  }
+  .... //Реализация как в .NET 6
+} private static T MinInteger<T>(this IEnumerable<T> source)
+  where T : struct, IBinaryInteger<T>
+{
+  T value;
+
+  if (source.TryGetSpan(out ReadOnlySpan<T> span))
+  {
+    if (Vector.IsHardwareAccelerated && 
+        span.Length >= Vector<T>.Count * 2)
+    {
+      .... // Оптимизированная реализация
+      return ....;
+    }
+  }
+  .... //Реализация как в .NET 6
+} Прежде всего пытаемся получить из предоставленной коллекции объект типа ReadOnlySpan<T>. Если не удалось получить ReadOnlySpan представление коллекции, то выполняется ветвь кода, соответствующая реализации метода Min в .NET 6. В нашем случае мы можем получить ReadOnlySpan, так как используем массивы и списки. ReadOnlySpan<T> ReadOnlySpan Min ReadOnlySpan Что представляет собой ReadOnlySpan? Типы Span и ReadOnlySpan обеспечивают безопасное представление непрерывной области управляемой и неуправляемой памяти. Структура Span определена как ref struct. Это означает, что она может размещаться только на стеке, что позволяет избежать выделения дополнительной памяти и повышает производительность работы с данными. ReadOnlySpan Span ReadOnlySpan Span ref struct. В новой версии C# Span тоже немного изменился. С появлением в С# 11 возможности создавать в ref struct поля, хранящиеся по ссылкам, немного изменилось внутреннее представление Span<T>. Раньше для хранения ссылки на начало области памяти применялся специальный внутренний тип ByReference<T>, однако в нём не было проверки безопасности. Сейчас для этого используется ref fields. Это изменение обеспечивает более безопасную работу с памятью. О других нововведениях C# 11 можете прочитать в статье. Span ref struct Span<T> ByReference<T> ref fields статье Вернёмся к рассмотрению метода Min. Получив ReadOnlySpan, метод пытается по возможности векторизовать поиск, используя тип Vector<T>. Для этого должно выполняться условие: Min ReadOnlySpan Vector<T> if (Vector.IsHardwareAccelerated && span.Length >= Vector<T>.Count * 2) if (Vector.IsHardwareAccelerated && span.Length >= Vector<T>.Count * 2) Первая часть условия проверяет, возвращает ли свойство Vector.IsHardwareAccelerated true. Заглянем в реализацию этого свойства. public static bool IsHardwareAccelerated
+{
+  [Intrinsic]
+  get => false;
+} public static bool IsHardwareAccelerated
+{
+  [Intrinsic]
+  get => false;
+} К геттеру применяется атрибут [Intrinsic]. Он указывает на то, что значение, возвращаемое IsHardwareAccelerated, может быть заменено JIT. Свойство вернёт true, если к операциям над векторами можно применить аппаратное ускорение посредством встроенной поддержки JIT, в противном случае вернётся false. Для включения аппаратного ускорения необходимо запустить сборку для x64 платформы с Release конфигурацией либо собирать под AnyCPU с отключённым Prefer 32-bit. [Intrinsic] IsHardwareAccelerated true false Для выполнения второй части условия нужно, чтобы размер Span был как минимум в 2 раза больше размера вектора. Span Как будет вычисляться размер этого вектора? В новой реализации метода *Min *для создания вектора используется тип данных Vector<T>. Этот тип представляет собой обёртку над тремя другими: Vector64<T>, Vector128<T> и Vector256<T>. Они содержат векторизованные данные соответствующей длины. Vector128<T> может хранить 16 8-битных, 8 16-битных, 4 32-битных или 2 64-битных значения. Какой тип использовать, выбирается в зависимости от того, поддерживается он процессором или нет. Vector<T> Vector64<T> Vector128<T> Vector256<T> Vector128<T> Таким образом если при исполнении метода используется тип Vector128<T>, то полученный из массива или списка *Span *должен содержать 8 или больше элементов типа int. Vector128<T> int Если все условия соблюдены, метод использует преимущества ReadOnlySpan и Vector для оптимизации поиска минимума: ReadOnlySpan Vector private static T MinInteger<T>(this IEnumerable<T> source)
+where T : struct, IBinaryInteger<T>
+{
+  .... 
+  if (Vector.IsHardwareAccelerated && span.Length >= Vector<T>.Count * 2)
+  {
+    var mins = new Vector<T>(span);
+    index = Vector<T>.Count;
+    do
+    {
+      mins = Vector.Min(mins, new Vector<T>(span.Slice(index)));
+      index += Vector<T>.Count;
+    }
+    while (index + Vector<T>.Count <= span.Length);
+
+    value = mins[0];
+    for (int i = 1; i < Vector<T>.Count; i++)
+    {  
+      if (mins[i] < value)
+      {
+        value = mins[i];
+      }
+    }
+  ....
+} private static T MinInteger<T>(this IEnumerable<T> source)
+where T : struct, IBinaryInteger<T>
+{
+  .... 
+  if (Vector.IsHardwareAccelerated && span.Length >= Vector<T>.Count * 2)
+  {
+    var mins = new Vector<T>(span);
+    index = Vector<T>.Count;
+    do
+    {
+      mins = Vector.Min(mins, new Vector<T>(span.Slice(index)));
+      index += Vector<T>.Count;
+    }
+    while (index + Vector<T>.Count <= span.Length);
+
+    value = mins[0];
+    for (int i = 1; i < Vector<T>.Count; i++)
+    {  
+      if (mins[i] < value)
+      {
+        value = mins[i];
+      }
+    }
+  ....
+} Рассмотрим, как работает векторизованная реализация поиска минимума. Из первых N элементов *Span (N зависит от типа вектора; для Vector128<int> *это 4 элемента) создаётся вектор, который в методе Vector.Min сравнивается с вектором из следующих N элементов. Конечный вектор будет содержать минимальное значение каждой пары элементов двух данных векторов. Далее берётся следующая часть Span, и такой поиск продолжается. Остаётся только найти минимальное из значений, хранящихся в конечном векторе. Плюс использования вектора заключается в том, что все операции над его элементами происходят одновременно. (N зависит от типа вектора; для Vector.Min Span, Выше продемонстрирован пример использования Span и векторизации для оптимизации метода Min. Что с остальными методами? Подобные возможности используются и в методах Max, Average, Sum. Оптимизированные версии этих методов доступны для массивов и списков типов int, long, float, double и decimal. Span Min Max Average Sum int long float double decimal Заключение Путём использования Span и аппаратного ускорения для работы с векторами разработчикам из Microsoft и сообщества .NET удалось достичь заметных улучшений производительности LINQ. Теперь появляется возможность использовать прокаченные методы в ситуациях, где критичны скорость выполнения кода и выделенная память. Span Вообще .NET 7 получил немало других улучшений производительности. Вы можете прочитать о них в блоге .NET. блоге .NET Если хотите поделиться этой статьей с англоязычной аудиторией, то прошу использовать ссылку на перевод: Mikhail Evtihevich. How has LINQ performance enhanced in .NET 7?. How has LINQ performance enhanced in .NET 7? ]]></text>
+</doc>

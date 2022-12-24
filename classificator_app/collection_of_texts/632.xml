@@ -1,0 +1,106 @@
+<?xml version="1.0" ?>
+<doc>
+	<label auto="true" type="str" verify="true"><![CDATA[Develop]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[ternaus]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-11-29, 03:07]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/post/702158/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Ternaus: Chrome Extension]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Обработка изображений]]></item>
+		<item type="str"><![CDATA[Расширения для браузеров]]></item>
+		<item type="str"><![CDATA[Машинное обучение]]></item>
+		<item type="str"><![CDATA[Искусственный интеллект]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[ternaus]]></item>
+		<item type="str"><![CDATA[машинное обучение]]></item>
+		<item type="str"><![CDATA[генеративный арт]]></item>
+		<item type="str"><![CDATA[генеративной искусство]]></item>
+		<item type="str"><![CDATA[chrome extension]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[Короткая версия:
+Я добавил Chrome extension, которое позволяет по тексту и по картинкам в интернете искать похожие в базе данных на Ternaus.com.
+Ссылка на extension в Chrome Web Store
+Код на GitHub
+То есть мы кликнули на картинку со скалолазом на Pinterest и получили в ответ:
+Тут не очень понятно, но все картинки синтетически сгенерованны. И что еще менее очевидно их можно скачивать и использовать в любых целях, включая коммерческие.
+Длинная версия:
+В прошлом блог посте я упоминал, что планирую добавить Chrome Extension, которое позволить в пару кликов мышки производить поиск на Ternaus.com.
+Идея вот в чем.
+Сходу в голову приходят три сервиса у которых реализован поиск по сгенерированным картинкам:
+Krea.ai
+Lexica.art
+playgroundai.com
+Во всех трех сильные технические команды и как миним две подняли seed round'ы по несколько миллионов баксов. Так что с людскими и финансовыми ресурсами у ребят все нормально.
+У них, да и у меня, картинки из одного источника, модель, которая извлекает эмбединги тоже примерно одна (CLIP). То есть поисковая компонента у всех четырех (я и эти три команды) одинаковая.
+Кроме поиска у ребят хватает дополнительного функционала, например генерация новых изображений.
+Я думал добавить генерацию, но по всему выходит, что для этого надо поднять бюджет на сервер с GPU с $150 в месяц до $300. Деньги небольшие, но жаба пока душит.
+Раз с функциональностью особо не поконкурировать, то можно поиграть в новые каналы доставки на сайт.
+И тут мне пришла идея сделать Chrome Extension.
+Время от времени я использую Google Image Search extension, что позволяет искать картинки похожие на исходную в базе данных Google.
+То есть после установки extension’а, вы можете кликнуть правой кнопкой мышки на картинку, выбрать “Search Google With this image” и перейти на страницу с результатами поиска.
+Пользователям удобно, а Google переводит пользователей с чужих сайтов на свой.
+Насколько эффективен такой канал доставки сказать сложно, но попробовать хотелось.
+Chrome Extension’ы я еще не делал, а тут, даже если не полетит, добавится еще один навык в копилку технических навыков.
+Чтобы все заработало нужно сделать две вещи:
+Первая: добавить возможность делать поиск по query в URL.
+То есть, чтобы результаты получались не только от того, что ты тыкаешь в кнопки на сайте, а в более автоматическом режиме - заходишь на правильный URL, получаешь результат.
+Теперь при заходе на URL’ы:
+https://ternaus.com/search?text=TEXT_QUERY
+https://ternaus.com/search?url=URL_TO_IMAGE
+Вы переходите на результат соответствующего поиска.
+
+Вторая: собстсвенно сам extension.
+На эту тему у Google замечательная документация и примеры, так что оказалось проще, чем я подозревал. Кода тоже немного, всего 36 строчек.
+{
+  "manifest_version": 3,
+  "name": "Image Search on Ternaus.com",
+  "description": "Searches for images that are similar to the selected text",
+  "icons": {
+    "16": "images/icon-16.png",
+    "32": "images/icon-32.png",
+    "48": "images/icon-48.png",
+    "64": "images/icon-64.png",
+    "128": "images/icon-128.png"
+  },
+  "version": "0.0.0.2",
+  "background": {
+    "service_worker": "background.js"
+  },
+  "permissions": ["contextMenus"]
+}
+chrome.contextMenus.create({
+  id: "ternaus",
+  title: "Search on Ternaus",
+  contexts: ["selection", "image"]
+});
+
+chrome.contextMenus.onClicked.addListener( (clickData) => {
+  if (clickData.selectionText) {
+    chrome.tabs.create({
+      url: `https://ternaus.com/search/?text=${clickData.selectionText}`,
+      active: true
+    });
+  } else if (clickData.srcUrl) {
+    chrome.tabs.create({
+      url: `https://ternaus.com/search/?url=${clickData.srcUrl}`,
+      active: true
+    });
+  }
+});
+Ссылка на весь код на GitHub.
+Насколько полетит - непонятно. В вебе не так много людей пользуется Chrome Extension’ами, которые не AdBlock. На мобилах тоже не работает.
+Следующий шаг - сделать Telegram бота. Тоже никогда ничего похожего не писал, так что тоже хорошее упражнение.
+Тем, кто ищет картинки в интернете, можете попровать мой extension. Все картинки, которые вы получите в результате поиска на ternaus.com можно использовать в любых коммерческих целях.
+
+Ищите и пользуйтесь.
+P.S. Английская версия текста.   Короткая версия: Короткая версия: Я добавил Chrome extension, которое позволяет по тексту и по картинкам в интернете искать похожие в базе данных на Ternaus.com. Chrome extension Ternaus.com Ссылка на extension в Chrome Web Store
+Код на GitHub Ссылка на extension в Chrome Web Store Ссылка на extension в Chrome Web Store Ссылка на extension в Chrome Web Store Код на GitHub Код на GitHub Код на GitHub То есть мы кликнули на картинку со скалолазом на Pinterest и получили в ответ:  Тут не очень понятно, но все картинки синтетически сгенерованны. И что еще менее очевидно их можно скачивать и использовать в любых целях, включая коммерческие.  Длинная версия: Длинная версия: В прошлом блог посте я упоминал, что планирую добавить Chrome Extension, которое позволить в пару кликов мышки производить поиск на Ternaus.com. блог посте Ternaus.com Идея вот в чем. Сходу в голову приходят три сервиса у которых реализован поиск по сгенерированным картинкам: Krea.ai
+Lexica.art
+playgroundai.com Krea.ai Krea.ai Krea.ai Lexica.art Lexica.art Lexica.art playgroundai.com playgroundai.com playgroundai.com Во всех трех сильные технические команды и как миним две подняли seed round'ы по несколько миллионов баксов. Так что с людскими и финансовыми ресурсами у ребят все нормально. У них, да и у меня, картинки из одного источника, модель, которая извлекает эмбединги тоже примерно одна (CLIP). То есть поисковая компонента у всех четырех (я и эти три команды) одинаковая. Кроме поиска у ребят хватает дополнительного функционала, например генерация новых изображений. Я думал добавить генерацию, но по всему выходит, что для этого надо поднять бюджет на сервер с GPU с $150 в месяц до $300. Деньги небольшие, но жаба пока душит. Раз с функциональностью особо не поконкурировать, то можно поиграть в новые каналы доставки на сайт. И тут мне пришла идея сделать Chrome Extension. Время от времени я использую Google Image Search extension, что позволяет искать картинки похожие на исходную в базе данных Google. Google Image Search То есть после установки extension’а, вы можете кликнуть правой кнопкой мышки на картинку, выбрать “Search Google With this image” и перейти на страницу с результатами поиска. Пользователям удобно, а Google переводит пользователей с чужих сайтов на свой. Насколько эффективен такой канал доставки сказать сложно, но попробовать хотелось. Chrome Extension’ы я еще не делал, а тут, даже если не полетит, добавится еще один навык в копилку технических навыков. Чтобы все заработало нужно сделать две вещи: Первая: добавить возможность делать поиск по query в URL. Первая: добавить возможность делать поиск по query в URL. То есть, чтобы результаты получались не только от того, что ты тыкаешь в кнопки на сайте, а в более автоматическом режиме - заходишь на правильный URL, получаешь результат. Теперь при заходе на URL’ы: https://ternaus.com/search?text=TEXT_QUERY
+https://ternaus.com/search?url=URL_TO_IMAGE https://ternaus.com/search?text=TEXT_QUERY https://ternaus.com/search?text=TEXT_QUERY https://ternaus.com/search?text=TEXT_QUERY https://ternaus.com/search?url=URL_TO_IMAGE https://ternaus.com/search?url=URL_TO_IMAGE https://ternaus.com/search?url=URL_TO_IMAGE Вы переходите на результат соответствующего поиска.
+
+Вторая: собстсвенно сам extension.   Вторая: собстсвенно сам extension.]]></text>
+</doc>

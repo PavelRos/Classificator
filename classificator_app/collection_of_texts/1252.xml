@@ -1,0 +1,923 @@
+<?xml version="1.0" ?>
+<doc>
+	<original_author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Matthaus Woolard]]></item>
+	</original_author>
+	<label auto="true" type="str" verify="true"><![CDATA[Other]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Viktorianec]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-06-10, 14:49]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/post/670804/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Создание и настройка диаграмм с помощью нового Swift Charts Framework]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Разработка под iOS]]></item>
+		<item type="str"><![CDATA[Swift]]></item>
+		<item type="str"><![CDATA[Дизайн мобильных приложений]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[ios]]></item>
+		<item type="str"><![CDATA[swiftui]]></item>
+		<item type="str"><![CDATA[swift]]></item>
+		<item type="str"><![CDATA[charts]]></item>
+		<item type="str"><![CDATA[графики]]></item>
+		<item type="str"><![CDATA[графики и диаграммы]]></item>
+		<item type="str"><![CDATA[диаграммы]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[Создание и настройка диаграмм с помощью нового Swift Charts Framework
+Компания Apple только что анонсировала фреймворк Swift Charts, который мы можем использовать для создания диаграмм в наших приложениях. Судя по беглому взгляду на API, фреймворк может предоставить гораздо больше, чем базовые диаграммы, создаваемые такими приложениями, как Numbers и т.д. В этой статье хотелось бы поделиться первыми экспериментами с API.
+Для примеров будем использовать набор данных о популярных именах.
+Создание диаграммы с областями в виде слоёв
+Примечание. Если статья покажется интересной, то вот тут я пишу об iOS-разработке.
+Вот как мы можем создать простую диаграмму.
+struct SimpleBabyNameView: View {
+    let data: [BabyNamesDataPoint]
+    
+    var body: some View {
+        Chart(data) { point in
+            AreaMark(
+                x: .value("Date", point.year),
+                y: .value("Count", point.count)
+            )
+            .foregroundStyle(
+                by: .value("Name", point.name)
+            )
+        }
+    }
+}
+Диаграмма со слоями
+ПРИМЕЧАНИЕ: Очень важно сортировать точки данных по имени. Если этого не сделать, то в итоге получится очень неровная диаграмма, как на рисунке ниже!
+Пример неправильной сортировки данных
+Получилось неплохо, но это не вписывается в эстетику нашего приложения. Все сложенные области строятся от основания диаграммы и не слишком легко выглядят. Можно попробовать создать диаграмму, чтобы лучше показать поток данных во времени и визуально центрировать данные. К счастью, Swift Charts позволяет это сделать проще, чем кажется!
+Изменив конструктор AreaMark на тот, который принимает опцию MarkStackingMethod, можно построить диаграмму, нарисованную вдоль центра.
+struct SimpleBabyNameView: View {
+    let data: [BabyNamesDataPoint]
+    
+    var body: some View {
+        Chart(data) { point in
+            AreaMark(
+                x: .value("Date", point.year),
+                y: .value("Count", point.count),
+                stacking: .center
+            )
+            .foregroundStyle(
+                by: .value("Name", point.name)
+            )
+        }
+    }
+}
+Диаграмма, построенная вдоль центральной оси
+Настройка стиля диаграммы
+Теперь хотелось бы рассмотреть возможность кастомизировать цвета диаграммы. Яркие цвета, которые выбраны автоматически, действительно хороши для быстрого просмотра, но они конфликтуют с остальной частью приложения, поэтому нужно придумать что-то другое.
+Это возможно с помощью модификатора chartForegroundStyleScale(range:). Его можно разместить на нескольких уровнях в структуре диаграммы. Я размещу его непосредственно на вью Chart, чтобы применить настройку ко всем диапазонам данных на диаграмме.
+struct SimpleBabyNameViews: View {
+    let data: [BabyNamesDataPoint]
+    
+    var body: some View {
+        Chart(data) { point in
+            AreaMark(
+                x: .value("Date", point.year),
+                y: .value("Count", point.count),
+                stacking: .center
+            )
+            .foregroundStyle(
+                by: .value("Name", point.name)
+            )
+        }
+        .chartForegroundStyleScale(
+            range: Gradient (
+                colors: [
+                    .purple,
+                    .blue.opacity(0.3)
+                ]
+            )
+        )
+    }
+}
+ Настройка стиля диаграммы
+Добавление лейблов на диаграмму
+Эта диаграмма начинает выглядеть так, как будто хорошо впишется в приложение, однако теперь довольно сложно сопоставить название с соответствующей областью. Было бы гораздо лучше, если бы мы могли размещать метки непосредственно на диаграмме.
+Нужно расположить эти метки таким образом, чтобы было понятно, какой участок они обозначают, и при этом они не должны перекрывать друг друга. Было бы идеально, если бы можно было пометить точку на диаграмме, где имя имело самую высокую долю использования.
+Вычисление значений для аннотаций
+Первое, что нужно сделать, это найти эти даты. Для такой работы неплохо использовать модификатор SwiftUI task(id:). Это позволяет легко запускать код асинхронно, не блокируя основной поток.
+struct SimpleBabyNameViews: View {
+    let data: [BabyNamesDataPoint]
+    
+    // We need a spot to save computed data
+    @State var datesOfMaximumProportion: [
+        (date: Date, name: String)
+    ] = []
+    
+    var body: some View {
+        
+        //.... existing Chart code goes here ....//
+        
+        .task(id: data.count) {
+            // reset the state
+            self.datesOfMaximumProportion = []
+            
+            var namesToMaxProportion: [
+                String: (proportion: Float, date: Date)
+            ] = [:]
+            
+            // Find the date
+            for point in self.data {
+                if (
+                    namesToMaxProportion[point.name]?
+                        .proportion ?? 0
+                ) < point.proportion {
+                    namesToMaxProportion[point.name] =
+                        (point.proportion, point.year)
+                }
+            }
+            
+            // Re-shape this into a flat list
+            self.datesOfMaximumProportion = namesToMaxProportion
+                .map { (key: String, value) in
+                    (value.date, key)
+                }
+        }
+    }
+}
+Вычислив эти значения, мне теперь нужно использовать их для размещения текста. Просматривая Charts API, не получилось найти способ размещения текста непосредственно на диаграмме, но можно использовать модификатор annotation().
+Настройка вертикальных направляющих
+В коде диаграммы, который мы имеем на данный момент, неясно, как можно пройтись по массиву datesOfMaximumProportion. Но, используя несколько ForEach вместо передачи данных в конструктор Chart, можно создать диаграмму с несколькими наборами данных.
+struct SimpleBabyNameViews: View {
+    let data: [BabyNamesDataPoint]
+    
+    @State var datesOfMaximumProportion: [
+        (date: Date, name: String)
+    ] = []
+    
+    var body: some View {
+        Chart {
+            ForEach(data) { point in
+                AreaMark(
+                    x: .value("Date", point.year),
+                    y: .value("Count", point.count),
+                    stacking: .center
+                )
+                .foregroundStyle(by: .value("Name", point.name))
+            }
+            ForEach(
+                datesOfMaximumProportion, id: \.name
+            ) { point in
+                // We can now plot something here... 
+            }
+        }
+        .chartForegroundStyleScale(...)
+        .task(id: data.count) { ... }
+    }
+}
+А теперь добавим вертикальные линии.
+struct SimpleBabyNameViews: View {
+    
+    // ...
+    
+    var body: some View {
+        Chart {
+            ForEach(data) { point in
+                // ... draw stacked area marks here
+            }
+            ForEach(
+                datesOfMaximumProportion, id: \.name
+            ) { point in
+                RuleMark(
+                    x: .value(
+                        "Date of highest popularity for \(point.name)",
+                        point.date
+                    )
+                )
+            }
+        }
+        .chartForegroundStyleScale(...)
+        .task(id: data.count) { ... }
+    }
+}
+Вертикальные линии на диаграмме
+Прежде чем приступить к добавлению аннотаций, можно сделать линии немного красивее. Эти линии сами по себе помогают выделить даты, соответствующие точкам пика популярности. Использование вертикального LinearGradient создает градиентную заливку. Добавление модификатора blendMode() со значением затемнения уменьшает влияние этих линий на содержимое основной диаграммы.
+struct SimpleBabyNameViews: View {
+    
+    // ...
+    
+    var body: some View {
+        Chart {
+            ForEach(data) { ... }
+            ForEach(
+                datesOfMaximumProportion, id: \.name
+            ) { point in
+                RuleMark(
+                    x: .value(
+                        "Date of highest popularity for \(point.name)",
+                        point.date
+                    )
+                )
+                .foregroundStyle(
+                    LinearGradient(
+                        gradient: Gradient (
+                            colors: [
+                                .indigo.opacity(0.05),
+                                .purple.opacity(0.5)
+                            ]
+                        ),
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                ).blendMode(.darken)
+            }
+        }
+        .chartForegroundStyleScale(...)
+        .task(id: data.count) { ... }
+    }
+}
+Улучшение отображения линий с использованием градиента
+Добавление аннотаций для линий диаграммы
+Диаграмма теперь выглядит красиво, но мы отвлеклись. Нужно выяснить, как расположить текстовые метки в правильном месте в середине каждого из соответствующих разделов. Мы уже отсортировали набор данных, чтобы убедиться, что диаграмма отображается правильно. Теперь можно вычислить верхнюю и нижнюю позиции области для заданного имени в самую популярную дату. Получим позиции, в которых мне нужно центрировать метки.
+struct SimpleBabyNameViews: View {
+    let data: [BabyNamesDataPoint]
+    
+    @State var datesOfMaximumProportion: [
+        (date: Date, name: String, yStart: Float, yEnd: Float)
+    ] = []
+    
+    var body: some View {
+        Chart { ... }
+        .chartForegroundStyleScale( ... )
+
+        .task(id: data.count) {
+            // ... compute namesToMaxProportion as above ...
+            
+            self.datesOfMaximumProportion = namesToMaxProportion
+                .map { (key: String, value) in
+                    let name = key
+                    var count = 0
+                    var before = 0
+                    var after = 0
+                
+                    // Loop over all the datapoints
+                    for point in self.data {
+                        // Only consider points of the same year
+                        
+                        if point.year != value.date { continue }
+                        if point.name == name {
+                            count = point.count
+                            continue
+                        }
+                        
+                        if count != 0 {
+                            // These sections come after
+                            after += point.count
+                        } else {
+                            // These sections come before
+                            before += point.count
+                        }
+                    }
+                
+                    let total = count + after + before
+                    // The height is centred about the x-axis
+                    let lowestValue = -1 * Float(total) / 2.0
+                    let yEnd = lowestValue + Float(before)
+                    let yStart = yEnd  + Float(count)
+                    
+                    return (value.date, key, yStart, yEnd)
+                }
+        }
+    }
+}
+С этим y-диапазоном теперь можно нарисовать гораздо меньшую (невидимую) линию в позиции даты от yStart до yEnd и разместить аннотацию в ее центре. Мы также повернули текст и поместили за ним фон, чтобы его было приятно и легко читать. Для этого пригодился ultraThinMaterial, так что фон принимает цвет раздела, который он помечает.
+struct SimpleBabyNameViews: View {
+ 
+   // ...
+  
+    var body: some View {
+        Chart {
+            ForEach(data) { point in ... }
+            ForEach(
+                datesOfMaximumProportion,
+                id: \.name
+            ) { point in ... }
+            
+            // Loop again to ensure labels are on top
+            ForEach(
+                datesOfMaximumProportion,
+                id: \.name
+            ) { point in
+                
+                // Create a ruler
+                RuleMark(
+                    x: .value(
+                        "Date of highest popularity for \(point.name)",
+                        point.date
+                    ),
+                    yStart: .value("", point.yStart),
+                    yEnd: .value("", point.yEnd)
+                )
+                
+                // Set the line width to 0 so as to make it invisible
+                .lineStyle(StrokeStyle(lineWidth: 0))
+                
+                // Place an annotation in the centre of the ruler
+                .annotation(
+                    position: .overlay,
+                    alignment: .center,
+                    spacing: 4
+                ){
+                    // create the annotation
+                    Text(point.name)
+                        .font(.subheadline)
+                        .padding(2)
+                        .fixedSize()
+                    
+                        // Provide a background pill
+                        .background(
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(.ultraThinMaterial)
+                        )
+                        .foregroundColor(.secondary)
+                    
+                        // Rotate the pill 90 degrees
+                        .rotationEffect(
+                            .degrees(-90),
+                            anchor: .center
+                        )
+                        .fixedSize()
+                }
+            }
+        }
+        .chartForegroundStyleScale(...)
+        .task(id: data.count) {...}
+    }
+}
+Финальный вид диаграммы
+Вы можете найти код для этой диаграммы в проекте GitHub, включая код для загрузки и анализа CSV-файла.
+Если вы нашли что-то полезное для себя, то подписывайтесь на мой канал, тут больше интересных историй и подходов.
+Авторский канал об iOS-разработке  Создание и настройка диаграмм с помощью нового Swift Charts Framework Компания Apple только что анонсировала фреймворк Swift Charts, который мы можем использовать для создания диаграмм в наших приложениях. Судя по беглому взгляду на API, фреймворк может предоставить гораздо больше, чем базовые диаграммы, создаваемые такими приложениями, как Numbers и т.д. В этой статье хотелось бы поделиться первыми экспериментами с API. Swift Charts гораздо больше Для примеров будем использовать набор данных о популярных именах. Создание диаграммы с областями в виде слоёв Примечание. Если статья покажется интересной, то вот тут я пишу об iOS-разработке. Примечание вот тут я пишу об iOS-разработке. Вот как мы можем создать простую диаграмму. struct SimpleBabyNameView: View {
+    let data: [BabyNamesDataPoint]
+    
+    var body: some View {
+        Chart(data) { point in
+            AreaMark(
+                x: .value("Date", point.year),
+                y: .value("Count", point.count)
+            )
+            .foregroundStyle(
+                by: .value("Name", point.name)
+            )
+        }
+    }
+} struct SimpleBabyNameView: View {
+    let data: [BabyNamesDataPoint]
+    
+    var body: some View {
+        Chart(data) { point in
+            AreaMark(
+                x: .value("Date", point.year),
+                y: .value("Count", point.count)
+            )
+            .foregroundStyle(
+                by: .value("Name", point.name)
+            )
+        }
+    }
+} Диаграмма со слоями  Диаграмма со слоями ПРИМЕЧАНИЕ: Очень важно сортировать точки данных по имени. Если этого не сделать, то в итоге получится очень неровная диаграмма, как на рисунке ниже! Пример неправильной сортировки данных  Пример неправильной сортировки данных Получилось неплохо, но это не вписывается в эстетику нашего приложения. Все сложенные области строятся от основания диаграммы и не слишком легко выглядят. Можно попробовать создать диаграмму, чтобы лучше показать поток данных во времени и визуально центрировать данные. К счастью, Swift Charts позволяет это сделать проще, чем кажется! Swift Charts Изменив конструктор AreaMark на тот, который принимает опцию MarkStackingMethod, можно построить диаграмму, нарисованную вдоль центра. AreaMark MarkStackingMethod struct SimpleBabyNameView: View {
+    let data: [BabyNamesDataPoint]
+    
+    var body: some View {
+        Chart(data) { point in
+            AreaMark(
+                x: .value("Date", point.year),
+                y: .value("Count", point.count),
+                stacking: .center
+            )
+            .foregroundStyle(
+                by: .value("Name", point.name)
+            )
+        }
+    }
+} struct SimpleBabyNameView: View {
+    let data: [BabyNamesDataPoint]
+    
+    var body: some View {
+        Chart(data) { point in
+            AreaMark(
+                x: .value("Date", point.year),
+                y: .value("Count", point.count),
+                stacking: .center
+            )
+            .foregroundStyle(
+                by: .value("Name", point.name)
+            )
+        }
+    }
+} Диаграмма, построенная вдоль центральной оси  Диаграмма, построенная вдоль центральной оси Настройка стиля диаграммы Теперь хотелось бы рассмотреть возможность кастомизировать цвета диаграммы. Яркие цвета, которые выбраны автоматически, действительно хороши для быстрого просмотра, но они конфликтуют с остальной частью приложения, поэтому нужно придумать что-то другое. Это возможно с помощью модификатора chartForegroundStyleScale(range:). Его можно разместить на нескольких уровнях в структуре диаграммы. Я размещу его непосредственно на вью Chart, чтобы применить настройку ко всем диапазонам данных на диаграмме. chartForegroundStyleScale(range:) Chart struct SimpleBabyNameViews: View {
+    let data: [BabyNamesDataPoint]
+    
+    var body: some View {
+        Chart(data) { point in
+            AreaMark(
+                x: .value("Date", point.year),
+                y: .value("Count", point.count),
+                stacking: .center
+            )
+            .foregroundStyle(
+                by: .value("Name", point.name)
+            )
+        }
+        .chartForegroundStyleScale(
+            range: Gradient (
+                colors: [
+                    .purple,
+                    .blue.opacity(0.3)
+                ]
+            )
+        )
+    }
+} struct SimpleBabyNameViews: View {
+    let data: [BabyNamesDataPoint]
+    
+    var body: some View {
+        Chart(data) { point in
+            AreaMark(
+                x: .value("Date", point.year),
+                y: .value("Count", point.count),
+                stacking: .center
+            )
+            .foregroundStyle(
+                by: .value("Name", point.name)
+            )
+        }
+        .chartForegroundStyleScale(
+            range: Gradient (
+                colors: [
+                    .purple,
+                    .blue.opacity(0.3)
+                ]
+            )
+        )
+    }
+}  Настройка стиля диаграммы   Настройка стиля диаграммы Добавление лейблов на диаграмму Эта диаграмма начинает выглядеть так, как будто хорошо впишется в приложение, однако теперь довольно сложно сопоставить название с соответствующей областью. Было бы гораздо лучше, если бы мы могли размещать метки непосредственно на диаграмме. Нужно расположить эти метки таким образом, чтобы было понятно, какой участок они обозначают, и при этом они не должны перекрывать друг друга. Было бы идеально, если бы можно было пометить точку на диаграмме, где имя имело самую высокую долю использования. Вычисление значений для аннотаций Первое, что нужно сделать, это найти эти даты. Для такой работы неплохо использовать модификатор SwiftUI task(id:). Это позволяет легко запускать код асинхронно, не блокируя основной поток. task(id:) struct SimpleBabyNameViews: View {
+    let data: [BabyNamesDataPoint]
+    
+    // We need a spot to save computed data
+    @State var datesOfMaximumProportion: [
+        (date: Date, name: String)
+    ] = []
+    
+    var body: some View {
+        
+        //.... existing Chart code goes here ....//
+        
+        .task(id: data.count) {
+            // reset the state
+            self.datesOfMaximumProportion = []
+            
+            var namesToMaxProportion: [
+                String: (proportion: Float, date: Date)
+            ] = [:]
+            
+            // Find the date
+            for point in self.data {
+                if (
+                    namesToMaxProportion[point.name]?
+                        .proportion ?? 0
+                ) < point.proportion {
+                    namesToMaxProportion[point.name] =
+                        (point.proportion, point.year)
+                }
+            }
+            
+            // Re-shape this into a flat list
+            self.datesOfMaximumProportion = namesToMaxProportion
+                .map { (key: String, value) in
+                    (value.date, key)
+                }
+        }
+    }
+} struct SimpleBabyNameViews: View {
+    let data: [BabyNamesDataPoint]
+    
+    // We need a spot to save computed data
+    @State var datesOfMaximumProportion: [
+        (date: Date, name: String)
+    ] = []
+    
+    var body: some View {
+        
+        //.... existing Chart code goes here ....//
+        
+        .task(id: data.count) {
+            // reset the state
+            self.datesOfMaximumProportion = []
+            
+            var namesToMaxProportion: [
+                String: (proportion: Float, date: Date)
+            ] = [:]
+            
+            // Find the date
+            for point in self.data {
+                if (
+                    namesToMaxProportion[point.name]?
+                        .proportion ?? 0
+                ) < point.proportion {
+                    namesToMaxProportion[point.name] =
+                        (point.proportion, point.year)
+                }
+            }
+            
+            // Re-shape this into a flat list
+            self.datesOfMaximumProportion = namesToMaxProportion
+                .map { (key: String, value) in
+                    (value.date, key)
+                }
+        }
+    }
+} Вычислив эти значения, мне теперь нужно использовать их для размещения текста. Просматривая Charts API, не получилось найти способ размещения текста непосредственно на диаграмме, но можно использовать модификатор annotation(). Charts API annotation() Настройка вертикальных направляющих В коде диаграммы, который мы имеем на данный момент, неясно, как можно пройтись по массиву datesOfMaximumProportion. Но, используя несколько ForEach вместо передачи данных в конструктор Chart, можно создать диаграмму с несколькими наборами данных. struct SimpleBabyNameViews: View {
+    let data: [BabyNamesDataPoint]
+    
+    @State var datesOfMaximumProportion: [
+        (date: Date, name: String)
+    ] = []
+    
+    var body: some View {
+        Chart {
+            ForEach(data) { point in
+                AreaMark(
+                    x: .value("Date", point.year),
+                    y: .value("Count", point.count),
+                    stacking: .center
+                )
+                .foregroundStyle(by: .value("Name", point.name))
+            }
+            ForEach(
+                datesOfMaximumProportion, id: \.name
+            ) { point in
+                // We can now plot something here... 
+            }
+        }
+        .chartForegroundStyleScale(...)
+        .task(id: data.count) { ... }
+    }
+} struct SimpleBabyNameViews: View {
+    let data: [BabyNamesDataPoint]
+    
+    @State var datesOfMaximumProportion: [
+        (date: Date, name: String)
+    ] = []
+    
+    var body: some View {
+        Chart {
+            ForEach(data) { point in
+                AreaMark(
+                    x: .value("Date", point.year),
+                    y: .value("Count", point.count),
+                    stacking: .center
+                )
+                .foregroundStyle(by: .value("Name", point.name))
+            }
+            ForEach(
+                datesOfMaximumProportion, id: \.name
+            ) { point in
+                // We can now plot something here... 
+            }
+        }
+        .chartForegroundStyleScale(...)
+        .task(id: data.count) { ... }
+    }
+} А теперь добавим вертикальные линии. struct SimpleBabyNameViews: View {
+    
+    // ...
+    
+    var body: some View {
+        Chart {
+            ForEach(data) { point in
+                // ... draw stacked area marks here
+            }
+            ForEach(
+                datesOfMaximumProportion, id: \.name
+            ) { point in
+                RuleMark(
+                    x: .value(
+                        "Date of highest popularity for \(point.name)",
+                        point.date
+                    )
+                )
+            }
+        }
+        .chartForegroundStyleScale(...)
+        .task(id: data.count) { ... }
+    }
+} struct SimpleBabyNameViews: View {
+    
+    // ...
+    
+    var body: some View {
+        Chart {
+            ForEach(data) { point in
+                // ... draw stacked area marks here
+            }
+            ForEach(
+                datesOfMaximumProportion, id: \.name
+            ) { point in
+                RuleMark(
+                    x: .value(
+                        "Date of highest popularity for \(point.name)",
+                        point.date
+                    )
+                )
+            }
+        }
+        .chartForegroundStyleScale(...)
+        .task(id: data.count) { ... }
+    }
+} Вертикальные линии на диаграмме  Вертикальные линии на диаграмме Прежде чем приступить к добавлению аннотаций, можно сделать линии немного красивее. Эти линии сами по себе помогают выделить даты, соответствующие точкам пика популярности. Использование вертикального LinearGradient создает градиентную заливку. Добавление модификатора blendMode() со значением затемнения уменьшает влияние этих линий на содержимое основной диаграммы. LinearGradient blendMode() struct SimpleBabyNameViews: View {
+    
+    // ...
+    
+    var body: some View {
+        Chart {
+            ForEach(data) { ... }
+            ForEach(
+                datesOfMaximumProportion, id: \.name
+            ) { point in
+                RuleMark(
+                    x: .value(
+                        "Date of highest popularity for \(point.name)",
+                        point.date
+                    )
+                )
+                .foregroundStyle(
+                    LinearGradient(
+                        gradient: Gradient (
+                            colors: [
+                                .indigo.opacity(0.05),
+                                .purple.opacity(0.5)
+                            ]
+                        ),
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                ).blendMode(.darken)
+            }
+        }
+        .chartForegroundStyleScale(...)
+        .task(id: data.count) { ... }
+    }
+} struct SimpleBabyNameViews: View {
+    
+    // ...
+    
+    var body: some View {
+        Chart {
+            ForEach(data) { ... }
+            ForEach(
+                datesOfMaximumProportion, id: \.name
+            ) { point in
+                RuleMark(
+                    x: .value(
+                        "Date of highest popularity for \(point.name)",
+                        point.date
+                    )
+                )
+                .foregroundStyle(
+                    LinearGradient(
+                        gradient: Gradient (
+                            colors: [
+                                .indigo.opacity(0.05),
+                                .purple.opacity(0.5)
+                            ]
+                        ),
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                ).blendMode(.darken)
+            }
+        }
+        .chartForegroundStyleScale(...)
+        .task(id: data.count) { ... }
+    }
+}  Улучшение отображения линий с использованием градиента Добавление аннотаций для линий диаграммы Диаграмма теперь выглядит красиво, но мы отвлеклись. Нужно выяснить, как расположить текстовые метки в правильном месте в середине каждого из соответствующих разделов. Мы уже отсортировали набор данных, чтобы убедиться, что диаграмма отображается правильно. Теперь можно вычислить верхнюю и нижнюю позиции области для заданного имени в самую популярную дату. Получим позиции, в которых мне нужно центрировать метки. struct SimpleBabyNameViews: View {
+    let data: [BabyNamesDataPoint]
+    
+    @State var datesOfMaximumProportion: [
+        (date: Date, name: String, yStart: Float, yEnd: Float)
+    ] = []
+    
+    var body: some View {
+        Chart { ... }
+        .chartForegroundStyleScale( ... )
+
+        .task(id: data.count) {
+            // ... compute namesToMaxProportion as above ...
+            
+            self.datesOfMaximumProportion = namesToMaxProportion
+                .map { (key: String, value) in
+                    let name = key
+                    var count = 0
+                    var before = 0
+                    var after = 0
+                
+                    // Loop over all the datapoints
+                    for point in self.data {
+                        // Only consider points of the same year
+                        
+                        if point.year != value.date { continue }
+                        if point.name == name {
+                            count = point.count
+                            continue
+                        }
+                        
+                        if count != 0 {
+                            // These sections come after
+                            after += point.count
+                        } else {
+                            // These sections come before
+                            before += point.count
+                        }
+                    }
+                
+                    let total = count + after + before
+                    // The height is centred about the x-axis
+                    let lowestValue = -1 * Float(total) / 2.0
+                    let yEnd = lowestValue + Float(before)
+                    let yStart = yEnd  + Float(count)
+                    
+                    return (value.date, key, yStart, yEnd)
+                }
+        }
+    }
+} struct SimpleBabyNameViews: View {
+    let data: [BabyNamesDataPoint]
+    
+    @State var datesOfMaximumProportion: [
+        (date: Date, name: String, yStart: Float, yEnd: Float)
+    ] = []
+    
+    var body: some View {
+        Chart { ... }
+        .chartForegroundStyleScale( ... )
+
+        .task(id: data.count) {
+            // ... compute namesToMaxProportion as above ...
+            
+            self.datesOfMaximumProportion = namesToMaxProportion
+                .map { (key: String, value) in
+                    let name = key
+                    var count = 0
+                    var before = 0
+                    var after = 0
+                
+                    // Loop over all the datapoints
+                    for point in self.data {
+                        // Only consider points of the same year
+                        
+                        if point.year != value.date { continue }
+                        if point.name == name {
+                            count = point.count
+                            continue
+                        }
+                        
+                        if count != 0 {
+                            // These sections come after
+                            after += point.count
+                        } else {
+                            // These sections come before
+                            before += point.count
+                        }
+                    }
+                
+                    let total = count + after + before
+                    // The height is centred about the x-axis
+                    let lowestValue = -1 * Float(total) / 2.0
+                    let yEnd = lowestValue + Float(before)
+                    let yStart = yEnd  + Float(count)
+                    
+                    return (value.date, key, yStart, yEnd)
+                }
+        }
+    }
+} С этим y-диапазоном теперь можно нарисовать гораздо меньшую (невидимую) линию в позиции даты от yStart до yEnd и разместить аннотацию в ее центре. Мы также повернули текст и поместили за ним фон, чтобы его было приятно и легко читать. Для этого пригодился ultraThinMaterial, так что фон принимает цвет раздела, который он помечает. y-диапазоном yStart yEnd ultraThinMaterial struct SimpleBabyNameViews: View {
+ 
+   // ...
+  
+    var body: some View {
+        Chart {
+            ForEach(data) { point in ... }
+            ForEach(
+                datesOfMaximumProportion,
+                id: \.name
+            ) { point in ... }
+            
+            // Loop again to ensure labels are on top
+            ForEach(
+                datesOfMaximumProportion,
+                id: \.name
+            ) { point in
+                
+                // Create a ruler
+                RuleMark(
+                    x: .value(
+                        "Date of highest popularity for \(point.name)",
+                        point.date
+                    ),
+                    yStart: .value("", point.yStart),
+                    yEnd: .value("", point.yEnd)
+                )
+                
+                // Set the line width to 0 so as to make it invisible
+                .lineStyle(StrokeStyle(lineWidth: 0))
+                
+                // Place an annotation in the centre of the ruler
+                .annotation(
+                    position: .overlay,
+                    alignment: .center,
+                    spacing: 4
+                ){
+                    // create the annotation
+                    Text(point.name)
+                        .font(.subheadline)
+                        .padding(2)
+                        .fixedSize()
+                    
+                        // Provide a background pill
+                        .background(
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(.ultraThinMaterial)
+                        )
+                        .foregroundColor(.secondary)
+                    
+                        // Rotate the pill 90 degrees
+                        .rotationEffect(
+                            .degrees(-90),
+                            anchor: .center
+                        )
+                        .fixedSize()
+                }
+            }
+        }
+        .chartForegroundStyleScale(...)
+        .task(id: data.count) {...}
+    }
+} struct SimpleBabyNameViews: View {
+ 
+   // ...
+  
+    var body: some View {
+        Chart {
+            ForEach(data) { point in ... }
+            ForEach(
+                datesOfMaximumProportion,
+                id: \.name
+            ) { point in ... }
+            
+            // Loop again to ensure labels are on top
+            ForEach(
+                datesOfMaximumProportion,
+                id: \.name
+            ) { point in
+                
+                // Create a ruler
+                RuleMark(
+                    x: .value(
+                        "Date of highest popularity for \(point.name)",
+                        point.date
+                    ),
+                    yStart: .value("", point.yStart),
+                    yEnd: .value("", point.yEnd)
+                )
+                
+                // Set the line width to 0 so as to make it invisible
+                .lineStyle(StrokeStyle(lineWidth: 0))
+                
+                // Place an annotation in the centre of the ruler
+                .annotation(
+                    position: .overlay,
+                    alignment: .center,
+                    spacing: 4
+                ){
+                    // create the annotation
+                    Text(point.name)
+                        .font(.subheadline)
+                        .padding(2)
+                        .fixedSize()
+                    
+                        // Provide a background pill
+                        .background(
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(.ultraThinMaterial)
+                        )
+                        .foregroundColor(.secondary)
+                    
+                        // Rotate the pill 90 degrees
+                        .rotationEffect(
+                            .degrees(-90),
+                            anchor: .center
+                        )
+                        .fixedSize()
+                }
+            }
+        }
+        .chartForegroundStyleScale(...)
+        .task(id: data.count) {...}
+    }
+}  Финальный вид диаграммы Вы можете найти код для этой диаграммы в проекте GitHub, включая код для загрузки и анализа CSV-файла. GitHub  Если вы нашли что-то полезное для себя, то подписывайтесь на мой канал, тут больше интересных историй и подходов. тут больше интересных историй и подходов  Авторский канал об iOS-разработке ]]></text>
+</doc>

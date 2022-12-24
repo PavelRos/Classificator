@@ -1,0 +1,377 @@
+<?xml version="1.0" ?>
+<doc>
+	<original_author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Kelvin O Omereshone]]></item>
+	</original_author>
+	<label auto="true" type="str" verify="true"><![CDATA[Develop]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[MaxRokatansky]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-12-06, 17:28]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/company/otus/blog/703876/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Создание плагина с Vite]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Блог компании OTUS]]></item>
+		<item type="str"><![CDATA[VueJS]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[vue]]></item>
+		<item type="str"><![CDATA[vue.js]]></item>
+		<item type="str"><![CDATA[vite]]></item>
+		<item type="str"><![CDATA[создание плагина]]></item>
+		<item type="str"><![CDATA[архитектура приложений]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[Зачем создавать плагин Vite?
+Вам когда-нибудь требовались дополнительные возможности от конфигурации Vite, например, преобразование кастомного расширения, т.е., index.mycustomextension в index.js? Или преобразование markdown в JSX?
+Плагин Vite позволяет нам решать подобные задачи. Поэтому вам может быть интересно, как создать плагин Vite самостоятельно. В этой статье мы расскажем, как разработать несколько простых плагинов, которые вы сможете использовать в качестве основы и источника идей для своих собственных плагинов Vite.
+Что такое плагин Vite?
+Плагин Vite — это Rollup-плагин с некоторыми опциями и хуками, специфичными для Vite, который позволяет вам добавлять дополнительную кастомную функциональность поверх Vite для решения конкретной проблемы. Например, Astro использует плагин Vite для разрешения файлов .astro.
+Плагин Vite — это объект с одним или несколькими:
+свойствами
+хуками сборки
+хуками для генерации вывода
+const vitePluginExample = () => ({
+ // properties
+  name: 'vite-plugin-example', 
+ // build hooks
+  config: () => ({
+    resolve: {
+      alias: {
+        foo: 'bar'
+      }
+    }
+  }),
+ // output generation hooks
+ augmentChunkHash(chunkInfo) {
+      if (chunkInfo.name === 'bar') {
+        return Date.now().toString();
+      }
+    }
+})
+Давайте вкратце рассмотрим все эти три компонента плагина Vite, прежде чем приступить к созданию собственного.
+Свойства
+Единственным обязательным свойством плагина Vite является name, которое представляет собой имя плагина. Оно необходимо, поскольку используется для отладки и сообщений об ошибках.
+Хуки сборки
+Это основной способ взаимодействия плагина со сборочным процессом Vite. Хуки — это функции, которые вызываются на различных этапах сборки. Вы можете использовать хуки для изменения способа выполнения сборки, получения информации о сборке или изменения сборки после ее завершения.
+Хуки для генерации вывода
+Эти хуки можно использовать для предоставления информации о сгенерированном пакете и модификации сборки после ее завершения.
+Создание плагина Vite
+Приступить к созданию плагина Vite просто — достаточно указать фабричную функцию в файле vite.config.js. Эта функция вернет фактический объект плагина, который содержит все определения и логику плагина. Затем вы можете передать эту функцию в массив plugins в объекте defineConfig.
+Примечание: Эта функция является регулярной и, как таковая, может принимать опции, которые позволяют кастомизировать поведение плагина в пользовательской среде.
+Для ознакомления мы создадим три простых плагина, чтобы показать вам, как выглядит разработка плагина Vite.
+Давайте начнем с первого.
+Пример №1: Output Plugins Stats (Вывод статистики плагинов)
+Что может быть лучше примера "hello world", чем создание плагина, который выводит статистику о плагинах в вашем проекте Vite?
+Этот плагин будет работать следующим образом: при запуске npm run dev вы должны увидеть вывод хука output-plugin-stats, который будет представлять собой подсчет плагинов в вашем проекте и их общую таблицу. Как, мета.
+Чтобы это сделать, давайте сначала создадим проект Vanilla Vite, выполнив данную команду в терминале:
+npm init create-vite@latest
+В подсказке выберите пресет Vanilla, а в качестве языка — JavaScript.
+Затем запустите npm install и npm run dev, чтобы убедиться, что установка прошла успешно.
+После этого просто сделайте остановку dev-сервера и создайте файл vite.config.js в корне вашего проекта и добавьте в него этот код:
+vite.config.js
+import { defineConfig } from 'vite'
+
+export default defineConfig({
+  plugins: []
+})
+Теперь у нас есть основа для функциональности нашего плагина, которую мы передадим в массив plugins.
+vite.config.js
+import { defineConfig } from 'vite'
+
+const outputPluginStats = () => ({
+  name: 'output-plugin-stats',
+  configResolved(config) {
+    const plugins = config.plugins.map((plugin) => plugin.name)
+    console.log(`Your project has ${plugins.length} Vite plugins.`)
+    console.table(plugins)
+  }
+})
+
+export default defineConfig({
+  plugins: [
+    outputPluginStats()
+  ]
+})
+Как вы видите, у нас есть функция outputPluginStats, которая возвращает объект со свойством name, которое является именем плагина, и специфический для Vite хук configResolved.
+configResolved вызывается после разрешения конфигурации Vite, и вы можете использовать его для чтения и хранения окончательно разрешенной конфигурации.
+Давайте посмотрим, что мы делаем в приведенном выше коде:
+const plugins = config.plugins.map((plugin) => plugin.name)
+Мы мапируем плагины в config.plugins и возвращаем имена плагинов в виде массива под названием plugins
+console.log(`Your project has ${plugins.length} Vite plugins.`)
+Приведенная выше строка выдает значение количества плагинов в массиве plugins с помощью Array.prototype.length
+Наконец, мы выводим массив plugins в таблицу:
+console.table(plugins)
+После того, как мы определили плагин, регистрируем его в массиве plugins объекта конфигурации Vite:
+export default defineConfig({
+  plugins: [
+    outputPluginStats()
+  ]
+})
+Пример №2: Request Analytics (Аналитика запроса)
+В нашем следующем примере мы добавим промежуточное программное обеспечение — функцию, которая будет выполняться до того, как сервер обработает запрос, — к базовому коннект-серверу Vite для логирования запросов, которые он обрабатывает.
+Для этого добавим следующую функцию в файл vite.config.js.
+vite.config.js
+const requestAnalytics = () => ({
+  name: 'request-analytics',
+  configureServer(server) {
+    return () => {
+      server.middlewares.use((req, res, next) => {
+        console.log(`${req.method.toUpperCase()} ${req.url}`)
+        next()
+      })
+    }
+  }
+})
+В приведенном выше плагине мы используем хук configureServer для добавления промежуточного ПО на сервер Vite.
+Давайте разберемся, что же именно делает каждая строка приведенного выше кода.
+Во-первых, мы задаем имя плагина.
+name: 'request-analytics'
+Затем, хук configureServer позволяет нам настроить сервер Vite:
+configureServer(server) {
+    return () => {
+     
+    }
+  }
+Затем мы добавляем промежуточное ПО, которое принимает 3 аргумента: req, res, next. Внутри промежуточного ПО мы логируем метод запроса и URL, который был запрошен.
+configureServer(server) {
+    return () => {
+      server.middlewares.use((req, res, next) => {
+        console.log(`${req.method.toUpperCase()} ${req.url}`)
+        next()
+      })
+    }
+  }
+Наконец, мы передаем запрос следующему обработчику с помощью вызова next().
+Вызов плагина в массиве plugins будет выглядеть следующим образом:
+vite.config.js
+export default defineConfig({
+  plugins: [
+    outputPluginStats(),
+    requestAnalytics()
+  ]
+})
+Теперь, когда мы запускаем сервер Vite, выполнив команду npm run dev и посетив сайт http://localhost:5173/, то должны увидеть следующий результат:
+GET /index.html
+Мы только что создали своего рода аналитику запроса, которая сообщает нам, какие файлы были обработаны сервером Vite.
+Пример №3: Hot Update Report (Отчет о горячем обновлении)
+Для нашего последнего примера... Допустим, мы хотим получить отчет о модулях, которые были обновлены во время горячей замены, внутри консоли.
+Для этого создадим плагин под названием hotUpdateReport.
+Мы можем сделать это, подключившись к хуку handleHotUpdate, как показано ниже:
+vite.config.js
+const hotUpdateReport = () => ({
+  name: 'hot-update-report',
+  handleHotUpdate({file, timestamp, modules}) {
+    console.log(`${timestamp}: ${modules.length} module(s) updated`)
+  }
+})
+Обратите внимание, что мы используем хук handleHotUpdate для фиксации временной метки (timestamp), а также количества модулей (modules), которые были обновлены.
+Хук handleHotUpdate предоставляет объект HmrContext, который мы деструктурируем, чтобы получить из него свойства file, timestamp и modules.
+Нам просто нужно зарегистрировать плагин, примерно так:
+vite.config.js
+export default defineConfig({
+  plugins: [
+    outputPluginStats(),
+    requestAnalytics(),
+    hotUpdateReport()
+  ]
+})
+Теперь при обновлении index.html, main.js или style.css в консоли будет появляться отчет.
+Публикация плагина Vite
+Если после создания плагина вы решите опубликовать его в виде отдельного пакета для установки через NPM, вам следует придерживаться следующих правил:
+Ваш плагин должен иметь понятное название с префиксом vite-plugin-.
+Включать ключевое слово vite-plugin в package.json
+{
+  "name": "building-a-plugin-with-vite",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "keywords": ["vite-plugin"],
+}
+При документировании своего плагина включите раздел с подробным описанием того, почему он предназначен только для Vite (а не для Rollup). Чаще всего плагин предназначен только для Vite, потому что он использует некоторые специфические для Vite хуки плагина.
+Наконец, если ваш плагин работает только для определенного фреймворка, то его название должно быть частью префикса названия плагина, например, vite-plugin-svelte-, vite-plugin-react-, vite-plugin-react-, vite-plugin-lit- и т.д.
+Куда двигаться дальше?
+Благодаря этим примерам вы теперь обладаете основными строительными блоками для создания собственных плагинов Vite. Существует бесконечное количество вариантов использования таких плагинов, и я надеюсь, что теперь у вас появится стимул создать свой собственный.
+Приглашаем всех желающих на открытое занятие «Архитектура больших Vue-приложений и лучшие практики». На занятии узнаем, как можно структурировать код по мере роста приложения, про монолитную и модульную архитектуру приложения. А также:
+
+— Обсудим, какие приемы можно применить для снижения сложности разработки и сопровождения и как нам могут помочь фабрики компонентов и сервисы.
+— Разберем хорошие практики и правила хорошего стиля.
+— Не забудем про антипаттерны и чего следует избегать при разработке.
+
+Регистрация на мероприятие открыта по ссылке. Зачем создавать плагин Vite? Вам когда-нибудь требовались дополнительные возможности от конфигурации Vite, например, преобразование кастомного расширения, т.е., index.mycustomextension в index.js? Или преобразование markdown в JSX? index.mycustomextension index.js Плагин Vite позволяет нам решать подобные задачи. Поэтому вам может быть интересно, как создать плагин Vite самостоятельно. В этой статье мы расскажем, как разработать несколько простых плагинов, которые вы сможете использовать в качестве основы и источника идей для своих собственных плагинов Vite. Что такое плагин Vite? Плагин Vite — это Rollup-плагин с некоторыми опциями и хуками, специфичными для Vite, который позволяет вам добавлять дополнительную кастомную функциональность поверх Vite для решения конкретной проблемы. Например, Astro использует плагин Vite для разрешения файлов .astro. Astro .astro Плагин Vite — это объект с одним или несколькими: свойствами
+хуками сборки
+хуками для генерации вывода свойствами свойствами свойствами хуками сборки хуками сборки хуками сборки хуками для генерации вывода хуками для генерации вывода хуками для генерации вывода const vitePluginExample = () => ({
+ // properties
+  name: 'vite-plugin-example', 
+ // build hooks
+  config: () => ({
+    resolve: {
+      alias: {
+        foo: 'bar'
+      }
+    }
+  }),
+ // output generation hooks
+ augmentChunkHash(chunkInfo) {
+      if (chunkInfo.name === 'bar') {
+        return Date.now().toString();
+      }
+    }
+}) const vitePluginExample = () => ({
+ // properties
+  name: 'vite-plugin-example', 
+ // build hooks
+  config: () => ({
+    resolve: {
+      alias: {
+        foo: 'bar'
+      }
+    }
+  }),
+ // output generation hooks
+ augmentChunkHash(chunkInfo) {
+      if (chunkInfo.name === 'bar') {
+        return Date.now().toString();
+      }
+    }
+}) Давайте вкратце рассмотрим все эти три компонента плагина Vite, прежде чем приступить к созданию собственного. Свойства Единственным обязательным свойством плагина Vite является name, которое представляет собой имя плагина. Оно необходимо, поскольку используется для отладки и сообщений об ошибках. name Хуки сборки Это основной способ взаимодействия плагина со сборочным процессом Vite. Хуки — это функции, которые вызываются на различных этапах сборки. Вы можете использовать хуки для изменения способа выполнения сборки, получения информации о сборке или изменения сборки после ее завершения. Хуки для генерации вывода Эти хуки можно использовать для предоставления информации о сгенерированном пакете и модификации сборки после ее завершения. Создание плагина Vite Приступить к созданию плагина Vite просто — достаточно указать фабричную функцию в файле vite.config.js. Эта функция вернет фактический объект плагина, который содержит все определения и логику плагина. Затем вы можете передать эту функцию в массив plugins в объекте defineConfig. vite.config.js Примечание: Эта функция является регулярной и, как таковая, может принимать опции, которые позволяют кастомизировать поведение плагина в пользовательской среде. Для ознакомления мы создадим три простых плагина, чтобы показать вам, как выглядит разработка плагина Vite. Давайте начнем с первого. Пример №1: Output Plugins Stats (Вывод статистики плагинов) Что может быть лучше примера "hello world", чем создание плагина, который выводит статистику о плагинах в вашем проекте Vite? Этот плагин будет работать следующим образом: при запуске npm run dev вы должны увидеть вывод хука output-plugin-stats, который будет представлять собой подсчет плагинов в вашем проекте и их общую таблицу. Как, мета. npm run dev output-plugin-stats Как, мета Чтобы это сделать, давайте сначала создадим проект Vanilla Vite, выполнив данную команду в терминале: npm init create-vite@latest npm init create-vite@latest В подсказке выберите пресет Vanilla, а в качестве языка — JavaScript. Затем запустите npm install и npm run dev, чтобы убедиться, что установка прошла успешно. npm install npm run dev После этого просто сделайте остановку dev-сервера и создайте файл vite.config.js в корне вашего проекта и добавьте в него этот код: vite.config.js vite.config.js vite.config.js import { defineConfig } from 'vite'
+
+export default defineConfig({
+  plugins: []
+}) import { defineConfig } from 'vite'
+
+export default defineConfig({
+  plugins: []
+}) Теперь у нас есть основа для функциональности нашего плагина, которую мы передадим в массив plugins. vite.config.js vite.config.js import { defineConfig } from 'vite'
+
+const outputPluginStats = () => ({
+  name: 'output-plugin-stats',
+  configResolved(config) {
+    const plugins = config.plugins.map((plugin) => plugin.name)
+    console.log(`Your project has ${plugins.length} Vite plugins.`)
+    console.table(plugins)
+  }
+})
+
+export default defineConfig({
+  plugins: [
+    outputPluginStats()
+  ]
+}) import { defineConfig } from 'vite'
+
+const outputPluginStats = () => ({
+  name: 'output-plugin-stats',
+  configResolved(config) {
+    const plugins = config.plugins.map((plugin) => plugin.name)
+    console.log(`Your project has ${plugins.length} Vite plugins.`)
+    console.table(plugins)
+  }
+})
+
+export default defineConfig({
+  plugins: [
+    outputPluginStats()
+  ]
+}) Как вы видите, у нас есть функция outputPluginStats, которая возвращает объект со свойством name, которое является именем плагина, и специфический для Vite хук configResolved. outputPluginStats configResolved configResolved вызывается после разрешения конфигурации Vite, и вы можете использовать его для чтения и хранения окончательно разрешенной конфигурации. configResolved Давайте посмотрим, что мы делаем в приведенном выше коде: const plugins = config.plugins.map((plugin) => plugin.name) const plugins = config.plugins.map((plugin) => plugin.name) Мы мапируем плагины в config.plugins и возвращаем имена плагинов в виде массива под названием plugins config.plugins plugins console.log(`Your project has ${plugins.length} Vite plugins.`) console.log(`Your project has ${plugins.length} Vite plugins.`) Приведенная выше строка выдает значение количества плагинов в массиве plugins с помощью Array.prototype.length plugins Array.prototype.length Наконец, мы выводим массив plugins в таблицу: plugins console.table(plugins) console.table(plugins) После того, как мы определили плагин, регистрируем его в массиве plugins объекта конфигурации Vite: plugins export default defineConfig({
+  plugins: [
+    outputPluginStats()
+  ]
+}) export default defineConfig({
+  plugins: [
+    outputPluginStats()
+  ]
+}) Пример №2: Request Analytics (Аналитика запроса) В нашем следующем примере мы добавим промежуточное программное обеспечение — функцию, которая будет выполняться до того, как сервер обработает запрос, — к базовому коннект-серверу Vite для логирования запросов, которые он обрабатывает. Для этого добавим следующую функцию в файл vite.config.js. vite.config.js vite.config.js vite.config.js const requestAnalytics = () => ({
+  name: 'request-analytics',
+  configureServer(server) {
+    return () => {
+      server.middlewares.use((req, res, next) => {
+        console.log(`${req.method.toUpperCase()} ${req.url}`)
+        next()
+      })
+    }
+  }
+}) const requestAnalytics = () => ({
+  name: 'request-analytics',
+  configureServer(server) {
+    return () => {
+      server.middlewares.use((req, res, next) => {
+        console.log(`${req.method.toUpperCase()} ${req.url}`)
+        next()
+      })
+    }
+  }
+}) В приведенном выше плагине мы используем хук configureServer для добавления промежуточного ПО на сервер Vite. configureServer Давайте разберемся, что же именно делает каждая строка приведенного выше кода. Во-первых, мы задаем имя плагина. name: 'request-analytics' name: 'request-analytics' Затем, хук configureServer позволяет нам настроить сервер Vite: configureServer configureServer(server) {
+    return () => {
+     
+    }
+  } configureServer(server) {
+    return () => {
+     
+    }
+  } Затем мы добавляем промежуточное ПО, которое принимает 3 аргумента: req, res, next. Внутри промежуточного ПО мы логируем метод запроса и URL, который был запрошен. req, res, next configureServer(server) {
+    return () => {
+      server.middlewares.use((req, res, next) => {
+        console.log(`${req.method.toUpperCase()} ${req.url}`)
+        next()
+      })
+    }
+  } configureServer(server) {
+    return () => {
+      server.middlewares.use((req, res, next) => {
+        console.log(`${req.method.toUpperCase()} ${req.url}`)
+        next()
+      })
+    }
+  } Наконец, мы передаем запрос следующему обработчику с помощью вызова next(). next() Вызов плагина в массиве plugins будет выглядеть следующим образом: plugins vite.config.js vite.config.js export default defineConfig({
+  plugins: [
+    outputPluginStats(),
+    requestAnalytics()
+  ]
+}) export default defineConfig({
+  plugins: [
+    outputPluginStats(),
+    requestAnalytics()
+  ]
+}) Теперь, когда мы запускаем сервер Vite, выполнив команду npm run dev и посетив сайт http://localhost:5173/, то должны увидеть следующий результат: npm run dev http://localhost:5173/ GET /index.html GET /index.html Мы только что создали своего рода аналитику запроса, которая сообщает нам, какие файлы были обработаны сервером Vite. Пример №3: Hot Update Report (Отчет о горячем обновлении) Для нашего последнего примера... Допустим, мы хотим получить отчет о модулях, которые были обновлены во время горячей замены, внутри консоли. Для этого создадим плагин под названием hotUpdateReport. hotUpdateReport Мы можем сделать это, подключившись к хуку handleHotUpdate, как показано ниже: handleHotUpdate vite.config.js vite.config.js const hotUpdateReport = () => ({
+  name: 'hot-update-report',
+  handleHotUpdate({file, timestamp, modules}) {
+    console.log(`${timestamp}: ${modules.length} module(s) updated`)
+  }
+}) const hotUpdateReport = () => ({
+  name: 'hot-update-report',
+  handleHotUpdate({file, timestamp, modules}) {
+    console.log(`${timestamp}: ${modules.length} module(s) updated`)
+  }
+}) Обратите внимание, что мы используем хук handleHotUpdate для фиксации временной метки (timestamp), а также количества модулей (modules), которые были обновлены. handleHotUpdate Хук handleHotUpdate предоставляет объект HmrContext, который мы деструктурируем, чтобы получить из него свойства file, timestamp и modules. handleHotUpdate HmrContext file timestamp modules Нам просто нужно зарегистрировать плагин, примерно так: vite.config.js vite.config.js export default defineConfig({
+  plugins: [
+    outputPluginStats(),
+    requestAnalytics(),
+    hotUpdateReport()
+  ]
+}) export default defineConfig({
+  plugins: [
+    outputPluginStats(),
+    requestAnalytics(),
+    hotUpdateReport()
+  ]
+}) Теперь при обновлении index.html, main.js или style.css в консоли будет появляться отчет. Публикация плагина Vite Если после создания плагина вы решите опубликовать его в виде отдельного пакета для установки через NPM, вам следует придерживаться следующих правил: Ваш плагин должен иметь понятное название с префиксом vite-plugin-.
+Включать ключевое слово vite-plugin в package.json Ваш плагин должен иметь понятное название с префиксом vite-plugin-. Ваш плагин должен иметь понятное название с префиксом vite-plugin-. vite-plugin- Включать ключевое слово vite-plugin в package.json Включать ключевое слово vite-plugin в package.json vite-plugin {
+  "name": "building-a-plugin-with-vite",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "keywords": ["vite-plugin"],
+} {
+  "name": "building-a-plugin-with-vite",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "keywords": ["vite-plugin"],
+} При документировании своего плагина включите раздел с подробным описанием того, почему он предназначен только для Vite (а не для Rollup). Чаще всего плагин предназначен только для Vite, потому что он использует некоторые специфические для Vite хуки плагина.
+Наконец, если ваш плагин работает только для определенного фреймворка, то его название должно быть частью префикса названия плагина, например, vite-plugin-svelte-, vite-plugin-react-, vite-plugin-react-, vite-plugin-lit- и т.д. При документировании своего плагина включите раздел с подробным описанием того, почему он предназначен только для Vite (а не для Rollup). Чаще всего плагин предназначен только для Vite, потому что он использует некоторые специфические для Vite хуки плагина. При документировании своего плагина включите раздел с подробным описанием того, почему он предназначен только для Vite (а не для Rollup). Чаще всего плагин предназначен только для Vite, потому что он использует некоторые специфические для Vite хуки плагина. специфические для Vite хуки плагина Наконец, если ваш плагин работает только для определенного фреймворка, то его название должно быть частью префикса названия плагина, например, vite-plugin-svelte-, vite-plugin-react-, vite-plugin-react-, vite-plugin-lit- и т.д. Наконец, если ваш плагин работает только для определенного фреймворка, то его название должно быть частью префикса названия плагина, например, vite-plugin-svelte-, vite-plugin-react-, vite-plugin-react-, vite-plugin-lit- и т.д. vite-plugin-svelte- vite-plugin-react- vite-plugin-react- vite-plugin-lit- Куда двигаться дальше? Куда двигаться дальше? Благодаря этим примерам вы теперь обладаете основными строительными блоками для создания собственных плагинов Vite. Существует бесконечное количество вариантов использования таких плагинов, и я надеюсь, что теперь у вас появится стимул создать свой собственный.  Приглашаем всех желающих на открытое занятие «Архитектура больших Vue-приложений и лучшие практики». На занятии узнаем, как можно структурировать код по мере роста приложения, про монолитную и модульную архитектуру приложения. А также:
+
+— Обсудим, какие приемы можно применить для снижения сложности разработки и сопровождения и как нам могут помочь фабрики компонентов и сервисы.
+— Разберем хорошие практики и правила хорошего стиля.
+— Не забудем про антипаттерны и чего следует избегать при разработке.
+
+Регистрация на мероприятие открыта по ссылке.       по ссылке. ]]></text>
+</doc>

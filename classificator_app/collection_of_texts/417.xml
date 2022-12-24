@@ -1,0 +1,115 @@
+<?xml version="1.0" ?>
+<doc>
+	<label auto="true" type="str" verify="true"><![CDATA[Develop]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[ya-makariy]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-12-05, 14:19]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/company/akbarsdigital/blog/703554/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[GitHub Codespaces]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Блог компании Ak Bars Digital]]></item>
+		<item type="str"><![CDATA[Visual Studio]]></item>
+		<item type="str"><![CDATA[GitHub]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[github]]></item>
+		<item type="str"><![CDATA[vscode]]></item>
+		<item type="str"><![CDATA[codespaces]]></item>
+		<item type="str"><![CDATA[github codebase]]></item>
+		<item type="str"><![CDATA[containers]]></item>
+		<item type="str"><![CDATA[vscode extension]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[Всем привет, меня зовут Макарий Балашов. Я SRE в Ak Bars Digital, но в свободное время люблю чуть-чуть покодить и запушить это все на GitHub. Недавно заметил там Codespaces и решил разобраться для себя, что это и зачем оно нужно. Вот что у меня получилось.
+Что же это такое?
+Это VSCode у тебя в браузере, запущенный в заранее описанном окружении (devcontainer) или в стандартном, в который входит python, node.js, Docker и прочее. Все это крутится в облаке и бесплатно за первые 60 часов в месяц.
+Для кого это?
+Если у тебя под руками только планшет, хромбук или допотопный ноутбук, то, как мне кажется, это идеальный вариант, если надо что-то накодить или поправить в проекте, который лежит на гитхабе.
+Как попасть в Codespaces?
+Достаточно просто открыть необходимый вам репозиторий и нажать на яркую зеленую кнопку code, перейти в codespaces и тыкнуть в Create codespace on main (ну или на другой бранче)
+Про devcontainers
+Если ты активный пользователь VSCode, то уже мог слышать про devcontainers - расширение для VSCode, которое позволяет использовать Docker-контейнер, как полнофункциональное окружение для разработки. Полную доку можно найти на их сайте - https://containers.dev/ 
+Самый простой способ создать конфиг — запустить стандартный codespaces, найти в списке команд VSCode  Codespaces: Add Dev Container Configuration Filesи протыкать в выпадающем меню все, что тебе нужно в проекте, например, в моем случае это был nodejs16 без дополнительных фич, вот что у меня получилось:
+{
+ "name": "Node.js",
+ "image": "mcr.microsoft.com/devcontainers/javascript-node:16",
+ "features": {}
+}
+Далее я отредактировал конфигурационный файл, подстроил его под себя, получилось следующее:
+{
+ "name": "Node.js",
+ "image": "mcr.microsoft.com/devcontainers/javascript-node:16",
+ "forwardPorts": [5173, 4173, 4000],
+ "postCreateCommand": "yarn install",
+ "customizations": {
+  "vscode": {
+   "extensions": [
+    // Common plugins for every repo in GitHub
+    "Makashi.dark-purple",
+    "me-dutour-mathieu.vscode-github-actions",
+    "Gruntfuggly.todo-tree",
+    // Specific for web-page(Vue3 + Vite) project
+    "esbenp.prettier-vscode",
+    "Vue.volar",
+    "antfu.vite",
+    "dbaeumer.vscode-eslint"
+   ]
+  }
+ }
+}
+Немного про параметры, которые я добавил:
+forwardPorts — порты контейнера, которые переадресуются. При их использовании появляется сообщение, которое предлагает открыть новую вкладку, где мы увидим контент с этого порта:
+postCreateCommand — команда, которая запустится после создания контейнера;
+customizations — кастомизация под себя, в данном примере — список расширений, которые нужны мне в этом проекте. Теперь при запуске codespaces у меня будет создаваться контейнер с nodejs, yarn и расширениями которые мне нужны в этом проекте.
+Мое мнение
+Как по мне — это очень быстрый и удобный способ начать писать код в любой подходящий, или не очень, момент на любом устройстве с интернетом у вас под рукой. Сам я собираюсь дальше использовать codespaces для своих петпроектов и 60 часов в месяц мне хватит с головой. Всем привет, меня зовут Макарий Балашов. Я SRE в Ak Bars Digital, но в свободное время люблю чуть-чуть покодить и запушить это все на GitHub. Недавно заметил там Codespaces и решил разобраться для себя, что это и зачем оно нужно. Вот что у меня получилось. Codespaces Что же это такое? Это VSCode у тебя в браузере, запущенный в заранее описанном окружении (devcontainer) или в стандартном, в который входит python, node.js, Docker и прочее. Все это крутится в облаке и бесплатно за первые 60 часов в месяц. Для кого это? Если у тебя под руками только планшет, хромбук или допотопный ноутбук, то, как мне кажется, это идеальный вариант, если надо что-то накодить или поправить в проекте, который лежит на гитхабе. Как попасть в Codespaces? Достаточно просто открыть необходимый вам репозиторий и нажать на яркую зеленую кнопку code, перейти в codespaces и тыкнуть в Create codespace on main (ну или на другой бранче) code codespaces Create codespace on main   Про devcontainers Если ты активный пользователь VSCode, то уже мог слышать про devcontainers - расширение для VSCode, которое позволяет использовать Docker-контейнер, как полнофункциональное окружение для разработки. Полную доку можно найти на их сайте - https://containers.dev/  devcontainers https://containers.dev/ Самый простой способ создать конфиг — запустить стандартный codespaces, найти в списке команд VSCode  Codespaces: Add Dev Container Configuration Filesи протыкать в выпадающем меню все, что тебе нужно в проекте, например, в моем случае это был nodejs16 без дополнительных фич, вот что у меня получилось: codespaces, найти в Codespaces: Add Dev Container Configuration Files {
+ "name": "Node.js",
+ "image": "mcr.microsoft.com/devcontainers/javascript-node:16",
+ "features": {}
+} {
+ "name": "Node.js",
+ "image": "mcr.microsoft.com/devcontainers/javascript-node:16",
+ "features": {}
+} "name" "Node.js" "image" "mcr.microsoft.com/devcontainers/javascript-node:16" "features" Далее я отредактировал конфигурационный файл, подстроил его под себя, получилось следующее: {
+ "name": "Node.js",
+ "image": "mcr.microsoft.com/devcontainers/javascript-node:16",
+ "forwardPorts": [5173, 4173, 4000],
+ "postCreateCommand": "yarn install",
+ "customizations": {
+  "vscode": {
+   "extensions": [
+    // Common plugins for every repo in GitHub
+    "Makashi.dark-purple",
+    "me-dutour-mathieu.vscode-github-actions",
+    "Gruntfuggly.todo-tree",
+    // Specific for web-page(Vue3 + Vite) project
+    "esbenp.prettier-vscode",
+    "Vue.volar",
+    "antfu.vite",
+    "dbaeumer.vscode-eslint"
+   ]
+  }
+ }
+} {
+ "name": "Node.js",
+ "image": "mcr.microsoft.com/devcontainers/javascript-node:16",
+ "forwardPorts": [5173, 4173, 4000],
+ "postCreateCommand": "yarn install",
+ "customizations": {
+  "vscode": {
+   "extensions": [
+    // Common plugins for every repo in GitHub
+    "Makashi.dark-purple",
+    "me-dutour-mathieu.vscode-github-actions",
+    "Gruntfuggly.todo-tree",
+    // Specific for web-page(Vue3 + Vite) project
+    "esbenp.prettier-vscode",
+    "Vue.volar",
+    "antfu.vite",
+    "dbaeumer.vscode-eslint"
+   ]
+  }
+ }
+} "name" "Node.js" "image" "mcr.microsoft.com/devcontainers/javascript-node:16" "forwardPorts" 5173 4173 4000 "postCreateCommand" "yarn install" "customizations" "vscode" "extensions" // Common plugins for every repo in GitHub "Makashi.dark-purple" "me-dutour-mathieu.vscode-github-actions" "Gruntfuggly.todo-tree" // Specific for web-page(Vue3 + Vite) project "esbenp.prettier-vscode" "Vue.volar" "antfu.vite" "dbaeumer.vscode-eslint" Немного про параметры, которые я добавил: forwardPorts — порты контейнера, которые переадресуются. При их использовании появляется сообщение, которое предлагает открыть новую вкладку, где мы увидим контент с этого порта: forwardPorts — порты контейнера, которые переадресуются. При их использовании появляется сообщение, которое предлагает открыть новую вкладку, где мы увидим контент с этого порта: forwardPorts — порты контейнера, которые переадресуются. При их использовании появляется сообщение, которое предлагает открыть новую вкладку, где мы увидим контент с этого порта: forwardPorts   postCreateCommand — команда, которая запустится после создания контейнера;
+customizations — кастомизация под себя, в данном примере — список расширений, которые нужны мне в этом проекте. Теперь при запуске codespaces у меня будет создаваться контейнер с nodejs, yarn и расширениями которые мне нужны в этом проекте. postCreateCommand — команда, которая запустится после создания контейнера; postCreateCommand — команда, которая запустится после создания контейнера; postCreateCommand customizations — кастомизация под себя, в данном примере — список расширений, которые нужны мне в этом проекте. Теперь при запуске codespaces у меня будет создаваться контейнер с nodejs, yarn и расширениями которые мне нужны в этом проекте. customizations — кастомизация под себя, в данном примере — список расширений, которые нужны мне в этом проекте. Теперь при запуске codespaces у меня будет создаваться контейнер с nodejs, yarn и расширениями которые мне нужны в этом проекте. customizations codespaces Мое мнение Как по мне — это очень быстрый и удобный способ начать писать код в любой подходящий, или не очень, момент на любом устройстве с интернетом у вас под рукой. Сам я собираюсь дальше использовать codespaces для своих петпроектов и 60 часов в месяц мне хватит с головой. codespaces ]]></text>
+</doc>

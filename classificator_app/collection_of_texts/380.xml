@@ -1,0 +1,653 @@
+<?xml version="1.0" ?>
+<doc>
+	<label auto="true" type="str" verify="true"><![CDATA[Develop]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Kotenagitare]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-12-06, 13:44]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/company/koshelek/blog/703260/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Bottom sheet: Scrolling and interactions]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Блог компании Кошелёк]]></item>
+		<item type="str"><![CDATA[Разработка под iOS]]></item>
+		<item type="str"><![CDATA[Swift]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[swift]]></item>
+		<item type="str"><![CDATA[ios]]></item>
+		<item type="str"><![CDATA[bottomsheet]]></item>
+		<item type="str"><![CDATA[development]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[Отображать контент в виде bottom sheet — задача со звёздочкой сама по себе, но когда контента становится больше, чем помещается на контроллере, всё становится ещё любопытней. Адаптируя bottom sheet под новые требования, я пришёл к новым решениям. Их и обсудим.
+Это — завершающая статья в серии про bottom sheet. Структура проекта и базовые классы описаны в первой статье, потому очень рекомендую ознакомиться хотя бы с ней. А во втором материале разобрано, как воссоздать полноценную навигацию в рамках bottom sheet отображения, основанного на autolayout.
+Bottom sheet: Custom transitioning
+Bottom sheet: Navigation
+Bottom sheet: Scrolling and interactions
+Скачайте стартовый проект. Из функционала в нём всё то что, мы реализовали в первых двух статьях.
+Интерактивное взаимодействие
+В дополнение к уже реализованному закрытию контроллера по нажатию на затемнённую область, добавим закрытие по свайпу. Для этого нужно разобраться, как управлять прогрессом анимации транзишена закрытия (который мы сделали ранее).
+За интерактивные транзишены, как и за обычные, отвечает transitioning delegate. Для этого у него есть два метода интерактивного открытия и закрытия транзишена. Для наших целей интересен только второй. Добавим его в BSTransitioningDelegate:
+func interactionControllerForDismissal(
+    using animator: UIViewControllerAnimatedTransitioning
+) -> UIViewControllerInteractiveTransitioning? {
+    nil
+}
+Как видно из названия метода, transitioning delegate в нём должен вернуть объект класса, который реализует протокол UIViewControllerInteractiveTransitioning . Реализация этого протокола для задачи уже имеется в UIKit и называется —  UIPercentDrivenInteractiveTransition . Его суперсила в том, чтобы управлять прогрессом анимации транзишена. Прогресс в нашем случае будет зависеть от смещения пальца пользователя, для этого создадим наследника в файле BSTransitionDriver.swift, и добавим считывание пользовательских жестов:
+import UIKit
+
+final class BSTransitionDriver: UIPercentDrivenInteractiveTransition {
+ 
+    // 1
+ override var wantsInteractiveStart: Bool {
+        get {
+            panRecognizer.state == .began
+        }
+        set {
+            super.wantsInteractiveStart = newValue
+        }
+    }
+
+ // 2
+ private lazy var panRecognizer: UIPanGestureRecognizer = {
+        let panRecognizer = UIPanGestureRecognizer(
+            target: self,
+            action: #selector(handleDismiss)
+        )
+        return panRecognizer
+    }()
+
+    private weak var presentedController: UIViewController?
+
+ // 3
+ init(controller: UIViewController) {
+        super.init()
+    
+        controller.view.addGestureRecognizer(panRecognizer)
+        presentedController = controller
+    }
+}
+wantsInteractiveStart в случае, если он false, даёт возможность воспроизвести интерактивную анимацию как обычную. По умолчанию всегда true. Если не добавить условие интерактивного старта, то, при нажатии в область затемнения, анимация транзишена будет перехвачена driver’ом и остановится в стартовой позиции в ожидании дальнейших команд. Добавим условие, чтобы интерактивным транзишен становился только в случае, если случился жест свайпа.
+Создадим panRecognizer, который будет отслеживать движение пальца. Так мы сможем посчитать прямую зависимость между длиной сдвига и процентом анимации.
+При создании driver’а передадим презентуемый контроллер, добавим на него panRecognizer. Также нам понадобится ссылка на контроллер, чтобы стартовать закрытие, когда пользователь сделает свайп.
+В правильно организованной архитектуре навигации старт закрытия должен происходить в том месте, где расположена логика переходов между экранами, но для примера мы сделаем это в driver’е.
+UIPanRecognizer обрабатывает все жесты свайпов пользователя, что может пересекаться с другими recognizer’ами. Чтобы уменьшить число пересечений добавим условия, при которых обработка жеста не будет происходить:
+// 1
+final class BSTransitionDriver: UIPercentDrivenInteractiveTransition, UIGestureRecognizerDelegate {
+ 
+    private lazy var panRecognizer: UIPanGestureRecognizer = {
+  ...
+        panRecognizer.delegate = self
+        ...
+    }()
+
+ // 2
+ func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        let velocity = panRecognizer.velocity(in: nil)
+        if velocity.y > 0, abs(velocity.y) > abs(velocity.x) {
+            return true
+        } else {
+            return false
+        }
+    }
+}
+Чтобы начать управлять условиями срабатывания panRecognizer, нужно сделать BSTransitionDriver его делегатом.
+Реализуем метод UIGestureRecognizerDelegate, отвечающий за условия старта обработки жестов. В итоге жест будет обработан, если его скорость по оси Y больше 0, то есть направлен вниз, и скорость по оси Y больше чем X, чтобы не реагировать на боковые свайпы.
+Базовые настройки сделаны, пора добавить код пересчёта смещения пальца в проценты прогресса анимации:
+// 1
+private var maxTranslation: CGFloat? {
+    let height = presentedController?.view.frame.height ?? 0
+    return height > 0 ? height : nil
+}
+
+@objc
+private func handleDismiss(_ sender: UIPanGestureRecognizer) {
+    // 2
+    guard let maxTranslation = maxTranslation else { return }
+    switch sender.state {
+    case .began:
+        let isRunning = percentComplete != 0
+        if !isRunning {
+          // 3
+          presentedController?.dismiss(animated: true)
+        }
+
+     // 4
+        pause()
+
+    case .changed:
+  // 5
+        let increment = sender.incrementToBottom(maxTranslation: maxTranslation)
+        update(percentComplete + increment)
+
+    case .ended, .cancelled:
+  // 6
+        if sender.isProjectedToDownHalf(
+            maxTranslation: maxTranslation,
+            percentComplete: percentComplete
+        ) {
+            finish()
+        } else {
+            cancel()
+        }
+
+    case .failed:
+  // 7
+        cancel()
+
+    default:
+        break
+    }
+}
+Максимальное расстояние, на которое можно сместить презентованный контроллер — это высота контроллера, потому будем использовать её как максимально возможное смещение.
+Проверим, что со view контроллера всё в порядке и он может вернуть свой размер.
+Как только recognizer определит, что пользователь выполняет свайп по экрану, его состояние изменится на begun , что для нас является знаком для старта закрытия контроллера. Чтобы избежать сбоев, проверяем, что анимация ещё не запущена другим способом.
+На старте интерактивного транзишена анимация уже находится в состоянии паузы, но если пользователь свайпнет и сразу передумает, то сможет поймать закрытие и поставить на паузу.
+На дальнейшие смещения пальца recognizer будет находиться в статусе changed. На каждый шаг смещения будем обновлять процент анимации через update(_:) до момента, пока пользователь не поднимет палец.
+Когда жест будет завершён или отменён, нужно будет рассчитать, как поступить с транзишеном. В extension для UIPanGestureRecognizer есть метод, который на основе смещения и его скорости рассчитает, хотел ли пользователь закрыть экран. Если смещение было больше половины или скорость смещения можно расценивать как быстрый свайп вниз, тогда мы вызываем finish() и транзишен закрытия завершается анимированно. В противном случае отменяем транзишен и экран остаётся открытым.
+Если жест прервётся, транзишен будет отменён.
+Как говорилось выше: анимацию для интерактивного транзишена мы используем ту же, что и для обычного, но есть отличие. У протокола UIViewControllerAnimatedTransitioning, который реализует CoverVerticalDismissAnimatedTransitioning, есть отдельный метод для анимаций интерактивного транзишена:
+func interruptibleAnimator(
+    using transitionContext: UIViewControllerContextTransitioning
+) -> UIViewImplicitlyAnimating {
+    makeAnimator(using: transitionContext) ?? UIViewPropertyAnimator()
+}
+Все приготовления закончены и можно подключить driver в transitioning delegate. Возвращаемся в BSTransitioningDelegate и добавляем следующий код:
+// 1
+private var driver: BSTransitionDriver?
+
+func presentationController(
+    forPresented presented: UIViewController,
+    presenting: UIViewController?,
+    source: UIViewController
+) -> UIPresentationController? {
+    // 2
+    driver = BSTransitionDriver(controller: presented)
+    return BSPresentationController(
+        presentedViewController: presented,
+        presenting: presenting ?? source
+    )
+}
+
+func interactionControllerForDismissal(
+    using animator: UIViewControllerAnimatedTransitioning
+) -> UIViewControllerInteractiveTransitioning? {
+    // 3
+    driver
+}
+Запускаем проект и проверяем результат.
+UICollectionView
+Как отобразить контент с фиксированной высотой, мы разобрались. А что, если внутри view у нас лежит не UILabel, а UICollectionView? Мы хотим добиться, чтобы презентуемый контроллер растягивался по высоте до тех пор, пока не отобразится вся коллекция. Если контента в коллекции слишком много, тогда контроллер должен растянуться максимально высоко, а не поместившийся контент начать прокручиваться.
+Для создания такого поведения нам поможет небольшой helper-метод. Его задача в том, чтобы добавлять констрейнт высоты и корректировать его константу на основе contentSize scrollView.
+Найдите в проекте файл CompactCollectionView.swift и добавьте в него следующий код:
+import UIKit
+
+class CompactCollectionView: UICollectionView {
+    
+    // 1
+    override var contentSize: CGSize {
+        didSet {
+            fixHeight()
+        }
+    }
+  
+ // 2
+ public lazy var collectionHeightConstraint: NSLayoutConstraint = {
+        let constraint = heightAnchor.constraint(equalToConstant: 0)
+        constraint.priority = .defaultLow
+  constraint.isActive = true
+        return constraint
+    }()
+ 
+ // 3
+    public func fixHeight() {
+        var height = collectionViewLayout.collectionViewContentSize.height
+        + contentInset.top
+        + contentInset.bottom
+  + safeAreaInsets.bottom
+        (collectionViewLayout as? UICollectionViewFlowLayout).map { height += $0.sectionInset.top }
+        (collectionViewLayout as? UICollectionViewFlowLayout).map { height += $0.sectionInset.bottom }
+
+  // 4
+        if height != 0 && height != CGFloat.infinity {
+            collectionHeightConstraint.constant = height
+        }
+    }
+}
+Получая самое актуальное значение высоты contentSize, мы запускаем обновление константы.
+Констрейнт создадим с минимальным приоритетом, чтобы в случае, если высота контента будет больше, чем может быть высота bottom sheet, не случился конфликт приоритетов.
+Помимо высоты контента нужно учитывать и все дополнительные отступы и инсеты.
+Значение высоты равное 0 нет смысла обновлять, а равное infinity — ломает констрейнты, а вместе с ними и autoLayout.
+В проекте уже лежит простенький контроллер с коллекцией — ListViewController, который мы отобразим как bottom sheet. В ListView.swift уже создана коллекция, но её класс —UICollectionView. Исправим это:
+final class ListView: UIView {
+    
+    lazy var collectionView: CompactCollectionView = {
+        ...
+        let collectionView = CompactCollectionView(
+            frame: .zero,
+            collectionViewLayout: layout
+        )
+        return collectionView
+    }()
+}
+Добавим открытие ListViewController по нажатию на вторую кнопку RootViewController:
+@objc
+func presentCollectionAsBottomSheet() {
+    let vc = ListViewController()
+    vc.transitioningDelegate = customTransitioningDelegate
+    vc.modalPresentationStyle = .custom
+    present(vc, animated: true)
+}
+Запускаем и проверяем результат.
+Всё работает за исключением одного момента. Коллекции созданы на основе UIScrollView, который сам обрабатывает жесты, чтобы листать контент. Если ячеек будет достаточно, чтобы коллекция заняла всю доступную высоту и начала прокручиваться, тогда жесты не будут доходить до UIPanGestureRecognizer, который мы добавили в начале статьи для закрытия по свайпу. Чтобы решить эту проблему, нужно создать для panGestureRecognizer’а UIScrollView условия, когда вместо перехватывания жеста он будет отправлять его дальше. Для этого в CompactCollectionView.swift добавим следующие строки:
+override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+    guard gestureRecognizer === panGestureRecognizer else {
+        return true
+    }
+  
+    if contentOffset.y == -contentInset.top, panGestureRecognizer.velocity(in: nil).y &gt; 0 {
+        return false
+    }
+
+    if contentOffset.y > -contentInset.top {
+        return false
+    }
+
+    return true
+}
+UICollectionView по умолчанию реализует протокол UIGestureRecognizer, потому можно сразу добавлять gestureRecognizerShouldBegin и условия, при которых panGestureRecognizer doesn’t should begin. Это не должно происходить, если:
+контент находится в верхнем положении, а свайп направлен вниз
+пользователь резко свайпнул, контент прокрутился до верхней точки и находится в состоянии торможения. Тогда контент уйдёт в минусовое положение, а повторный свайп вниз сразу закроет контроллер
+Вот теперь результат финальный. Чтобы его проверить, сходите в ListDataProvider.swift и добавьте побольше элементов в массив items.
+Финальный проект.
+Наконец, итоги!
+Мы добавили возможность закрывать контроллеры, презентованные как bottom sheet с помощью свайпа по контенту. Реализовали отображение контента, который имеет в своей основе прокручивающиеся данные, а, следовательно, не имеющий собственных значений высоты для autoLayout. В арсенале UIKit ещё остались такие сущности как UITableView и базовый UIScrollView, но решение для них будет точно таким же, а где-то ещё проще. Оставлю это как факультатив для самостоятельного изучения и реализации.
+Теперь можно с чистой совестью сказать, что мы можем отобразить любой контент как bottom sheet, да ещё и управлять им по всем правилам хорошего тона (UX).
+Спасибо за внимание.   Отображать контент в виде bottom sheet — задача со звёздочкой сама по себе, но когда контента становится больше, чем помещается на контроллере, всё становится ещё любопытней. Адаптируя bottom sheet под новые требования, я пришёл к новым решениям. Их и обсудим. Это — завершающая статья в серии про bottom sheet. Структура проекта и базовые классы описаны в первой статье, потому очень рекомендую ознакомиться хотя бы с ней. А во втором материале разобрано, как воссоздать полноценную навигацию в рамках bottom sheet отображения, основанного на autolayout. Bottom sheet: Custom transitioning
+Bottom sheet: Navigation
+Bottom sheet: Scrolling and interactions Bottom sheet: Custom transitioning Bottom sheet: Custom transitioning Bottom sheet: Custom transitioning Bottom sheet: Navigation Bottom sheet: Navigation Bottom sheet: Navigation Bottom sheet: Scrolling and interactions Bottom sheet: Scrolling and interactions Bottom sheet: Scrolling and interactions Скачайте стартовый проект. Из функционала в нём всё то что, мы реализовали в первых двух статьях. стартовый проект   Интерактивное взаимодействие В дополнение к уже реализованному закрытию контроллера по нажатию на затемнённую область, добавим закрытие по свайпу. Для этого нужно разобраться, как управлять прогрессом анимации транзишена закрытия (который мы сделали ранее). За интерактивные транзишены, как и за обычные, отвечает transitioning delegate. Для этого у него есть два метода интерактивного открытия и закрытия транзишена. Для наших целей интересен только второй. Добавим его в BSTransitioningDelegate: func interactionControllerForDismissal(
+    using animator: UIViewControllerAnimatedTransitioning
+) -> UIViewControllerInteractiveTransitioning? {
+    nil
+} func interactionControllerForDismissal(
+    using animator: UIViewControllerAnimatedTransitioning
+) -> UIViewControllerInteractiveTransitioning? {
+    nil
+} Как видно из названия метода, transitioning delegate в нём должен вернуть объект класса, который реализует протокол UIViewControllerInteractiveTransitioning . Реализация этого протокола для задачи уже имеется в UIKit и называется —  UIPercentDrivenInteractiveTransition . Его суперсила в том, чтобы управлять прогрессом анимации транзишена. Прогресс в нашем случае будет зависеть от смещения пальца пользователя, для этого создадим наследника в файле BSTransitionDriver.swift, и добавим считывание пользовательских жестов: UIViewControllerInteractiveTransitioning UIPercentDrivenInteractiveTransition import UIKit
+
+final class BSTransitionDriver: UIPercentDrivenInteractiveTransition {
+ 
+    // 1
+ override var wantsInteractiveStart: Bool {
+        get {
+            panRecognizer.state == .began
+        }
+        set {
+            super.wantsInteractiveStart = newValue
+        }
+    }
+
+ // 2
+ private lazy var panRecognizer: UIPanGestureRecognizer = {
+        let panRecognizer = UIPanGestureRecognizer(
+            target: self,
+            action: #selector(handleDismiss)
+        )
+        return panRecognizer
+    }()
+
+    private weak var presentedController: UIViewController?
+
+ // 3
+ init(controller: UIViewController) {
+        super.init()
+    
+        controller.view.addGestureRecognizer(panRecognizer)
+        presentedController = controller
+    }
+} import UIKit
+
+final class BSTransitionDriver: UIPercentDrivenInteractiveTransition {
+ 
+    // 1
+ override var wantsInteractiveStart: Bool {
+        get {
+            panRecognizer.state == .began
+        }
+        set {
+            super.wantsInteractiveStart = newValue
+        }
+    }
+
+ // 2
+ private lazy var panRecognizer: UIPanGestureRecognizer = {
+        let panRecognizer = UIPanGestureRecognizer(
+            target: self,
+            action: #selector(handleDismiss)
+        )
+        return panRecognizer
+    }()
+
+    private weak var presentedController: UIViewController?
+
+ // 3
+ init(controller: UIViewController) {
+        super.init()
+    
+        controller.view.addGestureRecognizer(panRecognizer)
+        presentedController = controller
+    }
+} wantsInteractiveStart в случае, если он false, даёт возможность воспроизвести интерактивную анимацию как обычную. По умолчанию всегда true. Если не добавить условие интерактивного старта, то, при нажатии в область затемнения, анимация транзишена будет перехвачена driver’ом и остановится в стартовой позиции в ожидании дальнейших команд. Добавим условие, чтобы интерактивным транзишен становился только в случае, если случился жест свайпа.
+Создадим panRecognizer, который будет отслеживать движение пальца. Так мы сможем посчитать прямую зависимость между длиной сдвига и процентом анимации.
+При создании driver’а передадим презентуемый контроллер, добавим на него panRecognizer. Также нам понадобится ссылка на контроллер, чтобы стартовать закрытие, когда пользователь сделает свайп. wantsInteractiveStart в случае, если он false, даёт возможность воспроизвести интерактивную анимацию как обычную. По умолчанию всегда true. Если не добавить условие интерактивного старта, то, при нажатии в область затемнения, анимация транзишена будет перехвачена driver’ом и остановится в стартовой позиции в ожидании дальнейших команд. Добавим условие, чтобы интерактивным транзишен становился только в случае, если случился жест свайпа. wantsInteractiveStart в случае, если он false, даёт возможность воспроизвести интерактивную анимацию как обычную. По умолчанию всегда true. Если не добавить условие интерактивного старта, то, при нажатии в область затемнения, анимация транзишена будет перехвачена driver’ом и остановится в стартовой позиции в ожидании дальнейших команд. Добавим условие, чтобы интерактивным транзишен становился только в случае, если случился жест свайпа. wantsInteractiveStart false Создадим panRecognizer, который будет отслеживать движение пальца. Так мы сможем посчитать прямую зависимость между длиной сдвига и процентом анимации. Создадим panRecognizer, который будет отслеживать движение пальца. Так мы сможем посчитать прямую зависимость между длиной сдвига и процентом анимации. При создании driver’а передадим презентуемый контроллер, добавим на него panRecognizer. Также нам понадобится ссылка на контроллер, чтобы стартовать закрытие, когда пользователь сделает свайп. При создании driver’а передадим презентуемый контроллер, добавим на него panRecognizer. Также нам понадобится ссылка на контроллер, чтобы стартовать закрытие, когда пользователь сделает свайп. В правильно организованной архитектуре навигации старт закрытия должен происходить в том месте, где расположена логика переходов между экранами, но для примера мы сделаем это в driver’е. В правильно организованной архитектуре навигации старт закрытия должен происходить в том месте, где расположена логика переходов между экранами, но для примера мы сделаем это в driver’е. UIPanRecognizer обрабатывает все жесты свайпов пользователя, что может пересекаться с другими recognizer’ами. Чтобы уменьшить число пересечений добавим условия, при которых обработка жеста не будет происходить: // 1
+final class BSTransitionDriver: UIPercentDrivenInteractiveTransition, UIGestureRecognizerDelegate {
+ 
+    private lazy var panRecognizer: UIPanGestureRecognizer = {
+  ...
+        panRecognizer.delegate = self
+        ...
+    }()
+
+ // 2
+ func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        let velocity = panRecognizer.velocity(in: nil)
+        if velocity.y > 0, abs(velocity.y) > abs(velocity.x) {
+            return true
+        } else {
+            return false
+        }
+    }
+} // 1
+final class BSTransitionDriver: UIPercentDrivenInteractiveTransition, UIGestureRecognizerDelegate {
+ 
+    private lazy var panRecognizer: UIPanGestureRecognizer = {
+  ...
+        panRecognizer.delegate = self
+        ...
+    }()
+
+ // 2
+ func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        let velocity = panRecognizer.velocity(in: nil)
+        if velocity.y > 0, abs(velocity.y) > abs(velocity.x) {
+            return true
+        } else {
+            return false
+        }
+    }
+} Чтобы начать управлять условиями срабатывания panRecognizer, нужно сделать BSTransitionDriver его делегатом.
+Реализуем метод UIGestureRecognizerDelegate, отвечающий за условия старта обработки жестов. В итоге жест будет обработан, если его скорость по оси Y больше 0, то есть направлен вниз, и скорость по оси Y больше чем X, чтобы не реагировать на боковые свайпы. Чтобы начать управлять условиями срабатывания panRecognizer, нужно сделать BSTransitionDriver его делегатом. Чтобы начать управлять условиями срабатывания panRecognizer, нужно сделать BSTransitionDriver его делегатом. Реализуем метод UIGestureRecognizerDelegate, отвечающий за условия старта обработки жестов. В итоге жест будет обработан, если его скорость по оси Y больше 0, то есть направлен вниз, и скорость по оси Y больше чем X, чтобы не реагировать на боковые свайпы. Реализуем метод UIGestureRecognizerDelegate, отвечающий за условия старта обработки жестов. В итоге жест будет обработан, если его скорость по оси Y больше 0, то есть направлен вниз, и скорость по оси Y больше чем X, чтобы не реагировать на боковые свайпы. Базовые настройки сделаны, пора добавить код пересчёта смещения пальца в проценты прогресса анимации: // 1
+private var maxTranslation: CGFloat? {
+    let height = presentedController?.view.frame.height ?? 0
+    return height > 0 ? height : nil
+}
+
+@objc
+private func handleDismiss(_ sender: UIPanGestureRecognizer) {
+    // 2
+    guard let maxTranslation = maxTranslation else { return }
+    switch sender.state {
+    case .began:
+        let isRunning = percentComplete != 0
+        if !isRunning {
+          // 3
+          presentedController?.dismiss(animated: true)
+        }
+
+     // 4
+        pause()
+
+    case .changed:
+  // 5
+        let increment = sender.incrementToBottom(maxTranslation: maxTranslation)
+        update(percentComplete + increment)
+
+    case .ended, .cancelled:
+  // 6
+        if sender.isProjectedToDownHalf(
+            maxTranslation: maxTranslation,
+            percentComplete: percentComplete
+        ) {
+            finish()
+        } else {
+            cancel()
+        }
+
+    case .failed:
+  // 7
+        cancel()
+
+    default:
+        break
+    }
+} // 1
+private var maxTranslation: CGFloat? {
+    let height = presentedController?.view.frame.height ?? 0
+    return height > 0 ? height : nil
+}
+
+@objc
+private func handleDismiss(_ sender: UIPanGestureRecognizer) {
+    // 2
+    guard let maxTranslation = maxTranslation else { return }
+    switch sender.state {
+    case .began:
+        let isRunning = percentComplete != 0
+        if !isRunning {
+          // 3
+          presentedController?.dismiss(animated: true)
+        }
+
+     // 4
+        pause()
+
+    case .changed:
+  // 5
+        let increment = sender.incrementToBottom(maxTranslation: maxTranslation)
+        update(percentComplete + increment)
+
+    case .ended, .cancelled:
+  // 6
+        if sender.isProjectedToDownHalf(
+            maxTranslation: maxTranslation,
+            percentComplete: percentComplete
+        ) {
+            finish()
+        } else {
+            cancel()
+        }
+
+    case .failed:
+  // 7
+        cancel()
+
+    default:
+        break
+    }
+} Максимальное расстояние, на которое можно сместить презентованный контроллер — это высота контроллера, потому будем использовать её как максимально возможное смещение.
+Проверим, что со view контроллера всё в порядке и он может вернуть свой размер.
+Как только recognizer определит, что пользователь выполняет свайп по экрану, его состояние изменится на begun , что для нас является знаком для старта закрытия контроллера. Чтобы избежать сбоев, проверяем, что анимация ещё не запущена другим способом.
+На старте интерактивного транзишена анимация уже находится в состоянии паузы, но если пользователь свайпнет и сразу передумает, то сможет поймать закрытие и поставить на паузу.
+На дальнейшие смещения пальца recognizer будет находиться в статусе changed. На каждый шаг смещения будем обновлять процент анимации через update(_:) до момента, пока пользователь не поднимет палец.
+Когда жест будет завершён или отменён, нужно будет рассчитать, как поступить с транзишеном. В extension для UIPanGestureRecognizer есть метод, который на основе смещения и его скорости рассчитает, хотел ли пользователь закрыть экран. Если смещение было больше половины или скорость смещения можно расценивать как быстрый свайп вниз, тогда мы вызываем finish() и транзишен закрытия завершается анимированно. В противном случае отменяем транзишен и экран остаётся открытым.
+Если жест прервётся, транзишен будет отменён. Максимальное расстояние, на которое можно сместить презентованный контроллер — это высота контроллера, потому будем использовать её как максимально возможное смещение. Максимальное расстояние, на которое можно сместить презентованный контроллер — это высота контроллера, потому будем использовать её как максимально возможное смещение. Проверим, что со view контроллера всё в порядке и он может вернуть свой размер. Проверим, что со view контроллера всё в порядке и он может вернуть свой размер. Как только recognizer определит, что пользователь выполняет свайп по экрану, его состояние изменится на begun , что для нас является знаком для старта закрытия контроллера. Чтобы избежать сбоев, проверяем, что анимация ещё не запущена другим способом. Как только recognizer определит, что пользователь выполняет свайп по экрану, его состояние изменится на begun , что для нас является знаком для старта закрытия контроллера. Чтобы избежать сбоев, проверяем, что анимация ещё не запущена другим способом. begun На старте интерактивного транзишена анимация уже находится в состоянии паузы, но если пользователь свайпнет и сразу передумает, то сможет поймать закрытие и поставить на паузу. На старте интерактивного транзишена анимация уже находится в состоянии паузы, но если пользователь свайпнет и сразу передумает, то сможет поймать закрытие и поставить на паузу. На дальнейшие смещения пальца recognizer будет находиться в статусе changed. На каждый шаг смещения будем обновлять процент анимации через update(_:) до момента, пока пользователь не поднимет палец. На дальнейшие смещения пальца recognizer будет находиться в статусе changed. На каждый шаг смещения будем обновлять процент анимации через update(_:) до момента, пока пользователь не поднимет палец. changed update(_:) Когда жест будет завершён или отменён, нужно будет рассчитать, как поступить с транзишеном. В extension для UIPanGestureRecognizer есть метод, который на основе смещения и его скорости рассчитает, хотел ли пользователь закрыть экран. Если смещение было больше половины или скорость смещения можно расценивать как быстрый свайп вниз, тогда мы вызываем finish() и транзишен закрытия завершается анимированно. В противном случае отменяем транзишен и экран остаётся открытым. Когда жест будет завершён или отменён, нужно будет рассчитать, как поступить с транзишеном. В extension для UIPanGestureRecognizer есть метод, который на основе смещения и его скорости рассчитает, хотел ли пользователь закрыть экран. Если смещение было больше половины или скорость смещения можно расценивать как быстрый свайп вниз, тогда мы вызываем finish() и транзишен закрытия завершается анимированно. В противном случае отменяем транзишен и экран остаётся открытым. finish() Если жест прервётся, транзишен будет отменён. Если жест прервётся, транзишен будет отменён. Как говорилось выше: анимацию для интерактивного транзишена мы используем ту же, что и для обычного, но есть отличие. У протокола UIViewControllerAnimatedTransitioning, который реализует CoverVerticalDismissAnimatedTransitioning, есть отдельный метод для анимаций интерактивного транзишена: UIViewControllerAnimatedTransitioning func interruptibleAnimator(
+    using transitionContext: UIViewControllerContextTransitioning
+) -> UIViewImplicitlyAnimating {
+    makeAnimator(using: transitionContext) ?? UIViewPropertyAnimator()
+} func interruptibleAnimator(
+    using transitionContext: UIViewControllerContextTransitioning
+) -> UIViewImplicitlyAnimating {
+    makeAnimator(using: transitionContext) ?? UIViewPropertyAnimator()
+} Все приготовления закончены и можно подключить driver в transitioning delegate. Возвращаемся в BSTransitioningDelegate и добавляем следующий код: // 1
+private var driver: BSTransitionDriver?
+
+func presentationController(
+    forPresented presented: UIViewController,
+    presenting: UIViewController?,
+    source: UIViewController
+) -> UIPresentationController? {
+    // 2
+    driver = BSTransitionDriver(controller: presented)
+    return BSPresentationController(
+        presentedViewController: presented,
+        presenting: presenting ?? source
+    )
+}
+
+func interactionControllerForDismissal(
+    using animator: UIViewControllerAnimatedTransitioning
+) -> UIViewControllerInteractiveTransitioning? {
+    // 3
+    driver
+} // 1
+private var driver: BSTransitionDriver?
+
+func presentationController(
+    forPresented presented: UIViewController,
+    presenting: UIViewController?,
+    source: UIViewController
+) -> UIPresentationController? {
+    // 2
+    driver = BSTransitionDriver(controller: presented)
+    return BSPresentationController(
+        presentedViewController: presented,
+        presenting: presenting ?? source
+    )
+}
+
+func interactionControllerForDismissal(
+    using animator: UIViewControllerAnimatedTransitioning
+) -> UIViewControllerInteractiveTransitioning? {
+    // 3
+    driver
+} Запускаем проект и проверяем результат.   UICollectionView Как отобразить контент с фиксированной высотой, мы разобрались. А что, если внутри view у нас лежит не UILabel, а UICollectionView? Мы хотим добиться, чтобы презентуемый контроллер растягивался по высоте до тех пор, пока не отобразится вся коллекция. Если контента в коллекции слишком много, тогда контроллер должен растянуться максимально высоко, а не поместившийся контент начать прокручиваться. Для создания такого поведения нам поможет небольшой helper-метод. Его задача в том, чтобы добавлять констрейнт высоты и корректировать его константу на основе contentSize scrollView. Найдите в проекте файл CompactCollectionView.swift и добавьте в него следующий код: import UIKit
+
+class CompactCollectionView: UICollectionView {
+    
+    // 1
+    override var contentSize: CGSize {
+        didSet {
+            fixHeight()
+        }
+    }
+  
+ // 2
+ public lazy var collectionHeightConstraint: NSLayoutConstraint = {
+        let constraint = heightAnchor.constraint(equalToConstant: 0)
+        constraint.priority = .defaultLow
+  constraint.isActive = true
+        return constraint
+    }()
+ 
+ // 3
+    public func fixHeight() {
+        var height = collectionViewLayout.collectionViewContentSize.height
+        + contentInset.top
+        + contentInset.bottom
+  + safeAreaInsets.bottom
+        (collectionViewLayout as? UICollectionViewFlowLayout).map { height += $0.sectionInset.top }
+        (collectionViewLayout as? UICollectionViewFlowLayout).map { height += $0.sectionInset.bottom }
+
+  // 4
+        if height != 0 && height != CGFloat.infinity {
+            collectionHeightConstraint.constant = height
+        }
+    }
+} import UIKit
+
+class CompactCollectionView: UICollectionView {
+    
+    // 1
+    override var contentSize: CGSize {
+        didSet {
+            fixHeight()
+        }
+    }
+  
+ // 2
+ public lazy var collectionHeightConstraint: NSLayoutConstraint = {
+        let constraint = heightAnchor.constraint(equalToConstant: 0)
+        constraint.priority = .defaultLow
+  constraint.isActive = true
+        return constraint
+    }()
+ 
+ // 3
+    public func fixHeight() {
+        var height = collectionViewLayout.collectionViewContentSize.height
+        + contentInset.top
+        + contentInset.bottom
+  + safeAreaInsets.bottom
+        (collectionViewLayout as? UICollectionViewFlowLayout).map { height += $0.sectionInset.top }
+        (collectionViewLayout as? UICollectionViewFlowLayout).map { height += $0.sectionInset.bottom }
+
+  // 4
+        if height != 0 && height != CGFloat.infinity {
+            collectionHeightConstraint.constant = height
+        }
+    }
+} Получая самое актуальное значение высоты contentSize, мы запускаем обновление константы.
+Констрейнт создадим с минимальным приоритетом, чтобы в случае, если высота контента будет больше, чем может быть высота bottom sheet, не случился конфликт приоритетов.
+Помимо высоты контента нужно учитывать и все дополнительные отступы и инсеты.
+Значение высоты равное 0 нет смысла обновлять, а равное infinity — ломает констрейнты, а вместе с ними и autoLayout. Получая самое актуальное значение высоты contentSize, мы запускаем обновление константы. Получая самое актуальное значение высоты contentSize, мы запускаем обновление константы. Констрейнт создадим с минимальным приоритетом, чтобы в случае, если высота контента будет больше, чем может быть высота bottom sheet, не случился конфликт приоритетов. Констрейнт создадим с минимальным приоритетом, чтобы в случае, если высота контента будет больше, чем может быть высота bottom sheet, не случился конфликт приоритетов. Помимо высоты контента нужно учитывать и все дополнительные отступы и инсеты. Помимо высоты контента нужно учитывать и все дополнительные отступы и инсеты. Значение высоты равное 0 нет смысла обновлять, а равное infinity — ломает констрейнты, а вместе с ними и autoLayout. Значение высоты равное 0 нет смысла обновлять, а равное infinity — ломает констрейнты, а вместе с ними и autoLayout. В проекте уже лежит простенький контроллер с коллекцией — ListViewController, который мы отобразим как bottom sheet. В ListView.swift уже создана коллекция, но её класс —UICollectionView. Исправим это: final class ListView: UIView {
+    
+    lazy var collectionView: CompactCollectionView = {
+        ...
+        let collectionView = CompactCollectionView(
+            frame: .zero,
+            collectionViewLayout: layout
+        )
+        return collectionView
+    }()
+} final class ListView: UIView {
+    
+    lazy var collectionView: CompactCollectionView = {
+        ...
+        let collectionView = CompactCollectionView(
+            frame: .zero,
+            collectionViewLayout: layout
+        )
+        return collectionView
+    }()
+} Добавим открытие ListViewController по нажатию на вторую кнопку RootViewController: @objc
+func presentCollectionAsBottomSheet() {
+    let vc = ListViewController()
+    vc.transitioningDelegate = customTransitioningDelegate
+    vc.modalPresentationStyle = .custom
+    present(vc, animated: true)
+} @objc
+func presentCollectionAsBottomSheet() {
+    let vc = ListViewController()
+    vc.transitioningDelegate = customTransitioningDelegate
+    vc.modalPresentationStyle = .custom
+    present(vc, animated: true)
+} Запускаем и проверяем результат.   Всё работает за исключением одного момента. Коллекции созданы на основе UIScrollView, который сам обрабатывает жесты, чтобы листать контент. Если ячеек будет достаточно, чтобы коллекция заняла всю доступную высоту и начала прокручиваться, тогда жесты не будут доходить до UIPanGestureRecognizer, который мы добавили в начале статьи для закрытия по свайпу. Чтобы решить эту проблему, нужно создать для panGestureRecognizer’а UIScrollView условия, когда вместо перехватывания жеста он будет отправлять его дальше. Для этого в CompactCollectionView.swift добавим следующие строки: override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+    guard gestureRecognizer === panGestureRecognizer else {
+        return true
+    }
+  
+    if contentOffset.y == -contentInset.top, panGestureRecognizer.velocity(in: nil).y &gt; 0 {
+        return false
+    }
+
+    if contentOffset.y > -contentInset.top {
+        return false
+    }
+
+    return true
+} override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+    guard gestureRecognizer === panGestureRecognizer else {
+        return true
+    }
+  
+    if contentOffset.y == -contentInset.top, panGestureRecognizer.velocity(in: nil).y &gt; 0 {
+        return false
+    }
+
+    if contentOffset.y > -contentInset.top {
+        return false
+    }
+
+    return true
+} UICollectionView по умолчанию реализует протокол UIGestureRecognizer, потому можно сразу добавлять gestureRecognizerShouldBegin и условия, при которых panGestureRecognizer doesn’t should begin. Это не должно происходить, если: gestureRecognizerShouldBegin контент находится в верхнем положении, а свайп направлен вниз
+пользователь резко свайпнул, контент прокрутился до верхней точки и находится в состоянии торможения. Тогда контент уйдёт в минусовое положение, а повторный свайп вниз сразу закроет контроллер контент находится в верхнем положении, а свайп направлен вниз контент находится в верхнем положении, а свайп направлен вниз пользователь резко свайпнул, контент прокрутился до верхней точки и находится в состоянии торможения. Тогда контент уйдёт в минусовое положение, а повторный свайп вниз сразу закроет контроллер пользователь резко свайпнул, контент прокрутился до верхней точки и находится в состоянии торможения. Тогда контент уйдёт в минусовое положение, а повторный свайп вниз сразу закроет контроллер Вот теперь результат финальный. Чтобы его проверить, сходите в ListDataProvider.swift и добавьте побольше элементов в массив items. items   Финальный проект. Финальный проект Наконец, итоги! Мы добавили возможность закрывать контроллеры, презентованные как bottom sheet с помощью свайпа по контенту. Реализовали отображение контента, который имеет в своей основе прокручивающиеся данные, а, следовательно, не имеющий собственных значений высоты для autoLayout. В арсенале UIKit ещё остались такие сущности как UITableView и базовый UIScrollView, но решение для них будет точно таким же, а где-то ещё проще. Оставлю это как факультатив для самостоятельного изучения и реализации. Теперь можно с чистой совестью сказать, что мы можем отобразить любой контент как bottom sheet, да ещё и управлять им по всем правилам хорошего тона (UX). Спасибо за внимание. ]]></text>
+</doc>

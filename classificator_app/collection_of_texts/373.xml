@@ -1,0 +1,22 @@
+<?xml version="1.0" ?>
+<doc>
+	<label auto="true" type="str" verify="true"><![CDATA[Develop]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[moguchev]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-12-06, 15:43]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/company/ozontech/blog/703768/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Приглашаем на Ozon Tech Community Go Meetup]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Блог компании Ozon Tech]]></item>
+		<item type="str"><![CDATA[Go]]></item>
+		<item type="str"><![CDATA[Конференции]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[go]]></item>
+		<item type="str"><![CDATA[ozon]]></item>
+		<item type="str"><![CDATA[ozon tech]]></item>
+		<item type="str"><![CDATA[meetup]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[]]></text>
+</doc>

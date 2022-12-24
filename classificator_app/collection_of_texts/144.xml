@@ -1,0 +1,429 @@
+<?xml version="1.0" ?>
+<doc>
+	<label auto="true" type="str" verify="true"><![CDATA[Develop]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[S__vet]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-12-13, 17:49]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/company/hexlet/blog/705194/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Вышел PHP 8.2: разбираем главные изменения]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Блог компании Хекслет]]></item>
+		<item type="str"><![CDATA[Блог компании Skyeng]]></item>
+		<item type="str"><![CDATA[PHP]]></item>
+		<item type="str"><![CDATA[Symfony]]></item>
+		<item type="str"><![CDATA[Laravel]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[php]]></item>
+		<item type="str"><![CDATA[php 8.2]]></item>
+		<item type="str"><![CDATA[php foundation]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[Вместе с PHP-разработчиками Александром Макаровым (@SamDark), Валентином Удальцовым (@vudaltsov) и наставником Хекслета по PHP Владленом Гилязетдиновым (@funkylen) разбираемся, какие новые фичи появились в PHP 8.2, насколько эти изменения глобальны и какую роль в них сыграл проект РHP Foundation.
+Эта статья — саммари стрима YouTube-канала PHP Point.
+Кстати, ежегодный опрос русскоязычного PHP-сообщества с итогами года запущен! Результатами поделимся в конце января.
+Главные изменения в PHP 8.2
+Readonly-классы
+Поля readonly сделали еще до версии 8.2. Раньше писать в них код и читать его можно было только в конструкторе. А теперь для этого не нужно помечать каждое поле — достаточно отметить весь класс как readonly.
+Как выглядел код в предыдущих версиях PHP:
+class BlogData
+{
+    public readonly string $title;
+
+    public readonly Status $status;
+
+    public function __construct(string $title, Status $status)
+    {
+        $this->title = $title;
+        $this->status = $status;
+    }
+}
+Как выглядит код в PHP 8.2:
+readonly class BlogData
+{
+    public string $title;
+
+    public Status $status;
+
+    public function __construct(string $title, Status $status)
+    {
+        $this->title = $title;
+        $this->status = $status;
+    }
+}
+Но у фичи есть особенности:
+Readonly-классы недоступны для классов с необъявленными типами.
+Также readonly-классы недоступны для классов со статическими свойствами.
+Если мы захотим наследоваться от старого readonly-класса, новый тоже должен быть Readonly.
+Типы в виде дизъюнктивной нормальной формы (ДНФ)
+Теперь вместо того, чтобы указывать тип mixed для аргументов в методах, можно просто перечислять необходимые типы через амперсанд.
+Как выглядел код в предыдущих версиях PHP:
+class Foo {
+    public function bar(mixed $entity) {
+        if ((($entity instanceof A) && ($entity instanceof B)) || ($entity === null)) {
+            return $entity;
+        }
+
+        throw new Exception('Invalid entity');
+    }
+}
+Как выглядит код в PHP 8.2:
+class Foo {
+    public function bar((A&B)|null $entity) {
+        return $entity;
+    }
+}
+Пожелание от меня: будьте осторожны с этой фичей. Она позволяет много методов объединять в один. Если бы я программировал приложения, то так не делал бы. А вот во фреймворках она будет очень кстати, потому что иногда, ради красивой API, мы сознательно жертвуем такой вот правильностью — используем подход с mixed-типами в сигнатуре.
+Самостоятельные типы null, false и true
+Это изменение единогласно приняла вся команда разработчиков PHP, так как в ядре PHP есть методы, классы и функции, которые возвращают false или true.
+Если у вас метод никогда не возвращает false, то теперь можно указать, что он возвращает true или значение. Или наоборот, null и значение, или false и значение. Фича удобная и делает язык немного строже.
+Как выглядел код в предыдущих версиях PHP:
+class Falsy
+{
+    public function almostFalse(): bool { /* ... */ *}
+
+    public function almostTrue(): bool { /* ... */ *}
+
+    public function almostNull(): string|null { /* ... */ *}
+}
+Как выглядит код в PHP 8.2:
+class Falsy
+{
+    public function alwaysFalse(): false { /* ... */ *}
+
+    public function alwaysTrue(): true { /* ... */ *}
+
+    public function alwaysNull(): null { /* ... */ *}
+}
+Модуль «Random»
+Random — это целый пак разных интерфейсов. Особенности фичи:
+Разработчики сделали объектно-ориентированный API.
+Каждый инстанс независимый — то есть для разных целей можно инстанцировать n-штук псевдослучайных генераторов, которые никогда не пересекутся. Стало более безопасно.
+Mersenne twister заменен на интерфейс Engine. Раньше mt_rand() надо было инициализировать. Он был нужен не для всяких крипто-фич, а для того чтобы, например, сортировать массивы в случайном порядке. mt_rand() работал достаточно быстро, поэтому использовать его для утилитарных задач было неплохо. Теперь его заменили на интерфейс Engine, который предоставляет готовые реализации.
+Как выглядит код в PHP 8.2:
+use Random\Engine\Xoshiro256StarStar;
+use Random\Randomizer;
+
+$blueprintRng = new Xoshiro256StarStar(
+    hash('sha256', "Example seed that is converted to a 256 Bit string via SHA-256", true)
+);
+
+$fibers = [];
+for ($i = 0; $i < 8; $i++) {
+    $fiberRng = clone $blueprintRng;
+    // Xoshiro256**'s 'jump()' method moves the blueprint ahead 2**128 steps, as if calling
+    // 'generate()' 2**128 times, giving the Fiber 2**128 unique values without needing to reseed.
+    $blueprintRng->jump();
+Константы в трейтах
+Теперь можно объявлять константы внутри трейтов. Особенность фичи — нельзя получить доступ к константе через имя трейта, но можно через класс, который использует этот трейт.
+Очень логичное изменение, на мой взгляд. Трейт сам по себе — это копипаст. Копипаст — штука опасная, но иногда полезная (у нас есть принцип «don't repeat yourself»). И трейт — это один самых неинвазивных способов что-то повторить, который легко потом отрефакторить.
+Как выглядит код в PHP 8.2:
+trait Foo
+{
+    public const CONSTANT = 1;
+}
+
+class Bar
+{
+    use Foo;
+}
+
+var_dump(Bar::CONSTANT); // 1
+var_dump(Foo::CONSTANT); // Error
+Динамические свойства объявлены устаревшими
+В классах PHP можно было динамически присваивать значения свойствам, которые мы не объявили ранее, и эти свойства появлялись после классов.
+Теперь так сделать нельзя — будет появляться Deprecation notice. Но если сильно нужно, динамическими свойствами можно пользоваться, если пометить класс аннотацией #[\AllowDynamicProperties]. В экземплярах stdClass динамические свойства по-прежнему можно использовать.
+Как выглядел код в предыдущих версиях PHP:
+class User
+{
+    public $name;
+}
+
+$user = new User();
+$user->last_name = 'Doe';
+
+$user = new stdClass();
+$user->last_name = 'Doe';
+Как выглядит код в PHP 8.2:
+class User
+{
+    public $name;
+}
+
+$user = new User();
+$user->last_name = 'Doe'; // Deprecated notice
+
+$user = new stdClass();
+$user->last_name = 'Doe'; // Still allowed
+#[\SensitiveParameter]
+Это маленькая, но очень классная фича, которая мельком упоминается в официальном анонсе.
+Параметры в методах теперь можно обозначить как #[\SensitiveParameter]. Ниже в коде так отмечен параметр $secret, и в логах вместо значения параметра secret написано (Object(SensitiveParameterValue).
+function sensitiveParametersWithAttribute(
+    #[\SensitiveParameter]
+    string $secret,
+    string $normal
+) {
+    throw new Exception('Error!');
+}
+Exception: Error! in example.php:15
+Stack trace:
+#0 example.php(25): sensitiveParametersWithAttribute(Object(SensitiveParameterValue), 'normal')
+#1 {main}
+Считаю это изменение очень крутым, так как теперь у нас не будут утекать всякие ключи от API, пароли от базы. Команда разработчиков PHP практически единогласно проголосовала за эту фичу.
+Какие еще изменения произошли
+Расширение enum в константах
+Раньше, чтобы использовать enum, надо было дублировать их значение. Это было очень неприятно: enum есть, а в объявлениях констант нельзя было из них что-то использовать. Теперь можно: новая фича уравнивает весь синтаксис. Классно, что язык эволюционирует в сторону удобства и большей консистентности.
+const C = [self::B->value => self::B];
+iterator_() + iterables
+Теперь можно передавать в методы iterator_() тип \Traversables. Это просто замечательно, потому что раньше приходилось проверять, является ли аргумент объектом типа \Traversable, и если да, то надо было его конвертить. В PHP 8.2 можно больше не проводить эти проверки, что уменьшает количество кода и делает его более приятным и читаемым.
+Расширена рефлексия
+Можно узнать, анонимный ли метод — ReflectionFunction::isAnonymous()
+Можно узнать, есть ли у метода прототип — ReflectionMethod::hasPrototype()
+Новые функции memory_reset_peak_usage
+Функции сбрасывают статистику по пиковому использованию памяти. Это очень полезно для EventLoop на PHP, Roadrunner и Swoole — мы сможем скинуть потребляемую память после запроса и измерить ту, которая ушла конкретно на один запрос.
+Что признали устаревшим или убрали
+Интерполяция в строках вида ${}
+Не рекомендуется использовать функции utf8_encode и utf8_decode
+Функции strtolower и strtoupper теперь не учитывают локаль — это круто, потому что версии PHP, установленные в двух системах Linux, могут работать по-разному из-за выбранной дефолтной локали.
+Убрали много форматов callable:
+“self::method”
+“parent::method”
+“static::method”
+[“self”, “method”]
+[“parent”, “method”]
+[“static”, “method”]
+[“Foo”, “Bar::Method”]
+[new Foo, “Bar::Method”]
+Мое мнение — на PHP 8.2 определенно стоит переходить хотя бы из-за крутых улучшений синтаксиса. Он все еще делает код более читаемым и понятным. Также разработчики пофиксили разные мелкие баги, которые мы не упомянули, но их было много.
+Какие изменения PHP 8.2 еще в разработке
+Некоторые разработчики считают, что в новую версию PHP добавили очень мало изменений. На самом деле, в РHP 8.2 было много саппортных вещей: код вычищали, из него что-то убирали. Каждое изменение, которое вводили разработчики, непросто описать в фичах. Да и вряд ли всем будет интересно, какие куски кода рефакторили. Так что по объему работы релиз 8.2 не отличается от предыдущих релизов. Просто в нем чуть меньше фич.
+Большие усилия к разработке версии 8.2 приложили ребята из PHP Foundation — проекта, который финансирует разработчиков, готовых контрибьютить в PHP.
+PHP Foundation создали много известных компаний, среди которых JetBrains, Automattic, Laravel. Проект запустили 22 ноября 2021 года, и за год коллектив из десяти администраторов-добровольцев и шести разработчиков внесли почти половину коммитов в ядро языка PHP и расширения.
+В новую версию языка PHP Foundation имплементировал интерполяцию в строках вида ${}, readonly-классы, самостоятельные типы null, false и true, тип true, типы в виде дизъюнктивной нормальной формы и получение свойств перечислений в константных выражениях.
+Документация по PHP 8.2 еще в разработке, и разработчик PHP Foundation Джордж П. Баньярд сейчас отслеживает прогресс в изменениях. Вместе с командой он обсуждает эти нововведения:
+Автоматическая имплементация для enum Stringable
+Ассиметричная видимость
+Получение констант из класса
+Более понятные ошибки Date/Time
+Доработки по Readonly
+Работа с инициализаторами произвольных статических переменных.
+Помочь составить документацию может каждый из нас — это, как говорится, good first issue (несложные задачи, выполнить которые под силу новичкам).
+Также PHP Foundation планирует выдвинуть на обсуждение новые изменения в будущем релизе PHP 8.3.   Вместе с PHP-разработчиками Александром Макаровым (@SamDark), Валентином Удальцовым (@vudaltsov) и наставником Хекслета по PHP Владленом Гилязетдиновым (@funkylen) разбираемся, какие новые фичи появились в PHP 8.2, насколько эти изменения глобальны и какую роль в них сыграл проект РHP Foundation. @SamDark @vudaltsov @funkylen Эта статья — саммари стрима YouTube-канала PHP Point.
+Кстати, ежегодный опрос русскоязычного PHP-сообщества с итогами года запущен! Результатами поделимся в конце января. Эта статья — саммари стрима YouTube-канала PHP Point. Кстати, ежегодный опрос русскоязычного PHP-сообщества с итогами года запущен! Результатами поделимся в конце января. ежегодный опрос ежегодный опрос  Главные изменения в PHP 8.2   Readonly-классы Поля readonly сделали еще до версии 8.2. Раньше писать в них код и читать его можно было только в конструкторе. А теперь для этого не нужно помечать каждое поле — достаточно отметить весь класс как readonly. readonly отметить весь класс отметить весь класс readonly Как выглядел код в предыдущих версиях PHP: class BlogData
+{
+    public readonly string $title;
+
+    public readonly Status $status;
+
+    public function __construct(string $title, Status $status)
+    {
+        $this->title = $title;
+        $this->status = $status;
+    }
+} class BlogData
+{
+    public readonly string $title;
+
+    public readonly Status $status;
+
+    public function __construct(string $title, Status $status)
+    {
+        $this->title = $title;
+        $this->status = $status;
+    }
+} Как выглядит код в PHP 8.2: readonly class BlogData
+{
+    public string $title;
+
+    public Status $status;
+
+    public function __construct(string $title, Status $status)
+    {
+        $this->title = $title;
+        $this->status = $status;
+    }
+} readonly class BlogData
+{
+    public string $title;
+
+    public Status $status;
+
+    public function __construct(string $title, Status $status)
+    {
+        $this->title = $title;
+        $this->status = $status;
+    }
+} Но у фичи есть особенности: Readonly-классы недоступны для классов с необъявленными типами.
+Также readonly-классы недоступны для классов со статическими свойствами.
+Если мы захотим наследоваться от старого readonly-класса, новый тоже должен быть Readonly. Readonly-классы недоступны для классов с необъявленными типами. Readonly-классы недоступны для классов с необъявленными типами. Readonly Также readonly-классы недоступны для классов со статическими свойствами. Также readonly-классы недоступны для классов со статическими свойствами. readonly Если мы захотим наследоваться от старого readonly-класса, новый тоже должен быть Readonly. Если мы захотим наследоваться от старого readonly-класса, новый тоже должен быть Readonly. readonly Типы в виде дизъюнктивной нормальной формы (ДНФ) Теперь вместо того, чтобы указывать тип mixed для аргументов в методах, можно просто перечислять необходимые типы через амперсанд. mixed перечислять необходимые типы перечислять необходимые типы Как выглядел код в предыдущих версиях PHP: class Foo {
+    public function bar(mixed $entity) {
+        if ((($entity instanceof A) && ($entity instanceof B)) || ($entity === null)) {
+            return $entity;
+        }
+
+        throw new Exception('Invalid entity');
+    }
+} class Foo {
+    public function bar(mixed $entity) {
+        if ((($entity instanceof A) && ($entity instanceof B)) || ($entity === null)) {
+            return $entity;
+        }
+
+        throw new Exception('Invalid entity');
+    }
+} Как выглядит код в PHP 8.2: class Foo {
+    public function bar((A&B)|null $entity) {
+        return $entity;
+    }
+} class Foo {
+    public function bar((A&B)|null $entity) {
+        return $entity;
+    }
+} Пожелание от меня: будьте осторожны с этой фичей. Она позволяет много методов объединять в один. Если бы я программировал приложения, то так не делал бы. А вот во фреймворках она будет очень кстати, потому что иногда, ради красивой API, мы сознательно жертвуем такой вот правильностью — используем подход с mixed-типами в сигнатуре. mixed Самостоятельные типы null, false и true Это изменение единогласно приняла вся команда разработчиков PHP, так как в ядре PHP есть методы, классы и функции, которые возвращают false или true. false true Если у вас метод никогда не возвращает false, то теперь можно указать, что он возвращает true или значение. Или наоборот, null и значение, или false и значение. Фича удобная и делает язык немного строже. false можно указать можно указать true null false Как выглядел код в предыдущих версиях PHP: class Falsy
+{
+    public function almostFalse(): bool { /* ... */ *}
+
+    public function almostTrue(): bool { /* ... */ *}
+
+    public function almostNull(): string|null { /* ... */ *}
+} class Falsy
+{
+    public function almostFalse(): bool { /* ... */ *}
+
+    public function almostTrue(): bool { /* ... */ *}
+
+    public function almostNull(): string|null { /* ... */ *}
+} Как выглядит код в PHP 8.2: class Falsy
+{
+    public function alwaysFalse(): false { /* ... */ *}
+
+    public function alwaysTrue(): true { /* ... */ *}
+
+    public function alwaysNull(): null { /* ... */ *}
+} class Falsy
+{
+    public function alwaysFalse(): false { /* ... */ *}
+
+    public function alwaysTrue(): true { /* ... */ *}
+
+    public function alwaysNull(): null { /* ... */ *}
+} Модуль «Random» Random — это целый пак разных интерфейсов. Особенности фичи: Random Random Разработчики сделали объектно-ориентированный API.
+Каждый инстанс независимый — то есть для разных целей можно инстанцировать n-штук псевдослучайных генераторов, которые никогда не пересекутся. Стало более безопасно.
+Mersenne twister заменен на интерфейс Engine. Раньше mt_rand() надо было инициализировать. Он был нужен не для всяких крипто-фич, а для того чтобы, например, сортировать массивы в случайном порядке. mt_rand() работал достаточно быстро, поэтому использовать его для утилитарных задач было неплохо. Теперь его заменили на интерфейс Engine, который предоставляет готовые реализации. Разработчики сделали объектно-ориентированный API. Разработчики сделали объектно-ориентированный API. Каждый инстанс независимый — то есть для разных целей можно инстанцировать n-штук псевдослучайных генераторов, которые никогда не пересекутся. Стало более безопасно. Каждый инстанс независимый — то есть для разных целей можно инстанцировать n-штук псевдослучайных генераторов, которые никогда не пересекутся. Стало более безопасно. Mersenne twister заменен на интерфейс Engine. Раньше mt_rand() надо было инициализировать. Он был нужен не для всяких крипто-фич, а для того чтобы, например, сортировать массивы в случайном порядке. mt_rand() работал достаточно быстро, поэтому использовать его для утилитарных задач было неплохо. Теперь его заменили на интерфейс Engine, который предоставляет готовые реализации. Mersenne twister заменен на интерфейс Engine. Раньше mt_rand() надо было инициализировать. Он был нужен не для всяких крипто-фич, а для того чтобы, например, сортировать массивы в случайном порядке. mt_rand() работал достаточно быстро, поэтому использовать его для утилитарных задач было неплохо. Теперь его заменили на интерфейс Engine, который предоставляет готовые реализации. mt_rand() mt_rand() Как выглядит код в PHP 8.2: use Random\Engine\Xoshiro256StarStar;
+use Random\Randomizer;
+
+$blueprintRng = new Xoshiro256StarStar(
+    hash('sha256', "Example seed that is converted to a 256 Bit string via SHA-256", true)
+);
+
+$fibers = [];
+for ($i = 0; $i < 8; $i++) {
+    $fiberRng = clone $blueprintRng;
+    // Xoshiro256**'s 'jump()' method moves the blueprint ahead 2**128 steps, as if calling
+    // 'generate()' 2**128 times, giving the Fiber 2**128 unique values without needing to reseed.
+    $blueprintRng->jump(); use Random\Engine\Xoshiro256StarStar;
+use Random\Randomizer;
+
+$blueprintRng = new Xoshiro256StarStar(
+    hash('sha256', "Example seed that is converted to a 256 Bit string via SHA-256", true)
+);
+
+$fibers = [];
+for ($i = 0; $i < 8; $i++) {
+    $fiberRng = clone $blueprintRng;
+    // Xoshiro256**'s 'jump()' method moves the blueprint ahead 2**128 steps, as if calling
+    // 'generate()' 2**128 times, giving the Fiber 2**128 unique values without needing to reseed.
+    $blueprintRng->jump(); Константы в трейтах Теперь можно объявлять константы внутри трейтов. Особенность фичи — нельзя получить доступ к константе через имя трейта, но можно через класс, который использует этот трейт. объявлять константы внутри трейтов объявлять константы внутри трейтов Очень логичное изменение, на мой взгляд. Трейт сам по себе — это копипаст. Копипаст — штука опасная, но иногда полезная (у нас есть принцип «don't repeat yourself»). И трейт — это один самых неинвазивных способов что-то повторить, который легко потом отрефакторить. Как выглядит код в PHP 8.2: trait Foo
+{
+    public const CONSTANT = 1;
+}
+
+class Bar
+{
+    use Foo;
+}
+
+var_dump(Bar::CONSTANT); // 1
+var_dump(Foo::CONSTANT); // Error trait Foo
+{
+    public const CONSTANT = 1;
+}
+
+class Bar
+{
+    use Foo;
+}
+
+var_dump(Bar::CONSTANT); // 1
+var_dump(Foo::CONSTANT); // Error Динамические свойства объявлены устаревшими В классах PHP можно было динамически присваивать значения свойствам, которые мы не объявили ранее, и эти свойства появлялись после классов. Теперь так сделать нельзя — будет появляться Deprecation notice. Но если сильно нужно, динамическими свойствами можно пользоваться, если пометить класс аннотацией #[\AllowDynamicProperties]. В экземплярах stdClass динамические свойства по-прежнему можно использовать. так сделать нельзя так сделать нельзя Deprecation notice #[\AllowDynamicProperties] stdClass Как выглядел код в предыдущих версиях PHP: class User
+{
+    public $name;
+}
+
+$user = new User();
+$user->last_name = 'Doe';
+
+$user = new stdClass();
+$user->last_name = 'Doe'; class User
+{
+    public $name;
+}
+
+$user = new User();
+$user->last_name = 'Doe';
+
+$user = new stdClass();
+$user->last_name = 'Doe'; Как выглядит код в PHP 8.2: class User
+{
+    public $name;
+}
+
+$user = new User();
+$user->last_name = 'Doe'; // Deprecated notice
+
+$user = new stdClass();
+$user->last_name = 'Doe'; // Still allowed class User
+{
+    public $name;
+}
+
+$user = new User();
+$user->last_name = 'Doe'; // Deprecated notice
+
+$user = new stdClass();
+$user->last_name = 'Doe'; // Still allowed #[\SensitiveParameter] Это маленькая, но очень классная фича, которая мельком упоминается в официальном анонсе. Параметры в методах теперь можно обозначить как #[\SensitiveParameter]. Ниже в коде так отмечен параметр $secret, и в логах вместо значения параметра secret написано (Object(SensitiveParameterValue). можно обозначить можно обозначить #[\SensitiveParameter] $secret secret (Object(SensitiveParameterValue) function sensitiveParametersWithAttribute(
+    #[\SensitiveParameter]
+    string $secret,
+    string $normal
+) {
+    throw new Exception('Error!');
+} function sensitiveParametersWithAttribute(
+    #[\SensitiveParameter]
+    string $secret,
+    string $normal
+) {
+    throw new Exception('Error!');
+} Exception: Error! in example.php:15
+Stack trace:
+#0 example.php(25): sensitiveParametersWithAttribute(Object(SensitiveParameterValue), 'normal')
+#1 {main} Exception: Error! in example.php:15
+Stack trace:
+#0 example.php(25): sensitiveParametersWithAttribute(Object(SensitiveParameterValue), 'normal')
+#1 {main} Считаю это изменение очень крутым, так как теперь у нас не будут утекать всякие ключи от API, пароли от базы. Команда разработчиков PHP практически единогласно проголосовала за эту фичу. Какие еще изменения произошли Расширение enum в константах Раньше, чтобы использовать enum, надо было дублировать их значение. Это было очень неприятно: enum есть, а в объявлениях констант нельзя было из них что-то использовать. Теперь можно: новая фича уравнивает весь синтаксис. Классно, что язык эволюционирует в сторону удобства и большей консистентности. enum enum const C = [self::B->value => self::B]; const C = [self::B->value => self::B]; iterator_() + iterables Теперь можно передавать в методы iterator_() тип \Traversables. Это просто замечательно, потому что раньше приходилось проверять, является ли аргумент объектом типа \Traversable, и если да, то надо было его конвертить. В PHP 8.2 можно больше не проводить эти проверки, что уменьшает количество кода и делает его более приятным и читаемым. Теперь  можно передавать можно передавать можно передавать  в методы  iterator_() \Traversables \Traversable Расширена рефлексия Можно узнать, анонимный ли метод — ReflectionFunction::isAnonymous()
+Можно узнать, есть ли у метода прототип — ReflectionMethod::hasPrototype() Можно узнать, анонимный ли метод — ReflectionFunction::isAnonymous() Можно узнать, анонимный ли метод — ReflectionFunction::isAnonymous() анонимный ли метод анонимный ли метод ReflectionFunction::isAnonymous() Можно узнать, есть ли у метода прототип — ReflectionMethod::hasPrototype() Можно узнать, есть ли у метода прототип — ReflectionMethod::hasPrototype() есть ли у метода прототип есть ли у метода прототип ReflectionMethod::hasPrototype() Новые функции memory_reset_peak_usage Функции сбрасывают статистику по пиковому использованию памяти. Это очень полезно для EventLoop на PHP, Roadrunner и Swoole — мы сможем скинуть потребляемую память после запроса и измерить ту, которая ушла конкретно на один запрос. сбрасывают статистику сбрасывают статистику Что признали устаревшим или убрали Интерполяция в строках вида ${}
+Не рекомендуется использовать функции utf8_encode и utf8_decode
+Функции strtolower и strtoupper теперь не учитывают локаль — это круто, потому что версии PHP, установленные в двух системах Linux, могут работать по-разному из-за выбранной дефолтной локали.
+Убрали много форматов callable: Интерполяция в строках вида ${} Интерполяция в строках вида ${} ${} Не рекомендуется использовать функции utf8_encode и utf8_decode Не рекомендуется использовать функции utf8_encode и utf8_decode utf8_encode utf8_decode Функции strtolower и strtoupper теперь не учитывают локаль — это круто, потому что версии PHP, установленные в двух системах Linux, могут работать по-разному из-за выбранной дефолтной локали. Функции strtolower и strtoupper теперь не учитывают локаль — это круто, потому что версии PHP, установленные в двух системах Linux, могут работать по-разному из-за выбранной дефолтной локали. strtolower strtoupper Убрали много форматов callable: Убрали много форматов callable: callable “self::method”
+“parent::method”
+“static::method”
+[“self”, “method”]
+[“parent”, “method”]
+[“static”, “method”]
+[“Foo”, “Bar::Method”]
+[new Foo, “Bar::Method”] “self::method” “self::method” “self::method” “parent::method” “parent::method” “parent::method” “static::method” “static::method” “static::method” [“self”, “method”] [“self”, “method”] [“self”, “method”] [“parent”, “method”] [“parent”, “method”] [“parent”, “method”] [“static”, “method”] [“static”, “method”] [“static”, “method”] [“Foo”, “Bar::Method”] [“Foo”, “Bar::Method”] [“Foo”, “Bar::Method”] [new Foo, “Bar::Method”] [new Foo, “Bar::Method”] [new Foo, “Bar::Method”] Мое мнение — на PHP 8.2 определенно стоит переходить хотя бы из-за крутых улучшений синтаксиса. Он все еще делает код более читаемым и понятным. Также разработчики пофиксили разные мелкие баги, которые мы не упомянули, но их было много. Какие изменения PHP 8.2 еще в разработке   Некоторые разработчики считают, что в новую версию PHP добавили очень мало изменений. На самом деле, в РHP 8.2 было много саппортных вещей: код вычищали, из него что-то убирали. Каждое изменение, которое вводили разработчики, непросто описать в фичах. Да и вряд ли всем будет интересно, какие куски кода рефакторили. Так что по объему работы релиз 8.2 не отличается от предыдущих релизов. Просто в нем чуть меньше фич. Большие усилия к разработке версии 8.2 приложили ребята из PHP Foundation — проекта, который финансирует разработчиков, готовых контрибьютить в PHP.   PHP Foundation создали много известных компаний, среди которых JetBrains, Automattic, Laravel. Проект запустили 22 ноября 2021 года, и за год коллектив из десяти администраторов-добровольцев и шести разработчиков внесли почти половину коммитов в ядро языка PHP и расширения. В новую версию языка PHP Foundation имплементировал интерполяцию в строках вида ${}, readonly-классы, самостоятельные типы null, false и true, тип true, типы в виде дизъюнктивной нормальной формы и получение свойств перечислений в константных выражениях. ${} readonly null false true true Документация по PHP 8.2 еще в разработке, и разработчик PHP Foundation Джордж П. Баньярд сейчас отслеживает прогресс в изменениях. Вместе с командой он обсуждает эти нововведения: Автоматическая имплементация для enum Stringable
+Ассиметричная видимость
+Получение констант из класса
+Более понятные ошибки Date/Time
+Доработки по Readonly
+Работа с инициализаторами произвольных статических переменных. Автоматическая имплементация для enum Stringable Автоматическая имплементация для enum Stringable Автоматическая имплементация для enum Stringable Автоматическая имплементация для enum Stringable Ассиметричная видимость Ассиметричная видимость Ассиметричная видимость Ассиметричная видимость Получение констант из класса Получение констант из класса Получение констант из класса Получение констант из класса Более понятные ошибки Date/Time Более понятные ошибки Date/Time Более понятные ошибки Date/Time Более понятные ошибки Date/Time Доработки по Readonly Доработки по Readonly Доработки по Readonly Доработки по Readonly Работа с инициализаторами произвольных статических переменных. Работа с инициализаторами произвольных статических переменных. Работа с инициализаторами произвольных статических переменных Работа с инициализаторами произвольных статических переменных Помочь составить документацию может каждый из нас — это, как говорится, good first issue (несложные задачи, выполнить которые под силу новичкам). составить документацию составить документацию Также PHP Foundation планирует выдвинуть на обсуждение новые изменения в будущем релизе PHP 8.3. будущем релизе PHP 8.3 будущем релизе PHP 8.3 ]]></text>
+</doc>

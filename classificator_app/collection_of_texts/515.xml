@@ -1,0 +1,481 @@
+<?xml version="1.0" ?>
+<doc>
+	<original_author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Natalia Parfenova]]></item>
+	</original_author>
+	<label auto="true" type="str" verify="true"><![CDATA[Develop]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[SwiftBook]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-12-01, 17:11]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/post/702890/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Зональная Диаграмма со слоем затемнения вплоть до текущего момента времени]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Разработка под iOS]]></item>
+		<item type="str"><![CDATA[Swift]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[swift]]></item>
+		<item type="str"><![CDATA[ios]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[В этом посте мы увидим, как построить зональную диаграмму, показывающую УФ-индекс в течение дня, взяв в качестве примера диаграмму УФ-индекса в системном приложении Погода для iOS. На диаграмме также будет линейная метка, заполненная линейным градиентом, чтобы подчеркнуть значения УФ-индекса, метка правила с точечной меткой, показывающая текущее время дня, и слой затемнения для той части диаграммы, где время уже прошло.
+Вот как будет выглядеть окончательный результат:
+# Подготовка данных диаграммы
+Чтобы создать диаграмму, мы будем использовать небольшой набор демонстрационных данных значений УФ-индекса, записанных в Крайстчерче в определенный день. У нас будут даты на оси X и UV-индекс на оси Y, тем самым мы сопоставим наши данные с массивом кортежей со значениями дат и UV-индекса. Мы также жестко запрограммируем текущую дату на полдень.
+В реальном приложении данные УФ-индекса и текущая дата будут динамическими.
+extension Calendar {
+    static func date(bySettingHour hour: Int, of date: Date) -> Date? {
+        Calendar.current.date(
+            bySettingHour: hour,
+            minute: 0,
+            second: 0,
+            of: date
+        )
+    }
+}
+
+struct ContentView: View {
+    let currentDate = Calendar.date(bySettingHour: 12, of: Date())!
+    
+    let uvData = [
+        (hour: 6, uv: 0), (hour: 8, uv: 1),
+        (hour: 10, uv: 4), (hour: 12, uv: 6.5),
+        (hour: 14, uv: 8.2), (hour: 16, uv: 6),
+        (hour: 18, uv: 1.3), (hour: 20, uv: 0)
+    ]
+
+    var currentUVData: [(date: Date, uv: Double)] {
+        uvData.map {
+            (
+                date: Calendar.date(
+                    bySettingHour: $0.hour, of: currentDate
+                )!,
+                uv: $0.uv
+            )
+        }
+    }
+    
+    var body: some View {
+        ...
+    }
+}
+# Создаем зональную диаграмму с линейной меткой
+Мы начнем с циклической обработки нашего набора данных и добавления AreaMark на диаграмму. Мы установим метод интерполяции на cardinal, чтобы получить сглаженные кривые и заполним пространство линейным градиентом, чтобы подчеркнуть значение УФ-индекса от низкого до высокого.
+Chart {
+    ForEach(currentUVData, id: \.date) { dataPoint in
+        AreaMark(
+            x: .value("Time of day", dataPoint.date),
+            y: .value("UV index", dataPoint.uv)
+        )
+        .interpolationMethod(.cardinal)
+        .foregroundStyle(
+            .linearGradient(
+                colors: [.green, .yellow, .red],
+                startPoint: .bottom, endPoint: .top
+            )
+            .opacity(0.5)
+        )
+        .alignsMarkStylesWithPlotArea()
+    }
+}
+Обратите внимание, что я использую модификатор alignsMarkStylesWithPlotArea(), чтобы убедиться, что градиент использует всю площадь графика в качестве начальной и конечной точек, а не просто следует за меткой. Подробнее об этой технике я рассказывала в своем предыдущем посте Заливка столбцов градиентом в диаграммах Swift.
+На этом этапе у нас будет область со слегка прозрачной заливкой, которая начинается с зеленого цвета для низких значений и заканчивается красным для самых высоких.
+Теперь мы добавим более яркий контур к диаграмме с помощью LineMark для тех же данных. Метка линии также будет заполнена линейным градиентом, но без какой-либо прозрачности. В то время, как создается приятный визуальный эффект, пользователям Voice Over не нужно слышать повторяющиеся данные диаграммы, поэтому мы скроем ее содержимое от Универсального доступа и оставим видимой только метку линии.
+Chart {
+    ForEach(currentUVData, id: \.date) { dataPoint in
+        AreaMark(...)
+            .accessibilityHidden(true)
+        
+        LineMark(
+            x: .value("Time of day", dataPoint.date),
+            y: .value("UV index", dataPoint.uv)
+        )
+        .interpolationMethod(.cardinal)
+        .foregroundStyle(
+            .linearGradient(
+                colors: [.green, .yellow, .red],
+                startPoint: .bottom, endPoint: .top
+            )
+        )
+        .lineStyle(StrokeStyle(lineWidth: 4))
+        .alignsMarkStylesWithPlotArea()
+    }
+}
+# Настройка меток осей
+По умолчанию диаграмма имеет только некоторые аннотации меток на оси Y. Я думаю, было бы лучше показать все возможные значения, которые может принимать УФ-индекс. Мы определим наши пользовательские метки оси с желаемым диапазоном.
+struct ContentView: View {
+    ...
+
+    var body: some View {
+        Chart {...}
+            .chartYAxis {
+                AxisMarks(
+                    format: .number,
+                    preset: .aligned,
+                    values: Array(0...12)
+                )
+            }
+    }
+}
+Еще одна замечательная вещь, которую следует добавить, — это описание значений, чтобы пользователи знали, является ли в настоящее время УФ-индекс низким, умеренным, высоким или экстремальным. Эти описания будут расположены на переднем крае диаграммы и будут вставлены внутрь области графика.
+struct ContentView: View {
+    ...
+
+    var body: some View {
+        Chart {...}
+        .chartYAxis {
+            AxisMarks(...)
+            
+            AxisMarks(
+                preset: .inset,
+                position: .leading,
+                values: [1, 3, 6, 8, 11]
+            ) { value in
+                AxisValueLabel(
+                    descriptionForUVIndex(value.as(Double.self)!)
+                )
+            }
+        }
+    }
+    
+    func descriptionForUVIndex(_ index: Double) -> String {
+        switch index {
+        case 0...2: return "Low"
+        case 3...5: return "Moderate"
+        case 6...7: return "High"
+        case 8...10: return "Very high"
+        default: return "Extreme"
+        }
+    }
+}
+# Добавление меток правила и точки для указания текущего времени
+Чтобы привлечь внимание пользователя к текущему времени и значению UV-индекса, мы собираемся добавить RuleMark в ближайшую точку данных к текущему времени, которое у нас есть. Поскольку нам нужна только одна метка для всего графика, мы добавим ее за пределами цикла ForEach, но все же внутри Chart.
+Мы скрываем метку правила от Универсального доступа, потому что она присутствует только для визуального различия.
+Chart {
+    ForEach(currentUVData, id: \.date) { dataPoint in
+        ...
+    }
+    
+    if let dataPoint = closestDataPoint(for: currentDate) {
+        RuleMark(x: .value("Now", dataPoint.date))
+            .foregroundStyle(Color.secondary)
+            .accessibilityHidden(true)
+    }
+}
+Мы также добавим PointMark, чтобы указать значение УФ-индекса для текущего времени в сутках. Метка точки будет располагаться поверх метки правила и будет иметь материальную фоновую рамку вокруг нее. Чтобы получить границу, мы наложим две метки друг на друга, но доступ к технологиям Универсального доступа будет предоставлен только верхней метке.
+Chart {
+    ForEach(currentUVData, id: \.date) { dataPoint in
+        ...
+    }
+    
+    if let dataPoint = closestDataPoint(for: currentDate) {
+        RuleMark(...)
+            
+        PointMark(
+            x: .value("Time of day", dataPoint.date),
+            y: .value("UV index", dataPoint.uv)
+        )
+        .symbolSize(CGSize(width: 16, height: 16))
+        .foregroundStyle(.regularMaterial)
+        .accessibilityHidden(true)
+        
+        PointMark(
+            x: .value("Time of day", dataPoint.date),
+            y: .value("UV index", dataPoint.uv)
+        )
+        .symbolSize(CGSize(width: 6, height: 6))
+        .foregroundStyle(Color.primary)
+        .accessibilityLabel("Now")
+    }
+}
+# Затемнение области, включающей прошлые даты
+Последним шагом к завершению диаграммы является добавление затемняющего слоя, который покрывает область до текущего времени. Диаграмма приложения Weather, которую мы используем в качестве примера, имеет затемнение, которое распространяется на весь график, включая аннотации осей на переднем крае.
+Я подумала, что было бы лучше просто закрыть область с данными и оставить аннотации заметными независимо от того, в какой части суток мы находимся.
+Чтобы добиться эффекта затемнения, мы будем использовать RectangleMark с заливкой материала и маской, чтобы соответствовать затемнению выше метки области данных. Давайте сначала добавим прямоугольник. Мы поместим его под меткой правила, и он будет охватывать период от начала области до текущего времени.
+Chart {
+    ForEach(currentUVData, id: \.date) { dataPoint in
+        ...
+    }
+    
+    if let dataPoint = closestDataPoint(for: currentDate) {
+        if let firstDataPoint = currentUVData.first {
+            RectangleMark(
+                xStart: .value("", firstDataPoint.date),
+                xEnd: .value("", dataPoint.date)
+            )
+            
+            .foregroundStyle(.thickMaterial)
+            .opacity(0.6)
+            .accessibilityHidden(true)
+        }
+    
+        RuleMark(...)
+        PointMark(...)
+        PointMark(...)
+    }
+}
+Прямо сейчас мы видим, что прямоугольник закрывает все, включая аннотации.
+Чтобы он покрывал только обозначенную метку области и сохранял нетронутой остальную часть области графика с аннотациями, мы добавим маску в форме меток, которые у нас уже есть. Поскольку на этот раз метки используются только для маскировки прямоугольника и на самом деле не видны, им не нужен какой-либо особый стиль переднего плана.
+Чтобы диаграмма отображалась правильно, важно указать серию меток и установить метку области как unstacked.
+RectangleMark(
+    xStart: .value("", firstDataPoint.date),
+    xEnd: .value("", dataPoint.date)
+)
+
+.foregroundStyle(.thickMaterial)
+.opacity(0.6)
+.accessibilityHidden(true)
+
+.mask {
+    ForEach(currentUVData, id: \.date) { dataPoint in
+        AreaMark(
+            x: .value("Time of day", dataPoint.date),
+            y: .value("UV index", dataPoint.uv),
+            series: .value("", "mask"),
+            stacking: .unstacked
+        )
+        .interpolationMethod(.cardinal)
+        
+        LineMark(
+            x: .value("Time of day", dataPoint.date),
+            y: .value("UV index", dataPoint.uv),
+            series: .value("", "mask")
+        )
+        .interpolationMethod(.cardinal)
+        .lineStyle(StrokeStyle(lineWidth: 4))
+    }
+}
+Мы почти закончили. Чтобы отполировать окончательный вид диаграммы, мы немного увеличим отступ области графика, чтобы затемняющий слой покрывал небольшую часть контура, которая нарисована ниже 0 по оси Y.
+Chart {...}
+    .chartYScale(range: .plotDimension(padding: 2))
+Вы можете получить полный пример кода для этой статьи в нашем репозитории на GitHub.
+Swift Charts предназначены для работы со SwiftUI, но вы все равно можете использовать их в проекте UIKit. Вы можете ознакомиться с моей недавней книгой «Интеграция SwiftUI в приложения UIKit», чтобы узнать, как добавить вью из SwiftUI в существующий проект UIKit, чтобы в полной мере воспользоваться преимуществами новых API iOS 16.
+Оригинал статьи
+Подписывайся на наши соцсети: Telegram / VKontakte
+Вступай в открытый чат для iOS-разработчиков: t.me/swiftbook_chat
+Смотри бесплатные уроки по iOS-разработке с нуля В этом посте мы увидим, как построить зональную диаграмму, показывающую УФ-индекс в течение дня, взяв в качестве примера диаграмму УФ-индекса в системном приложении Погода для iOS. На диаграмме также будет линейная метка, заполненная линейным градиентом, чтобы подчеркнуть значения УФ-индекса, метка правила с точечной меткой, показывающая текущее время дня, и слой затемнения для той части диаграммы, где время уже прошло. Вот как будет выглядеть окончательный результат:   # Подготовка данных диаграммы Чтобы создать диаграмму, мы будем использовать небольшой набор демонстрационных данных значений УФ-индекса, записанных в Крайстчерче в определенный день. У нас будут даты на оси X и UV-индекс на оси Y, тем самым мы сопоставим наши данные с массивом кортежей со значениями дат и UV-индекса. Мы также жестко запрограммируем текущую дату на полдень. В реальном приложении данные УФ-индекса и текущая дата будут динамическими. extension Calendar {
+    static func date(bySettingHour hour: Int, of date: Date) -> Date? {
+        Calendar.current.date(
+            bySettingHour: hour,
+            minute: 0,
+            second: 0,
+            of: date
+        )
+    }
+}
+
+struct ContentView: View {
+    let currentDate = Calendar.date(bySettingHour: 12, of: Date())!
+    
+    let uvData = [
+        (hour: 6, uv: 0), (hour: 8, uv: 1),
+        (hour: 10, uv: 4), (hour: 12, uv: 6.5),
+        (hour: 14, uv: 8.2), (hour: 16, uv: 6),
+        (hour: 18, uv: 1.3), (hour: 20, uv: 0)
+    ]
+
+    var currentUVData: [(date: Date, uv: Double)] {
+        uvData.map {
+            (
+                date: Calendar.date(
+                    bySettingHour: $0.hour, of: currentDate
+                )!,
+                uv: $0.uv
+            )
+        }
+    }
+    
+    var body: some View {
+        ...
+    }
+} extension Calendar {
+    static func date(bySettingHour hour: Int, of date: Date) -> Date? {
+        Calendar.current.date(
+            bySettingHour: hour,
+            minute: 0,
+            second: 0,
+            of: date
+        )
+    }
+}
+
+struct ContentView: View {
+    let currentDate = Calendar.date(bySettingHour: 12, of: Date())!
+    
+    let uvData = [
+        (hour: 6, uv: 0), (hour: 8, uv: 1),
+        (hour: 10, uv: 4), (hour: 12, uv: 6.5),
+        (hour: 14, uv: 8.2), (hour: 16, uv: 6),
+        (hour: 18, uv: 1.3), (hour: 20, uv: 0)
+    ]
+
+    var currentUVData: [(date: Date, uv: Double)] {
+        uvData.map {
+            (
+                date: Calendar.date(
+                    bySettingHour: $0.hour, of: currentDate
+                )!,
+                uv: $0.uv
+            )
+        }
+    }
+    
+    var body: some View {
+        ...
+    }
+} # Создаем зональную диаграмму с линейной меткой Мы начнем с циклической обработки нашего набора данных и добавления AreaMark на диаграмму. Мы установим метод интерполяции на cardinal, чтобы получить сглаженные кривые и заполним пространство линейным градиентом, чтобы подчеркнуть значение УФ-индекса от низкого до высокого. AreaMark Chart {
+    ForEach(currentUVData, id: \.date) { dataPoint in
+        AreaMark(
+            x: .value("Time of day", dataPoint.date),
+            y: .value("UV index", dataPoint.uv)
+        )
+        .interpolationMethod(.cardinal)
+        .foregroundStyle(
+            .linearGradient(
+                colors: [.green, .yellow, .red],
+                startPoint: .bottom, endPoint: .top
+            )
+            .opacity(0.5)
+        )
+        .alignsMarkStylesWithPlotArea()
+    }
+} Chart {
+    ForEach(currentUVData, id: \.date) { dataPoint in
+        AreaMark(
+            x: .value("Time of day", dataPoint.date),
+            y: .value("UV index", dataPoint.uv)
+        )
+        .interpolationMethod(.cardinal)
+        .foregroundStyle(
+            .linearGradient(
+                colors: [.green, .yellow, .red],
+                startPoint: .bottom, endPoint: .top
+            )
+            .opacity(0.5)
+        )
+        .alignsMarkStylesWithPlotArea()
+    }
+} Обратите внимание, что я использую модификатор alignsMarkStylesWithPlotArea(), чтобы убедиться, что градиент использует всю площадь графика в качестве начальной и конечной точек, а не просто следует за меткой. Подробнее об этой технике я рассказывала в своем предыдущем посте Заливка столбцов градиентом в диаграммах Swift. alignsMarkStylesWithPlotArea() Заливка столбцов градиентом в диаграммах Swift   На этом этапе у нас будет область со слегка прозрачной заливкой, которая начинается с зеленого цвета для низких значений и заканчивается красным для самых высоких. Теперь мы добавим более яркий контур к диаграмме с помощью LineMark для тех же данных. Метка линии также будет заполнена линейным градиентом, но без какой-либо прозрачности. В то время, как создается приятный визуальный эффект, пользователям Voice Over не нужно слышать повторяющиеся данные диаграммы, поэтому мы скроем ее содержимое от Универсального доступа и оставим видимой только метку линии. LineMark Chart {
+    ForEach(currentUVData, id: \.date) { dataPoint in
+        AreaMark(...)
+            .accessibilityHidden(true)
+        
+        LineMark(
+            x: .value("Time of day", dataPoint.date),
+            y: .value("UV index", dataPoint.uv)
+        )
+        .interpolationMethod(.cardinal)
+        .foregroundStyle(
+            .linearGradient(
+                colors: [.green, .yellow, .red],
+                startPoint: .bottom, endPoint: .top
+            )
+        )
+        .lineStyle(StrokeStyle(lineWidth: 4))
+        .alignsMarkStylesWithPlotArea()
+    }
+} Chart {
+    ForEach(currentUVData, id: \.date) { dataPoint in
+        AreaMark(...)
+            .accessibilityHidden(true)
+        
+        LineMark(
+            x: .value("Time of day", dataPoint.date),
+            y: .value("UV index", dataPoint.uv)
+        )
+        .interpolationMethod(.cardinal)
+        .foregroundStyle(
+            .linearGradient(
+                colors: [.green, .yellow, .red],
+                startPoint: .bottom, endPoint: .top
+            )
+        )
+        .lineStyle(StrokeStyle(lineWidth: 4))
+        .alignsMarkStylesWithPlotArea()
+    }
+}   # Настройка меток осей По умолчанию диаграмма имеет только некоторые аннотации меток на оси Y. Я думаю, было бы лучше показать все возможные значения, которые может принимать УФ-индекс. Мы определим наши пользовательские метки оси с желаемым диапазоном. struct ContentView: View {
+    ...
+
+    var body: some View {
+        Chart {...}
+            .chartYAxis {
+                AxisMarks(
+                    format: .number,
+                    preset: .aligned,
+                    values: Array(0...12)
+                )
+            }
+    }
+} struct ContentView: View {
+    ...
+
+    var body: some View {
+        Chart {...}
+            .chartYAxis {
+                AxisMarks(
+                    format: .number,
+                    preset: .aligned,
+                    values: Array(0...12)
+                )
+            }
+    }
+} Еще одна замечательная вещь, которую следует добавить, — это описание значений, чтобы пользователи знали, является ли в настоящее время УФ-индекс низким, умеренным, высоким или экстремальным. Эти описания будут расположены на переднем крае диаграммы и будут вставлены внутрь области графика. struct ContentView: View {
+    ...
+
+    var body: some View {
+        Chart {...}
+        .chartYAxis {
+            AxisMarks(...)
+            
+            AxisMarks(
+                preset: .inset,
+                position: .leading,
+                values: [1, 3, 6, 8, 11]
+            ) { value in
+                AxisValueLabel(
+                    descriptionForUVIndex(value.as(Double.self)!)
+                )
+            }
+        }
+    }
+    
+    func descriptionForUVIndex(_ index: Double) -> String {
+        switch index {
+        case 0...2: return "Low"
+        case 3...5: return "Moderate"
+        case 6...7: return "High"
+        case 8...10: return "Very high"
+        default: return "Extreme"
+        }
+    }
+} struct ContentView: View {
+    ...
+
+    var body: some View {
+        Chart {...}
+        .chartYAxis {
+            AxisMarks(...)
+            
+            AxisMarks(
+                preset: .inset,
+                position: .leading,
+                values: [1, 3, 6, 8, 11]
+            ) { value in
+                AxisValueLabel(
+                    descriptionForUVIndex(value.as(Double.self)!)
+                )
+            }
+        }
+    }
+    
+    func descriptionForUVIndex(_ index: Double) -> String {
+        switch index {
+        case 0...2: return "Low"
+        case 3...5: return "Moderate"
+        case 6...7: return "High"
+        case 8...10: return "Very high"
+        default: return "Extreme"
+        }
+    }
+}   # Добавление меток правила и точки для указания текущего времени Чтобы привлечь внимание пользователя к текущему времени и значению UV-индекса, мы собираемся добавить RuleMark в ближайшую точку данных к текущему времени, которое у нас есть. Поскольку нам нужна только одна метка для всего графика, мы добавим ее за пределами цикла ForEach, но все же внутри Chart.]]></text>
+</doc>

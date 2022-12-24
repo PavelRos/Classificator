@@ -1,0 +1,387 @@
+<?xml version="1.0" ?>
+<doc>
+	<label auto="true" type="str" verify="true"><![CDATA[Develop]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[RustyGuard]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-11-30, 15:44]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/post/702598/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Реализация и применение Entity Component System на примере python]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Python]]></item>
+		<item type="str"><![CDATA[Программирование]]></item>
+		<item type="str"><![CDATA[Анализ и проектирование систем]]></item>
+		<item type="str"><![CDATA[Разработка игр]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[python]]></item>
+		<item type="str"><![CDATA[pygame]]></item>
+		<item type="str"><![CDATA[entity-component-system]]></item>
+		<item type="str"><![CDATA[паттерны проектирования]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[Немного теории
+Entity Component System (ECS) - это паттерн, используемый при разработке видеоигр, для хранения игровых объектов.
+Компоненты (Components)
+Все характеристики объектов находятся в минимальных структурах данных - компонентах, хранящих схожие смысловые величины. Например здоровье может являться компонентом, в котором будет храниться его максимальное и текущее значения.
+Хорошей практикой является создание наиболее ёмких смысловых компонентов. Никому не нужны раздутые компоненты, которые можно использовать для крайне малого числа сущностей.
+Сущности (Entity)
+Сами же игровые объекты (сущности) являются ни чем иным как совокупностью различных компонентов.
+Ничего кроме id сущность не имеет, однако по этому id можно получить соответствующие компоненты.
+В зависимости от компонентов из которых составлены сущности, они могут быть самыми различными объектами, от стрелы до мишени и многого другого. Добавив или убрав компонент можно значительно изменить поведение сущности.
+Системы (Systems)
+Вот у нас уже есть данные, но они никак не взаимодействуют друг с другом. Для этого и предназначены системы.
+Система - набор правил, влияющий на данные компонентов. Системы поочерёдно проходятся по каждому из зависимых компонентов, изменяя их.
+При этом каждая система независима от друг друга, и не влияет на компоненты которые к ней не относятся.
+Так, создав сущность с несколькими компонентами (например здоровье и координаты), на неё могут влиять две системы (регенерация и передвижение соответственно).
+При этом, системы могут быть безболезненно отключены. Убрав систему систему смерти, сущности не будут исчезать и с нулевым здоровьем, при этом всё остальное продолжит работать как прежде.
+Преимущества
+Производительность
+За счёт плоской структуры компонентов открываются широкие возможности оптимизации работы с памятью. Например в python можно использовать слоты для объектов, а в более низкоуровневых языках - эффективнее занимать блоки памяти под целые массивы компонентов.
+Расширяемость
+Так как каждая система независима, можно легко добавлять новые системы, не ломая старые.
+Гибкость
+Функционал объекта может быть изменён простым изменением состава компонентов.
+Система может быть выключена и это не сломает работу остальных систем.
+Пример реализации
+В данной статье хочу сконцентрироваться именно на использовании ECS, а не на реализации этого паттерна. Поэтому исходники класса EntityComponentSystem представлены в спойлерах. При желании можете подробнее изучить исходный код, он снабжён достаточным для понимания количеством комментариев.
+ecs_types.py
+unique_id.py
+entity_component_system.py
+Если вы собираетесь пользоваться моими исходниками - рекомендую добавить файл с аннотациями типов для удобной работы.
+entity_component_system.pyi
+Пример использования
+Давайте посмотрим, как с помощью ECS можно описать простую стрелу, врезающуюся в мишень.
+Начнём с импортов:
+from entity_component_system import EntityComponentSystem
+from ecs_types import EntityId
+from dataclasses import dataclass, field
+import math
+Будем описывать наши компоненты через датаклассы. Ведь в python это наиболее удобный способ описать такие простые объекты.
+Во-первых у стрелы должны быть координаты и размеры:
+@dataclass(slots=True)
+class ColliderComponent:
+    x: float
+    y: float
+    radius: float
+
+    def distance(self, other: 'ColliderComponent'):
+        return math.sqrt((self.x - other.x) ** 2 + (self.y - other.y) ** 2)
+
+    def is_intersecting(self, other: 'ColliderComponent'):
+        return self.distance(other) <= self.radius + other.radius
+Во-вторых нашей стреле необходима скорость с которой она будет двигаться:
+@dataclass(slots=True)
+class VelocityComponent:
+    speed_x: float = 0.0
+    speed_y: float = 0.0
+Ещё не забудем указать что она пропадает при контакте, нанося урон:
+@dataclass(slots=True)
+class DamageOnContactComponent:
+    damage: int
+    die_on_contact: bool = True
+Теперь у нас достаточно компонентов чтобы составить из них стрелу. Укажем как можно её собрать, зная необходимые характеристики:
+def create_arrow(x: float, y: float, angle: int, speed: float, damage: int):
+    arrow_radius = 15
+    return [
+        ColliderComponent(x, y, arrow_radius),
+        # Вектор скорости вычисляется на основе величины скорости и угла под которым пустили стрелу.
+        VelocityComponent(
+            speed_x=math.cos(math.radians(angle)) * speed,
+            speed_y=math.sin(math.radians(angle)) * speed
+        ),
+        DamageOnContactComponent(damage)
+    ]
+Перейдём к мишени. Для её создания не хватает компонента здоровья. Опишем его:
+@dataclass(slots=True)
+class HealthComponent:
+    max_amount: int
+    amount: int = field(default=None)
+
+    def __post_init__(self):
+        if self.amount is None:
+            self.amount = self.max_amount
+
+    def apply_damage(self, damage: int):
+        self.amount = max(0, self.amount - damage)
+Создадим же фабрику мишеней:
+def create_dummy(x: float, y: float, health: int):
+    dummy_radius = 50
+    return [
+        ColliderComponent(x, y, dummy_radius),
+        HealthComponent(
+            max_amount=health,
+        )
+    ]
+Вот мы и подготовили всё данные сущностей и компонентов. Опишем, что с ними надо делать.
+Заставим нашу стрелу двигаться. Для этого напишем систему, перемещающую объекты у которых есть скорость:
+def velocity_system(velocity: VelocityComponent, collider: ColliderComponent):
+    collider.x += velocity.speed_x
+    collider.y += velocity.speed_y
+Теперь наша стрела может летать. Скажем, что она должна делать при соприкосновении с мишенью:
+def damage_on_contact_system(entity_id: EntityId,
+                             # Запрашиваем EntityComponentSystem для удаления стрелы при попадании
+                             ecs: EntityComponentSystem,
+                             damage_on_contact: DamageOnContactComponent,
+                             collider: ColliderComponent):
+    # Проходимся по всем компонентам с координатами и здоровьем
+    for enemy_id, (enemy_health, enemy_collider) in ecs.get_entities_with_components(HealthComponent,
+                                                                                     ColliderComponent):
+        # Пусть стрела и не обладает здоровьем, но эта проверка нужна на тот случай если компонент окажется на сущности где оно есть       
+        if entity_id == enemy_id:
+            continue
+        
+        if collider.is_intersecting(enemy_collider):
+            enemy_health.apply_damage(damage_on_contact.damage)
+            if damage_on_contact.die_on_contact:
+                ecs.remove_entity(entity_id)
+                return
+Будем уничтожать сущности, здоровье которых упало до нуля:
+def death_system(entity_id: EntityId, health: HealthComponent, ecs: EntityComponentSystem):
+    if health.amount <= 0:
+        ecs.remove_entity(entity_id)
+Наконец все сущности, компоненты и системы описаны, осталось только убедиться что всё будет работать вместе.
+Для начала инициализируем все компоненты и системы:
+ecs = EntityComponentSystem()
+
+ecs.init_component(ColliderComponent)
+ecs.init_component(VelocityComponent)
+ecs.init_component(DamageOnContactComponent)
+ecs.init_component(HealthComponent)
+
+ecs.init_system(velocity_system)
+ecs.init_system(damage_on_contact_system)
+ecs.init_system(death_system)
+Теперь создадим мишень и стрелы, которые её уничтожат:
+ecs.create_entity(create_arrow(x=0, y=0, angle=45, speed=2, damage=50))
+ecs.create_entity(create_arrow(x=500, y=0, angle=135, speed=1.5, damage=50))
+ecs.create_entity(create_arrow(x=0, y=500, angle=-45, speed=1.1, damage=50))
+ecs.create_entity(create_arrow(x=500, y=500, angle=-135, speed=1, damage=50))
+ecs.create_entity(create_dummy(x=250, y=250, health=200))
+Для наглядной демонстрации результата используем pygame (на момент написания документация доступна только через веб архив):
+import pygame
+from pygame import Color
+from pygame.time import Clock
+
+screen = pygame.display.set_mode((500, 500))
+running = True
+clock = Clock()
+
+while running:
+    for event in pygame.event.get():
+
+        if event.type == pygame.QUIT:
+            running = False
+
+    ecs.update()
+
+    screen.fill((93, 161, 48))
+    for entity_id, (collider,) in ecs.get_entities_with_components(ColliderComponent):
+        pygame.draw.circle(screen, Color('gray'), (collider.x, collider.y), collider.radius)
+
+    pygame.display.flip()
+    clock.tick(60)
+Заключение
+Весь исходный код, представленный в статье собран в гисте.
+Реализация этого паттерна использована мной при создании онлайн стратегии в реальном времени на pygame. Если эта статья вам понравится, то я напишу статью, описывающую её работу.
+За помощь в написании спасибо @AlexandrovRoman Немного теории Entity Component System (ECS) - это паттерн, используемый при разработке видеоигр, для хранения игровых объектов. Компоненты (Components) Все характеристики объектов находятся в минимальных структурах данных - компонентах, хранящих схожие смысловые величины. Например здоровье может являться компонентом, в котором будет храниться его максимальное и текущее значения. Хорошей практикой является создание наиболее ёмких смысловых компонентов. Никому не нужны раздутые компоненты, которые можно использовать для крайне малого числа сущностей. Сущности (Entity) Сами же игровые объекты (сущности) являются ни чем иным как совокупностью различных компонентов. Ничего кроме id сущность не имеет, однако по этому id можно получить соответствующие компоненты. В зависимости от компонентов из которых составлены сущности, они могут быть самыми различными объектами, от стрелы до мишени и многого другого. Добавив или убрав компонент можно значительно изменить поведение сущности. Системы (Systems) Вот у нас уже есть данные, но они никак не взаимодействуют друг с другом. Для этого и предназначены системы. Система - набор правил, влияющий на данные компонентов. Системы поочерёдно проходятся по каждому из зависимых компонентов, изменяя их. При этом каждая система независима от друг друга, и не влияет на компоненты которые к ней не относятся. Так, создав сущность с несколькими компонентами (например здоровье и координаты), на неё могут влиять две системы (регенерация и передвижение соответственно). При этом, системы могут быть безболезненно отключены. Убрав систему систему смерти, сущности не будут исчезать и с нулевым здоровьем, при этом всё остальное продолжит работать как прежде. Преимущества Производительность За счёт плоской структуры компонентов открываются широкие возможности оптимизации работы с памятью. Например в python можно использовать слоты для объектов, а в более низкоуровневых языках - эффективнее занимать блоки памяти под целые массивы компонентов. Расширяемость Так как каждая система независима, можно легко добавлять новые системы, не ломая старые. Гибкость Функционал объекта может быть изменён простым изменением состава компонентов. Система может быть выключена и это не сломает работу остальных систем. Пример реализации В данной статье хочу сконцентрироваться именно на использовании ECS, а не на реализации этого паттерна. Поэтому исходники класса EntityComponentSystem представлены в спойлерах. При желании можете подробнее изучить исходный код, он снабжён достаточным для понимания количеством комментариев. ecs_types.py ecs_types.py     unique_id.py unique_id.py     entity_component_system.py entity_component_system.py     Если вы собираетесь пользоваться моими исходниками - рекомендую добавить файл с аннотациями типов для удобной работы. entity_component_system.pyi entity_component_system.pyi     Пример использования Давайте посмотрим, как с помощью ECS можно описать простую стрелу, врезающуюся в мишень. Начнём с импортов: from entity_component_system import EntityComponentSystem
+from ecs_types import EntityId
+from dataclasses import dataclass, field
+import math from entity_component_system import EntityComponentSystem
+from ecs_types import EntityId
+from dataclasses import dataclass, field
+import math Будем описывать наши компоненты через датаклассы. Ведь в python это наиболее удобный способ описать такие простые объекты. датаклассы Во-первых у стрелы должны быть координаты и размеры: @dataclass(slots=True)
+class ColliderComponent:
+    x: float
+    y: float
+    radius: float
+
+    def distance(self, other: 'ColliderComponent'):
+        return math.sqrt((self.x - other.x) ** 2 + (self.y - other.y) ** 2)
+
+    def is_intersecting(self, other: 'ColliderComponent'):
+        return self.distance(other) <= self.radius + other.radius @dataclass(slots=True)
+class ColliderComponent:
+    x: float
+    y: float
+    radius: float
+
+    def distance(self, other: 'ColliderComponent'):
+        return math.sqrt((self.x - other.x) ** 2 + (self.y - other.y) ** 2)
+
+    def is_intersecting(self, other: 'ColliderComponent'):
+        return self.distance(other) <= self.radius + other.radius Во-вторых нашей стреле необходима скорость с которой она будет двигаться: @dataclass(slots=True)
+class VelocityComponent:
+    speed_x: float = 0.0
+    speed_y: float = 0.0 @dataclass(slots=True)
+class VelocityComponent:
+    speed_x: float = 0.0
+    speed_y: float = 0.0 Ещё не забудем указать что она пропадает при контакте, нанося урон: @dataclass(slots=True)
+class DamageOnContactComponent:
+    damage: int
+    die_on_contact: bool = True @dataclass(slots=True)
+class DamageOnContactComponent:
+    damage: int
+    die_on_contact: bool = True Теперь у нас достаточно компонентов чтобы составить из них стрелу. Укажем как можно её собрать, зная необходимые характеристики: def create_arrow(x: float, y: float, angle: int, speed: float, damage: int):
+    arrow_radius = 15
+    return [
+        ColliderComponent(x, y, arrow_radius),
+        # Вектор скорости вычисляется на основе величины скорости и угла под которым пустили стрелу.
+        VelocityComponent(
+            speed_x=math.cos(math.radians(angle)) * speed,
+            speed_y=math.sin(math.radians(angle)) * speed
+        ),
+        DamageOnContactComponent(damage)
+    ] def create_arrow(x: float, y: float, angle: int, speed: float, damage: int):
+    arrow_radius = 15
+    return [
+        ColliderComponent(x, y, arrow_radius),
+        # Вектор скорости вычисляется на основе величины скорости и угла под которым пустили стрелу.
+        VelocityComponent(
+            speed_x=math.cos(math.radians(angle)) * speed,
+            speed_y=math.sin(math.radians(angle)) * speed
+        ),
+        DamageOnContactComponent(damage)
+    ] Перейдём к мишени. Для её создания не хватает компонента здоровья. Опишем его: @dataclass(slots=True)
+class HealthComponent:
+    max_amount: int
+    amount: int = field(default=None)
+
+    def __post_init__(self):
+        if self.amount is None:
+            self.amount = self.max_amount
+
+    def apply_damage(self, damage: int):
+        self.amount = max(0, self.amount - damage) @dataclass(slots=True)
+class HealthComponent:
+    max_amount: int
+    amount: int = field(default=None)
+
+    def __post_init__(self):
+        if self.amount is None:
+            self.amount = self.max_amount
+
+    def apply_damage(self, damage: int):
+        self.amount = max(0, self.amount - damage) Создадим же фабрику мишеней: def create_dummy(x: float, y: float, health: int):
+    dummy_radius = 50
+    return [
+        ColliderComponent(x, y, dummy_radius),
+        HealthComponent(
+            max_amount=health,
+        )
+    ] def create_dummy(x: float, y: float, health: int):
+    dummy_radius = 50
+    return [
+        ColliderComponent(x, y, dummy_radius),
+        HealthComponent(
+            max_amount=health,
+        )
+    ] Вот мы и подготовили всё данные сущностей и компонентов. Опишем, что с ними надо делать. Заставим нашу стрелу двигаться. Для этого напишем систему, перемещающую объекты у которых есть скорость: def velocity_system(velocity: VelocityComponent, collider: ColliderComponent):
+    collider.x += velocity.speed_x
+    collider.y += velocity.speed_y def velocity_system(velocity: VelocityComponent, collider: ColliderComponent):
+    collider.x += velocity.speed_x
+    collider.y += velocity.speed_y Теперь наша стрела может летать. Скажем, что она должна делать при соприкосновении с мишенью: def damage_on_contact_system(entity_id: EntityId,
+                             # Запрашиваем EntityComponentSystem для удаления стрелы при попадании
+                             ecs: EntityComponentSystem,
+                             damage_on_contact: DamageOnContactComponent,
+                             collider: ColliderComponent):
+    # Проходимся по всем компонентам с координатами и здоровьем
+    for enemy_id, (enemy_health, enemy_collider) in ecs.get_entities_with_components(HealthComponent,
+                                                                                     ColliderComponent):
+        # Пусть стрела и не обладает здоровьем, но эта проверка нужна на тот случай если компонент окажется на сущности где оно есть       
+        if entity_id == enemy_id:
+            continue
+        
+        if collider.is_intersecting(enemy_collider):
+            enemy_health.apply_damage(damage_on_contact.damage)
+            if damage_on_contact.die_on_contact:
+                ecs.remove_entity(entity_id)
+                return def damage_on_contact_system(entity_id: EntityId,
+                             # Запрашиваем EntityComponentSystem для удаления стрелы при попадании
+                             ecs: EntityComponentSystem,
+                             damage_on_contact: DamageOnContactComponent,
+                             collider: ColliderComponent):
+    # Проходимся по всем компонентам с координатами и здоровьем
+    for enemy_id, (enemy_health, enemy_collider) in ecs.get_entities_with_components(HealthComponent,
+                                                                                     ColliderComponent):
+        # Пусть стрела и не обладает здоровьем, но эта проверка нужна на тот случай если компонент окажется на сущности где оно есть       
+        if entity_id == enemy_id:
+            continue
+        
+        if collider.is_intersecting(enemy_collider):
+            enemy_health.apply_damage(damage_on_contact.damage)
+            if damage_on_contact.die_on_contact:
+                ecs.remove_entity(entity_id)
+                return Будем уничтожать сущности, здоровье которых упало до нуля: def death_system(entity_id: EntityId, health: HealthComponent, ecs: EntityComponentSystem):
+    if health.amount <= 0:
+        ecs.remove_entity(entity_id) def death_system(entity_id: EntityId, health: HealthComponent, ecs: EntityComponentSystem):
+    if health.amount <= 0:
+        ecs.remove_entity(entity_id) Наконец все сущности, компоненты и системы описаны, осталось только убедиться что всё будет работать вместе. Для начала инициализируем все компоненты и системы: ecs = EntityComponentSystem()
+
+ecs.init_component(ColliderComponent)
+ecs.init_component(VelocityComponent)
+ecs.init_component(DamageOnContactComponent)
+ecs.init_component(HealthComponent)
+
+ecs.init_system(velocity_system)
+ecs.init_system(damage_on_contact_system)
+ecs.init_system(death_system) ecs = EntityComponentSystem()
+
+ecs.init_component(ColliderComponent)
+ecs.init_component(VelocityComponent)
+ecs.init_component(DamageOnContactComponent)
+ecs.init_component(HealthComponent)
+
+ecs.init_system(velocity_system)
+ecs.init_system(damage_on_contact_system)
+ecs.init_system(death_system) Теперь создадим мишень и стрелы, которые её уничтожат: ecs.create_entity(create_arrow(x=0, y=0, angle=45, speed=2, damage=50))
+ecs.create_entity(create_arrow(x=500, y=0, angle=135, speed=1.5, damage=50))
+ecs.create_entity(create_arrow(x=0, y=500, angle=-45, speed=1.1, damage=50))
+ecs.create_entity(create_arrow(x=500, y=500, angle=-135, speed=1, damage=50))
+ecs.create_entity(create_dummy(x=250, y=250, health=200)) ecs.create_entity(create_arrow(x=0, y=0, angle=45, speed=2, damage=50))
+ecs.create_entity(create_arrow(x=500, y=0, angle=135, speed=1.5, damage=50))
+ecs.create_entity(create_arrow(x=0, y=500, angle=-45, speed=1.1, damage=50))
+ecs.create_entity(create_arrow(x=500, y=500, angle=-135, speed=1, damage=50))
+ecs.create_entity(create_dummy(x=250, y=250, health=200)) Для наглядной демонстрации результата используем pygame (на момент написания документация доступна только через веб архив): pygame веб архив import pygame
+from pygame import Color
+from pygame.time import Clock
+
+screen = pygame.display.set_mode((500, 500))
+running = True
+clock = Clock()
+
+while running:
+    for event in pygame.event.get():
+
+        if event.type == pygame.QUIT:
+            running = False
+
+    ecs.update()
+
+    screen.fill((93, 161, 48))
+    for entity_id, (collider,) in ecs.get_entities_with_components(ColliderComponent):
+        pygame.draw.circle(screen, Color('gray'), (collider.x, collider.y), collider.radius)
+
+    pygame.display.flip()
+    clock.tick(60) import pygame
+from pygame import Color
+from pygame.time import Clock
+
+screen = pygame.display.set_mode((500, 500))
+running = True
+clock = Clock()
+
+while running:
+    for event in pygame.event.get():
+
+        if event.type == pygame.QUIT:
+            running = False
+
+    ecs.update()
+
+    screen.fill((93, 161, 48))
+    for entity_id, (collider,) in ecs.get_entities_with_components(ColliderComponent):
+        pygame.draw.circle(screen, Color('gray'), (collider.x, collider.y), collider.radius)
+
+    pygame.display.flip()
+    clock.tick(60) Заключение Весь исходный код, представленный в статье собран в гисте. гисте Реализация этого паттерна использована мной при создании онлайн стратегии в реальном времени на pygame. Если эта статья вам понравится, то я напишу статью, описывающую её работу. За помощь в написании спасибо @AlexandrovRoman @AlexandrovRoman ]]></text>
+</doc>

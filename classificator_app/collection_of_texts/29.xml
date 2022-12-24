@@ -1,0 +1,644 @@
+<?xml version="1.0" ?>
+<doc>
+	<label auto="true" type="str" verify="true"><![CDATA[Develop]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[InfoWatch]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-12-16, 14:53]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/company/infowatch/blog/705968/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Кастомизация диалоговых окон WixToolSet на примере windows installer и executable packages]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Блог компании InfoWatch]]></item>
+		<item type="str"><![CDATA[Разработка под Windows]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[кастомизация]]></item>
+		<item type="str"><![CDATA[инсталляция]]></item>
+		<item type="str"><![CDATA[разработка]]></item>
+		<item type="str"><![CDATA[wix toolset]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[Приветствую!
+В этой статье я покажу вам свой вариант использования набора утилит WixToolSet для создания кастомных диалоговых окон с возможностью получения предустановленной информации (пароли, явки и прочие параметры). И приведу пример использования кастомных окон в простом кейсе.
+Тем, кому лениво читать, предлагаю ознакомиться с проектом на github.
+Проект состоит из двух частей:
+Установщик MSI — установщик основного продукта, в задачи которого входит:
+a.  запросить пароли пользователя и рута;
+b. скопировать скрипт в назначенную папку и запустить его с параметрами, по результату работы которого мы получаем файл с паролями;
+c. открыть блокнотом итоговый файл.
+Установщик EXE — альтернативный установщик, который позволяет предварительно установить все необходимые компоненты для работы основного продукта, а после и сам продукт.
+Его задачи и то, что мы делаем:
+a. устанавливаем необходимые компоненты (в качестве примера представлен код тихой установки MSSQL Server 2016);
+b. запрашиваем пароли пользователя и рута;
+c. запускаем установщик основного продукта, где полученные пароли пользователя и рута передаем в качестве параметров (установщик основного продукта запускается в тихом режиме, без диалоговых окон);
+d. установщик основного продукта выполняет все действия, указанные в п.1, за исключением п.1.а.
+Я не буду заострять внимание на основах создания проектов windows installer и executable packages, а также описывать связи между ними, так как тема данной статьи — кастомизация. Считаю, что данного кейса для демонстрации возможностей оных вполне хватает. Кто столкнулся с набором утилит впервые, предлагаю рабочий проект на github и несколько полезных ссылок в конце статьи. Поехали!
+Кастомизация пакетного установщика MSI
+По сценарию работы основного продукта у пользователя необходимо запросить пароли пользователя и рута, в этом нам поможет кастомное диалоговое окно.
+Рисунок №1
+Для этого создаем в проекте файл PasswordDlg.wxs со следующим содержанием:
+<!-- Перевод для ссылок вида !(loc.name) указываем в файле локализации Variables.wxl
+     Стили формата {\WixUI_Font_Name} описываются в файле сценария MyWixUI_InstallDir.wxs -->
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+ <Fragment>
+  <UI>
+    <!-- Задаем баннер, файл которого расположен в корне проекта. Требования к размерам картинки можно посмотреть тут -->
+    <Binary Id="BannerBmp" SourceFile="Banner.bmp" />
+    <!-- Задаем имя своего окна Id="PasswordDlg" и указываем название в поле Title -->
+    <Dialog Id="PasswordDlg" Width="370" Height="270" Title="!(loc.PasswordDialogTitle)">
+    <!-- Задаем оглавление окна, используем координаты X и Y, где центр оси левый верхний угол, и размер блока W,H -->
+      <Control Id="Title" Type="Text" X="15" Y="6" Width="160" Height="15" Transparent="yes" NoPrefix="yes" Text="{\WixUI_Font_Title}!(loc.PasswordTitle)" />
+    <!-- Задаем описание окна -->
+      <Control Id="Description" Type="Text" X="25" Y="23" Width="200" Height="15" Transparent="yes" NoPrefix="yes" Text="!(loc.PasswordTitleDescription)"   NoWrap="no"/>
+    <!-- Задаем banner, где в поле Text указывается Bynary Id, объявленный выше -->
+      <Control Id="BannerBitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="44" TabSkip="no" Text="BannerBmp" />
+      <Control Id="BannerLine" Type="Line" X="0" Y="44" Width="370" Height="0" />
+    <!-- Выводим информацию-пояснение к диалоговому окну -->
+      <Control Id="DialogInfo" Type="Text" X="20" Y="60" Width="228" Height="45" Text="!(loc.PasswordDialogInfo)" TabSkip="yes" Transparent="yes" />
+    <!-- Задаем поле для ввода пароля пользователя и привязываем к полю параметр ProperPasswordUser -->
+      <Control Id="LabelPwdUser" Type="Text" X="20" Y="100" Height="17" Width="95" Transparent="yes" Text="!(loc.LabelPasswordUser)" />
+      <Control Id="EditPwdUser" Type="Edit" X="100" Y="97"  Height="17" Width="150" Property="ProperPasswordUser" />
+    <!-- Задаем поле для ввода пароля рута и привязываем к полю параметр ProperPasswordRoot -->
+      <Control Id="LabelPwdRoot" Type="Text" X="20" Y="120" Height="17" Width="95" Transparent="yes" Text="!(loc.LabelPasswordRoot)" />
+      <Control Id="EditPwdRoot" Type="Edit" X="100" Y="117"  Height="17" Width="150" Property="ProperPasswordRoot" />
+    <!-- Выводим пояснение о требованиях к сложности пароля для пользователя -->
+      <Control Id="DialogDefaultPwdInfo" Type="Text" X="20" Y="150" Width="300" Height="40" Text="!(loc.PasswordDefaultPwdDescription)" TabSkip="yes" Transparent="yes" Disabled="yes" />
+    <!-- Рисуем разделительную линию и функциональные кнопки Назад, Далее и Отмена -->
+      <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
+      <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="!(loc.PasswordButtonNext)" />
+      <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="!(loc.PasswordButtonBack)" />
+      <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="!(loc.PasswordButtonCancel)">
+        <Publish Event="SpawnDialog" Value="CancelDlg">1</Publish>
+      </Control>
+    </Dialog>
+  </UI>
+  </Fragment>
+</Wix>
+В качестве локализации у нас будет выступать файл Variables.wxl со следующим содержанием:
+<!-- Тут, я думаю, понятно все и без комментариев -->
+<?xml version="1.0" encoding="utf-8"?>
+<WixLocalization Culture="ru-RU" xmlns="http://schemas.microsoft.com/wix/2006/localization">
+  <String Id="PasswordTitle">Настройка сервера</String>
+  <String Id="PasswordTitleDescription">Укажите информацию и нажмите кнопку "Далее"</String>
+  <String Id="PasswordDialogTitle">Установка [ProductName]</String>
+  <String Id="PasswordDialogInfo">Укажите пароли пользователей базы данных:</String>
+  <String Id="PasswordDefaultPwdDescription">Для обеспечения инфоромационной безопасности и сохранности корпоротивной информации, необходимо заменить пароли на более сложные</String>
+  <String Id="PasswordEnter">Введите пароль:</String>
+  <String Id="PasswordButtonNext">Далее</String>
+  <String Id="PasswordButtonBack">Назад</String>
+  <String Id="PasswordButtonCancel">Отмена</String>
+
+  <String Id="LabelUserName">Пользователь:</String>
+  <String Id="LabelPasswordUser">Пароль для пользователя:</String>
+  <String Id="LabelPasswordRoot">Пароль для рута:</String>
+</WixLocalization>
+Далее, нам необходимо создать свой сценарий диалоговых окон (далее - сценарий), куда будет добавлено новое окно для запроса пароля пользователя и рута. В нашем проекте мы используем сценарий WixUI_InstallDir, файл которого расположен по пути: C:\Program Files (x86)\WiX Toolset v3.11\SDK\wixui\WixUI_InstallDir.wxs.
+Копируем этот файл в наш проект, предварительно переименовав в MyWixUI_InstallDir.wxs.
+Набор утилит WixToolSet предоставляет несколько стандартных сценариев диалоговых окон. Список всех доступных сценариев можно посмотреть тут.
+Как вы поняли из названия, сценарий представляет собой цепочку из диалоговых окон с описанием действий при нажатии на кнопки: «Далее», «Назад», «Отмена» и т.д. Нам остается всего лишь вставить свое окно в цепочку и указать ссылки на предыдущее и следующее окна.
+Полный список доступных диалоговых окон можно посмотреть тут.
+Содержание файла MyWixUI_InstallDir.wxs у нас следующее:
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+    <Fragment>
+      <!-- Даем новое имя нашему сценарию -->
+      <UI Id="MyWixUI_InstallDir">
+        <!-- Определяем стили текста, WixUI_Font_Title также используется в PasswordDlg.wxs -->WixUI_Font_Title используется в PasswordDlg.wxs
+        <TextStyle Id="WixUI_Font_Normal" FaceName="Tahoma" Size="8" />
+        <TextStyle Id="WixUI_Font_Bigger" FaceName="Tahoma" Size="12" />
+        <TextStyle Id="WixUI_Font_Title" FaceName="Tahoma" Size="9" Bold="yes" />
+        <Property Id="DefaultUIFont" Value="WixUI_Font_Normal" />
+        <Property Id="WixUI_Mode" Value="InstallDir" />
+        <!-- Перечень ссылок на вспомогательные диалоговые окна -->
+        <DialogRef Id="BrowseDlg" />
+        <DialogRef Id="DiskCostDlg" />
+        <DialogRef Id="ErrorDlg" />
+        <DialogRef Id="FatalError" />
+        <DialogRef Id="FilesInUse" />
+        <DialogRef Id="MsiRMFilesInUse" />
+        <DialogRef Id="PrepareDlg" />
+        <DialogRef Id="ProgressDlg" />
+        <DialogRef Id="ResumeDlg" />
+        <DialogRef Id="UserExit" />
+        <!-- Далее, мы публикуем диалоговые окна в определенном порядке, параметры публикации описаны тут, а условия тут -->
+        <Publish Dialog="BrowseDlg" Control="OK" Event="DoAction" Value="WixUIValidatePath" Order="3">1</Publish>
+        <Publish Dialog="BrowseDlg" Control="OK" Event="SpawnDialog" Value="InvalidDirDlg" Order="4"><![CDATA[NOT WIXUI_DONTVALIDATEPATH AND WIXUI_INSTALLDIR_VALID<>"1"</Publish>
+        <Publish Dialog="ExitDialog" Control="Finish" Event="EndDialog" Value="Return" Order="999">1</Publish>
+        
+        <!-- Начало сценария, окно приветствия -->
+        <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="LicenseAgreementDlg">NOT Installed</Publish>
+        <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="VerifyReadyDlg">Installed AND PATCH</Publish>
+        <!-- Для окна лицензионного соглашения изменяем переход на PasswordDlg -->
+        <Publish Dialog="LicenseAgreementDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg">1</Publish>
+        <Publish Dialog="LicenseAgreementDlg" Control="Next" Event="NewDialog" Value="PasswordDlg">LicenseAccepted = "1"</Publish>
+        <!-- Добавляем наше диалоговое окно, при этом меняем значение Value для перехода на InstallDirDlg и возврата к LicenseAgreementDlg →
+
+        <Publish Dialog="PasswordDlg" Control="Back" Event="NewDialog" Value="LicenseAgreementDlg">1</Publish>
+        <Publish Dialog="PasswordDlg" Control="Next" Event="NewDialog" Value="InstallDirDlg">1</Publish>
+        <!-- Для окна выбора пути установки изменяем возврат к PasswordDlg -->
+        <Publish Dialog="InstallDirDlg" Control="Back" Event="NewDialog" Value="PasswordDlg">1</Publish>
+        <!-- Дальше можно ничего не трогать -->
+        <Publish Dialog="InstallDirDlg" Control="Next" Event="SetTargetPath" Value="[WIXUI_INSTALLDIR]" Order="1">1</Publish>
+        <Publish Dialog="InstallDirDlg" Control="Next" Event="DoAction" Value="WixUIValidatePath" Order="2">NOT WIXUI_DONTVALIDATEPATH</Publish>
+        <Publish Dialog="InstallDirDlg" Control="Next" Event="SpawnDialog" Value="InvalidDirDlg" Order="3"><![CDATA[NOT WIXUI_DONTVALIDATEPATH AND WIXUI_INSTALLDIR_VALID<>"1"</Publish>
+        <Publish Dialog="InstallDirDlg" Control="Next" Event="NewDialog" Value="VerifyReadyDlg" Order="4">WIXUI_DONTVALIDATEPATH OR WIXUI_INSTALLDIR_VALID="1"</Publish>
+        <Publish Dialog="InstallDirDlg" Control="ChangeFolder" Property="_BrowseProperty" Value="[WIXUI_INSTALLDIR]" Order="1">1</Publish>
+        <Publish Dialog="InstallDirDlg" Control="ChangeFolder" Event="SpawnDialog" Value="BrowseDlg" Order="2">1</Publish>
+        <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="InstallDirDlg" Order="1">NOT Installed</Publish>
+        <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="MaintenanceTypeDlg" Order="2">Installed AND NOT PATCH</Publish>
+        <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg" Order="2">Installed AND PATCH</Publish>
+        <Publish Dialog="MaintenanceWelcomeDlg" Control="Next" Event="NewDialog" Value="MaintenanceTypeDlg">1</Publish>
+        <Publish Dialog="MaintenanceTypeDlg" Control="RepairButton" Event="NewDialog" Value="VerifyReadyDlg">1</Publish>
+        <Publish Dialog="MaintenanceTypeDlg" Control="RemoveButton" Event="NewDialog" Value="VerifyReadyDlg">1</Publish>
+        <Publish Dialog="MaintenanceTypeDlg" Control="Back" Event="NewDialog" Value="MaintenanceWelcomeDlg">1</Publish>
+        <Property Id="ARPNOMODIFY" Value="1" />
+        </UI>
+        <UIRef Id="WixUI_Common" />
+    </Fragment>
+</Wix>
+Теперь осталось добавить наш новый сценарий, картинки баннера и хедера в проект, для этого в файле Product.wxs указываем:
+<!-- Тут указываем свою цепочку диалоговых окон -->
+<UIRef Id="MyWixUI_InstallDir"/>
+<!-- Тут указываем картинку для баннера -->
+<WixVariable Id="WixUIBannerBmp" Value="Banner.bmp" />
+<!-- Тут указываем картинку для хедера диалогового окна -->
+<WixVariable Id="WixUIDialogBmp" Value="Dialog.bmp" />
+На этом вся работы выполнена, можно запускать проект и наслаждаться результатом.
+Рисунок №2
+Кастомизация исполняемого установщика EXE
+Основная цель использования альтернативного установщика EXE - инсталляция дополнительных компонентов для работы основного продукта. Также для удобства мы запросим пароли пользователя и рута, передадим их в качестве параметров в установщик MSI, который запускается в тихом режим, без демонстрации диалоговых окон.
+Для наших целей нам подойдет кастомизация окна опций установщика MSI, где в качестве шаблона установщика мы используем RtfLargeTheme.xml и файл локализации RtfTheme.wxl.
+Копируем эти файлы в наш проект, предварительно переименовав в MyRtfLargeTheme.xml и MyRtfTheme.wxl, соответственно. Файлы расположены тут: C:\Program Files (x86)\WiX Toolset v3.11\SDK\themes.
+Чтобы попасть в опции необходимо нажать кнопку “Опции” в окне приветствия, после запуска установщика EXE, далее нам откроется окно запроса паролей пользователя и рута, как показано на рисунке 3.
+Рисунок №3
+Для получения такого окна необходимо изменить файл шаблона MyRtfLargeTheme.xml, разделы <Page Name=“Install“> и <Page Name=“Options“>, содержание которого выглядит так:
+<!--Перевод для ссылок вида #(loc.name) указываем в файле локализации, обратите внимание на то, что в проекте MSI ссылки были вида !(loc.name)-->
+<!--Описываем окно Приветствия, добавляем версию проекта и кнопку Опции-->
+<Page Name="Install">
+    <Text X="11" Y="80" Width="-11" Height="-70" TabStop="no" FontId="2" HexStyle="0x800000" DisablePrefix="yes" />
+    <Richedit Name="EulaRichedit" X="12" Y="81" Width="-12" Height="-71" TabStop="yes" FontId="0" />
+        <Text Name="InstallVersion" X="11" Y="-41" Width="210" Height="17" FontId="3" DisablePrefix="yes" HideWhenDisabled="yes">#(loc.InstallVersion)</Text>
+        <Checkbox Name="EulaAcceptCheckbox" X="-11" Y="-41" Width="260" Height="17" TabStop="yes" FontId="3" HideWhenDisabled="yes">#(loc.InstallAcceptCheckbox)</Checkbox>
+        <!--Добавляем кнопку Опции, где и буду запрашиваться наши параметры-->
+        <Button Name="OptionsButton" X="-191" Y="-11" Width="75" Height="23" TabStop="yes" FontId="0" HideWhenDisabled="yes">#(loc.InstallOptionsButton)</Button>
+        <Button Name="InstallButton" X="-91" Y="-11" Width="95" Height="23" TabStop="yes" FontId="0">#(loc.InstallInstallButton)</Button>
+        <Button Name="WelcomeCancelButton" X="-11" Y="-11" Width="75" Height="23" TabStop="yes" FontId="0">#(loc.InstallCloseButton)</Button>
+    </Page>
+
+
+<!--Описываем окно Опции, добавляем поля для ввода паролей пользователя и рута-->
+<Page Name="Options">
+        <Text X="11" Y="80" Width="-11" Height="30" FontId="2" DisablePrefix="yes">#(loc.OptionsHeader)</Text>
+         <!--Создаем поле для ввода пароля пользователя--> 
+        <Text X="11" Y="121" Width="-11" Height="17" FontId="3" DisablePrefix="yes">#(loc.OptionsUserPwd)</Text>
+        <Editbox Name="UserPwdEditbox" X="11" Y="143" Width="-91" Height="21" TabStop="yes" FontId="3" FileSystemAutoComplete="yes">DefaultUserPwd</Editbox>
+         <!--Создаем поле для ввода пароля рута--> 
+        <Text X="11" Y="171" Width="-11" Height="17" FontId="3" DisablePrefix="yes">#(loc.OptionsRootPwd)</Text>
+        <Editbox Name="RootPwdEditbox" X="11" Y="193" Width="-91" Height="21" TabStop="yes" FontId="3" FileSystemAutoComplete="yes">DefaultRootPwd</Editbox>
+        <!--Кнопки ОК и Отмена-->
+        <Button Name="OptionsOkButton" X="-91" Y="-11" Width="75" Height="23" TabStop="yes" FontId="0">#(loc.OptionsOkButton)</Button>
+        <Button Name="OptionsCancelButton" X="-11" Y="-11" Width="75" Height="23" TabStop="yes" FontId="0">#!(loc.!(loc.(loc.OptionsCancelButton)</Button>
+    </Page>
+Содержание файла локализации MyRtfTheme.wxl я показывать не буду, думаю, что с ним вы разберетесь самостоятельно.
+Нам осталось указать получившиеся шаблон и локализацию в проект, для этого нам нужно внести изменения в файл Bundle.wxs, добавив следующее:
+<BootstrapperApplicationRef Id="WixStandardBootstrapperApplication.RtfLicense">
+      <bal:WixStandardBootstrapperApplication
+          <!-- Укажем файл лицензионного соглашения, который расположен в корне проекта--> 
+      LicenseFile="EULA-RU.rtf"
+          <!-- Укажем иконку для проекта, которая расположена в корне проекта--> 
+      LogoFile="logo.ico"
+          <!-- Укажем возможность починки проекта через инсталлятор-->
+      SuppressRepair="no"
+          <!-- Укажем созданные шаблон и файл локализации, которые расположены в корне проекта--> 
+          ThemeFile="MyRtfLargeTheme.xml"
+          LocalizationFile="MyRtfTheme.wxl"
+          <!-- Показываем версию проекта в окне установщика--> 
+          ShowVersion="yes"/>
+</BootstrapperApplicationRef>
+
+<!-- Создадим две переменные для хранения значений паролей, полученных в окне опций. Использовать переменные не обязательно, но в данном случае нас интересует параметр Hidden=”yes”, который позволяет скрыть значение паролей при передаче в качестве параметров.-->
+
+<!-- В Value записываем значение, полученное из контрола EditBox [UserPwdEditbox], определенного в опциях -->
+<Variable Name="UserPwdVariable" Type="string" bal:Overridable="yes" Value="[UserPwdEditbox]" Hidden="yes" />
+
+<!-- В Value записываем значение, полученное из контрола EditBox [RootPwdEditbox], определенного в опциях -->
+<Variable Name="RootPwdVariable" Type="string" bal:Overridable="yes" Value="[RootPwdEditbox]" Hidden="yes" />
+
+<!-- В цепочке мы указываем наш установщик и передаем пароли как параметры -->
+<Chain>
+   <!--Установка дополнительной компоненты-->
+   <ExePackage Id="InstallPackage" …
+   </ExePackage>
+    
+   <!--Запускаем основной проект и параметрами передаем пароли-->
+   <MsiPackage Id="InstallMSI" SourceFile= "$(var.WixToolSet_MSI.TargetDir)WixToolSet_MSI.msi"
+               DisplayName="Установка MSI"
+               Visible="yes"
+               Vital="yes">
+      <MsiProperty Name="APPLICATIONFOLDER" Value="[SourceFolder]"/>
+<!--Передаем значения полученных паролей в качестве параметров-->
+      <MsiProperty Name="PROPPWDROOT" Value="[RootPwdVariable]" />
+      <MsiProperty Name="PROPPWDUSER" Value="[UserPwdVariable]" />
+   </MsiPackage>
+</Chain>
+В итоге у нас получилась некая обертка, которая позволяет установить все необходимые зависимости или компоненты для вашего продукта, а после сам продукт, предварительно запросив всю необходимую информацию.
+Рисунок №4
+Как мы видим, сложности в получении необходимой информации для полной и качественной установки вашего приложения нет, все будет зависеть только от вашей фантазии и разумности.
+Надеюсь, сильно ругать не будете, это моя первая статья. Проба пера!
+Всем спасибо и до скорого!
+Автор статьи: Сокол Даниил
+П.С. Полезные ссылки для изучения набора утилит WixToolSet.
+Статьи от @Terror, где описаны основы работы с wixtoolset:
+Создание инсталлятора с помощью WiX.
+Создание инсталлятора с помощью WiX. Часть 2.
+Создание инсталлятора с помощью WiX. Часть 3.
+Статья от автора @Revolution, где описан прекрасный способ сборки пакета msi со сторонними файлами:
+Автоматическое добавление файлов в WiX инсталлятор. Приветствую! В этой статье я покажу вам свой вариант использования набора утилит WixToolSet для создания кастомных диалоговых окон с возможностью получения предустановленной информации (пароли, явки и прочие параметры). И приведу пример использования кастомных окон в простом кейсе. WixToolSet    Тем, кому лениво читать, предлагаю ознакомиться с проектом на github. github Проект состоит из двух частей: Установщик MSI — установщик основного продукта, в задачи которого входит:
+a.  запросить пароли пользователя и рута;
+b. скопировать скрипт в назначенную папку и запустить его с параметрами, по результату работы которого мы получаем файл с паролями;
+c. открыть блокнотом итоговый файл.
+Установщик EXE — альтернативный установщик, который позволяет предварительно установить все необходимые компоненты для работы основного продукта, а после и сам продукт.
+Его задачи и то, что мы делаем:
+a. устанавливаем необходимые компоненты (в качестве примера представлен код тихой установки MSSQL Server 2016);
+b. запрашиваем пароли пользователя и рута;
+c. запускаем установщик основного продукта, где полученные пароли пользователя и рута передаем в качестве параметров (установщик основного продукта запускается в тихом режиме, без диалоговых окон);
+d. установщик основного продукта выполняет все действия, указанные в п.1, за исключением п.1.а. Установщик MSI — установщик основного продукта, в задачи которого входит:
+a.  запросить пароли пользователя и рута;
+b. скопировать скрипт в назначенную папку и запустить его с параметрами, по результату работы которого мы получаем файл с паролями;
+c. открыть блокнотом итоговый файл. Установщик MSI — установщик основного продукта, в задачи которого входит:
+a.  запросить пароли пользователя и рута;
+b. скопировать скрипт в назначенную папку и запустить его с параметрами, по результату работы которого мы получаем файл с паролями;
+c. открыть блокнотом итоговый файл.    Установщик EXE — альтернативный установщик, который позволяет предварительно установить все необходимые компоненты для работы основного продукта, а после и сам продукт. Установщик EXE — альтернативный установщик, который позволяет предварительно установить все необходимые компоненты для работы основного продукта, а после и сам продукт. Его задачи и то, что мы делаем:
+a. устанавливаем необходимые компоненты (в качестве примера представлен код тихой установки MSSQL Server 2016);
+b. запрашиваем пароли пользователя и рута;
+c. запускаем установщик основного продукта, где полученные пароли пользователя и рута передаем в качестве параметров (установщик основного продукта запускается в тихом режиме, без диалоговых окон);
+d. установщик основного продукта выполняет все действия, указанные в п.1, за исключением п.1.а. Его задачи и то, что мы делаем:
+a. устанавливаем необходимые компоненты (в качестве примера представлен код тихой установки MSSQL Server 2016);
+b. запрашиваем пароли пользователя и рута;
+c. запускаем установщик основного продукта, где полученные пароли пользователя и рута передаем в качестве параметров (установщик основного продукта запускается в тихом режиме, без диалоговых окон);
+d. установщик основного продукта выполняет все действия, указанные в п.1, за исключением п.1.а.     Я не буду заострять внимание на основах создания проектов windows installer и executable packages, а также описывать связи между ними, так как тема данной статьи — кастомизация. Считаю, что данного кейса для демонстрации возможностей оных вполне хватает. Кто столкнулся с набором утилит впервые, предлагаю рабочий проект на github и несколько полезных ссылок в конце статьи. Поехали! Я не буду заострять внимание на основах создания проектов windows installer и executable packages, а также описывать связи между ними, так как тема данной статьи — кастомизация. Считаю, что данного кейса для демонстрации возможностей оных вполне хватает. Кто столкнулся с набором утилит впервые, предлагаю рабочий проект на github github и несколько полезных ссылок в конце статьи. Поехали! Кастомизация пакетного установщика MSI По сценарию работы основного продукта у пользователя необходимо запросить пароли пользователя и рута, в этом нам поможет кастомное диалоговое окно. Рисунок №1  Рисунок №1 Для этого создаем в проекте файл PasswordDlg.wxs со следующим содержанием: PasswordDlg.wxs <!-- Перевод для ссылок вида !(loc.name) указываем в файле локализации Variables.wxl
+     Стили формата {\WixUI_Font_Name} описываются в файле сценария MyWixUI_InstallDir.wxs -->
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+ <Fragment>
+  <UI>
+    <!-- Задаем баннер, файл которого расположен в корне проекта. Требования к размерам картинки можно посмотреть тут -->
+    <Binary Id="BannerBmp" SourceFile="Banner.bmp" />
+    <!-- Задаем имя своего окна Id="PasswordDlg" и указываем название в поле Title -->
+    <Dialog Id="PasswordDlg" Width="370" Height="270" Title="!(loc.PasswordDialogTitle)">
+    <!-- Задаем оглавление окна, используем координаты X и Y, где центр оси левый верхний угол, и размер блока W,H -->
+      <Control Id="Title" Type="Text" X="15" Y="6" Width="160" Height="15" Transparent="yes" NoPrefix="yes" Text="{\WixUI_Font_Title}!(loc.PasswordTitle)" />
+    <!-- Задаем описание окна -->
+      <Control Id="Description" Type="Text" X="25" Y="23" Width="200" Height="15" Transparent="yes" NoPrefix="yes" Text="!(loc.PasswordTitleDescription)"   NoWrap="no"/>
+    <!-- Задаем banner, где в поле Text указывается Bynary Id, объявленный выше -->
+      <Control Id="BannerBitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="44" TabSkip="no" Text="BannerBmp" />
+      <Control Id="BannerLine" Type="Line" X="0" Y="44" Width="370" Height="0" />
+    <!-- Выводим информацию-пояснение к диалоговому окну -->
+      <Control Id="DialogInfo" Type="Text" X="20" Y="60" Width="228" Height="45" Text="!(loc.PasswordDialogInfo)" TabSkip="yes" Transparent="yes" />
+    <!-- Задаем поле для ввода пароля пользователя и привязываем к полю параметр ProperPasswordUser -->
+      <Control Id="LabelPwdUser" Type="Text" X="20" Y="100" Height="17" Width="95" Transparent="yes" Text="!(loc.LabelPasswordUser)" />
+      <Control Id="EditPwdUser" Type="Edit" X="100" Y="97"  Height="17" Width="150" Property="ProperPasswordUser" />
+    <!-- Задаем поле для ввода пароля рута и привязываем к полю параметр ProperPasswordRoot -->
+      <Control Id="LabelPwdRoot" Type="Text" X="20" Y="120" Height="17" Width="95" Transparent="yes" Text="!(loc.LabelPasswordRoot)" />
+      <Control Id="EditPwdRoot" Type="Edit" X="100" Y="117"  Height="17" Width="150" Property="ProperPasswordRoot" />
+    <!-- Выводим пояснение о требованиях к сложности пароля для пользователя -->
+      <Control Id="DialogDefaultPwdInfo" Type="Text" X="20" Y="150" Width="300" Height="40" Text="!(loc.PasswordDefaultPwdDescription)" TabSkip="yes" Transparent="yes" Disabled="yes" />
+    <!-- Рисуем разделительную линию и функциональные кнопки Назад, Далее и Отмена -->
+      <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
+      <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="!(loc.PasswordButtonNext)" />
+      <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="!(loc.PasswordButtonBack)" />
+      <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="!(loc.PasswordButtonCancel)">
+        <Publish Event="SpawnDialog" Value="CancelDlg">1</Publish>
+      </Control>
+    </Dialog>
+  </UI>
+  </Fragment>
+</Wix> <!-- Перевод для ссылок вида !(loc.name) указываем в файле локализации Variables.wxl
+     Стили формата {\WixUI_Font_Name} описываются в файле сценария MyWixUI_InstallDir.wxs -->
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+ <Fragment>
+  <UI>
+    <!-- Задаем баннер, файл которого расположен в корне проекта. Требования к размерам картинки можно посмотреть тут -->
+    <Binary Id="BannerBmp" SourceFile="Banner.bmp" />
+    <!-- Задаем имя своего окна Id="PasswordDlg" и указываем название в поле Title -->
+    <Dialog Id="PasswordDlg" Width="370" Height="270" Title="!(loc.PasswordDialogTitle)">
+    <!-- Задаем оглавление окна, используем координаты X и Y, где центр оси левый верхний угол, и размер блока W,H -->
+      <Control Id="Title" Type="Text" X="15" Y="6" Width="160" Height="15" Transparent="yes" NoPrefix="yes" Text="{\WixUI_Font_Title}!(loc.PasswordTitle)" />
+    <!-- Задаем описание окна -->
+      <Control Id="Description" Type="Text" X="25" Y="23" Width="200" Height="15" Transparent="yes" NoPrefix="yes" Text="!(loc.PasswordTitleDescription)"   NoWrap="no"/>
+    <!-- Задаем banner, где в поле Text указывается Bynary Id, объявленный выше -->
+      <Control Id="BannerBitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="44" TabSkip="no" Text="BannerBmp" />
+      <Control Id="BannerLine" Type="Line" X="0" Y="44" Width="370" Height="0" />
+    <!-- Выводим информацию-пояснение к диалоговому окну -->
+      <Control Id="DialogInfo" Type="Text" X="20" Y="60" Width="228" Height="45" Text="!(loc.PasswordDialogInfo)" TabSkip="yes" Transparent="yes" />
+    <!-- Задаем поле для ввода пароля пользователя и привязываем к полю параметр ProperPasswordUser -->
+      <Control Id="LabelPwdUser" Type="Text" X="20" Y="100" Height="17" Width="95" Transparent="yes" Text="!(loc.LabelPasswordUser)" />
+      <Control Id="EditPwdUser" Type="Edit" X="100" Y="97"  Height="17" Width="150" Property="ProperPasswordUser" />
+    <!-- Задаем поле для ввода пароля рута и привязываем к полю параметр ProperPasswordRoot -->
+      <Control Id="LabelPwdRoot" Type="Text" X="20" Y="120" Height="17" Width="95" Transparent="yes" Text="!(loc.LabelPasswordRoot)" />
+      <Control Id="EditPwdRoot" Type="Edit" X="100" Y="117"  Height="17" Width="150" Property="ProperPasswordRoot" />
+    <!-- Выводим пояснение о требованиях к сложности пароля для пользователя -->
+      <Control Id="DialogDefaultPwdInfo" Type="Text" X="20" Y="150" Width="300" Height="40" Text="!(loc.PasswordDefaultPwdDescription)" TabSkip="yes" Transparent="yes" Disabled="yes" />
+    <!-- Рисуем разделительную линию и функциональные кнопки Назад, Далее и Отмена -->
+      <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
+      <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="!(loc.PasswordButtonNext)" />
+      <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="!(loc.PasswordButtonBack)" />
+      <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="!(loc.PasswordButtonCancel)">
+        <Publish Event="SpawnDialog" Value="CancelDlg">1</Publish>
+      </Control>
+    </Dialog>
+  </UI>
+  </Fragment>
+</Wix> В качестве локализации у нас будет выступать файл Variables.wxl со следующим содержанием: Variables.wxl <!-- Тут, я думаю, понятно все и без комментариев -->
+<?xml version="1.0" encoding="utf-8"?>
+<WixLocalization Culture="ru-RU" xmlns="http://schemas.microsoft.com/wix/2006/localization">
+  <String Id="PasswordTitle">Настройка сервера</String>
+  <String Id="PasswordTitleDescription">Укажите информацию и нажмите кнопку "Далее"</String>
+  <String Id="PasswordDialogTitle">Установка [ProductName]</String>
+  <String Id="PasswordDialogInfo">Укажите пароли пользователей базы данных:</String>
+  <String Id="PasswordDefaultPwdDescription">Для обеспечения инфоромационной безопасности и сохранности корпоротивной информации, необходимо заменить пароли на более сложные</String>
+  <String Id="PasswordEnter">Введите пароль:</String>
+  <String Id="PasswordButtonNext">Далее</String>
+  <String Id="PasswordButtonBack">Назад</String>
+  <String Id="PasswordButtonCancel">Отмена</String>
+
+  <String Id="LabelUserName">Пользователь:</String>
+  <String Id="LabelPasswordUser">Пароль для пользователя:</String>
+  <String Id="LabelPasswordRoot">Пароль для рута:</String>
+</WixLocalization> <!-- Тут, я думаю, понятно все и без комментариев -->
+<?xml version="1.0" encoding="utf-8"?>
+<WixLocalization Culture="ru-RU" xmlns="http://schemas.microsoft.com/wix/2006/localization">
+  <String Id="PasswordTitle">Настройка сервера</String>
+  <String Id="PasswordTitleDescription">Укажите информацию и нажмите кнопку "Далее"</String>
+  <String Id="PasswordDialogTitle">Установка [ProductName]</String>
+  <String Id="PasswordDialogInfo">Укажите пароли пользователей базы данных:</String>
+  <String Id="PasswordDefaultPwdDescription">Для обеспечения инфоромационной безопасности и сохранности корпоротивной информации, необходимо заменить пароли на более сложные</String>
+  <String Id="PasswordEnter">Введите пароль:</String>
+  <String Id="PasswordButtonNext">Далее</String>
+  <String Id="PasswordButtonBack">Назад</String>
+  <String Id="PasswordButtonCancel">Отмена</String>
+
+  <String Id="LabelUserName">Пользователь:</String>
+  <String Id="LabelPasswordUser">Пароль для пользователя:</String>
+  <String Id="LabelPasswordRoot">Пароль для рута:</String>
+</WixLocalization> Далее, нам необходимо создать свой сценарий диалоговых окон (далее - сценарий), куда будет добавлено новое окно для запроса пароля пользователя и рута. В нашем проекте мы используем сценарий WixUI_InstallDir, файл которого расположен по пути: C:\Program Files (x86)\WiX Toolset v3.11\SDK\wixui\WixUI_InstallDir.wxs. WixUI_InstallDir C:\Program Files (x86)\WiX Toolset v3.11\SDK\wixui\WixUI_InstallDir.wxs. Копируем этот файл в наш проект, предварительно переименовав в MyWixUI_InstallDir.wxs. MyWixUI_InstallDir.wxs Набор утилит WixToolSet предоставляет несколько стандартных сценариев диалоговых окон. Список всех доступных сценариев можно посмотреть тут. тут Как вы поняли из названия, сценарий представляет собой цепочку из диалоговых окон с описанием действий при нажатии на кнопки: «Далее», «Назад», «Отмена» и т.д. Нам остается всего лишь вставить свое окно в цепочку и указать ссылки на предыдущее и следующее окна. Полный список доступных диалоговых окон можно посмотреть тут. тут Содержание файла MyWixUI_InstallDir.wxs у нас следующее: MyWixUI_InstallDir.wxs <?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+    <Fragment>
+      <!-- Даем новое имя нашему сценарию -->
+      <UI Id="MyWixUI_InstallDir">
+        <!-- Определяем стили текста, WixUI_Font_Title также используется в PasswordDlg.wxs -->WixUI_Font_Title используется в PasswordDlg.wxs
+        <TextStyle Id="WixUI_Font_Normal" FaceName="Tahoma" Size="8" />
+        <TextStyle Id="WixUI_Font_Bigger" FaceName="Tahoma" Size="12" />
+        <TextStyle Id="WixUI_Font_Title" FaceName="Tahoma" Size="9" Bold="yes" />
+        <Property Id="DefaultUIFont" Value="WixUI_Font_Normal" />
+        <Property Id="WixUI_Mode" Value="InstallDir" />
+        <!-- Перечень ссылок на вспомогательные диалоговые окна -->
+        <DialogRef Id="BrowseDlg" />
+        <DialogRef Id="DiskCostDlg" />
+        <DialogRef Id="ErrorDlg" />
+        <DialogRef Id="FatalError" />
+        <DialogRef Id="FilesInUse" />
+        <DialogRef Id="MsiRMFilesInUse" />
+        <DialogRef Id="PrepareDlg" />
+        <DialogRef Id="ProgressDlg" />
+        <DialogRef Id="ResumeDlg" />
+        <DialogRef Id="UserExit" />
+        <!-- Далее, мы публикуем диалоговые окна в определенном порядке, параметры публикации описаны тут, а условия тут -->
+        <Publish Dialog="BrowseDlg" Control="OK" Event="DoAction" Value="WixUIValidatePath" Order="3">1</Publish>
+        <Publish Dialog="BrowseDlg" Control="OK" Event="SpawnDialog" Value="InvalidDirDlg" Order="4"><![CDATA[NOT WIXUI_DONTVALIDATEPATH AND WIXUI_INSTALLDIR_VALID<>"1"</Publish>
+        <Publish Dialog="ExitDialog" Control="Finish" Event="EndDialog" Value="Return" Order="999">1</Publish>
+        
+        <!-- Начало сценария, окно приветствия -->
+        <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="LicenseAgreementDlg">NOT Installed</Publish>
+        <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="VerifyReadyDlg">Installed AND PATCH</Publish>
+        <!-- Для окна лицензионного соглашения изменяем переход на PasswordDlg -->
+        <Publish Dialog="LicenseAgreementDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg">1</Publish>
+        <Publish Dialog="LicenseAgreementDlg" Control="Next" Event="NewDialog" Value="PasswordDlg">LicenseAccepted = "1"</Publish>
+        <!-- Добавляем наше диалоговое окно, при этом меняем значение Value для перехода на InstallDirDlg и возврата к LicenseAgreementDlg →
+
+        <Publish Dialog="PasswordDlg" Control="Back" Event="NewDialog" Value="LicenseAgreementDlg">1</Publish>
+        <Publish Dialog="PasswordDlg" Control="Next" Event="NewDialog" Value="InstallDirDlg">1</Publish>
+        <!-- Для окна выбора пути установки изменяем возврат к PasswordDlg -->
+        <Publish Dialog="InstallDirDlg" Control="Back" Event="NewDialog" Value="PasswordDlg">1</Publish>
+        <!-- Дальше можно ничего не трогать -->
+        <Publish Dialog="InstallDirDlg" Control="Next" Event="SetTargetPath" Value="[WIXUI_INSTALLDIR]" Order="1">1</Publish>
+        <Publish Dialog="InstallDirDlg" Control="Next" Event="DoAction" Value="WixUIValidatePath" Order="2">NOT WIXUI_DONTVALIDATEPATH</Publish>
+        <Publish Dialog="InstallDirDlg" Control="Next" Event="SpawnDialog" Value="InvalidDirDlg" Order="3"><![CDATA[NOT WIXUI_DONTVALIDATEPATH AND WIXUI_INSTALLDIR_VALID<>"1"</Publish>
+        <Publish Dialog="InstallDirDlg" Control="Next" Event="NewDialog" Value="VerifyReadyDlg" Order="4">WIXUI_DONTVALIDATEPATH OR WIXUI_INSTALLDIR_VALID="1"</Publish>
+        <Publish Dialog="InstallDirDlg" Control="ChangeFolder" Property="_BrowseProperty" Value="[WIXUI_INSTALLDIR]" Order="1">1</Publish>
+        <Publish Dialog="InstallDirDlg" Control="ChangeFolder" Event="SpawnDialog" Value="BrowseDlg" Order="2">1</Publish>
+        <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="InstallDirDlg" Order="1">NOT Installed</Publish>
+        <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="MaintenanceTypeDlg" Order="2">Installed AND NOT PATCH</Publish>
+        <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg" Order="2">Installed AND PATCH</Publish>
+        <Publish Dialog="MaintenanceWelcomeDlg" Control="Next" Event="NewDialog" Value="MaintenanceTypeDlg">1</Publish>
+        <Publish Dialog="MaintenanceTypeDlg" Control="RepairButton" Event="NewDialog" Value="VerifyReadyDlg">1</Publish>
+        <Publish Dialog="MaintenanceTypeDlg" Control="RemoveButton" Event="NewDialog" Value="VerifyReadyDlg">1</Publish>
+        <Publish Dialog="MaintenanceTypeDlg" Control="Back" Event="NewDialog" Value="MaintenanceWelcomeDlg">1</Publish>
+        <Property Id="ARPNOMODIFY" Value="1" />
+        </UI>
+        <UIRef Id="WixUI_Common" />
+    </Fragment>
+</Wix> <?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+    <Fragment>
+      <!-- Даем новое имя нашему сценарию -->
+      <UI Id="MyWixUI_InstallDir">
+        <!-- Определяем стили текста, WixUI_Font_Title также используется в PasswordDlg.wxs -->WixUI_Font_Title используется в PasswordDlg.wxs
+        <TextStyle Id="WixUI_Font_Normal" FaceName="Tahoma" Size="8" />
+        <TextStyle Id="WixUI_Font_Bigger" FaceName="Tahoma" Size="12" />
+        <TextStyle Id="WixUI_Font_Title" FaceName="Tahoma" Size="9" Bold="yes" />
+        <Property Id="DefaultUIFont" Value="WixUI_Font_Normal" />
+        <Property Id="WixUI_Mode" Value="InstallDir" />
+        <!-- Перечень ссылок на вспомогательные диалоговые окна -->
+        <DialogRef Id="BrowseDlg" />
+        <DialogRef Id="DiskCostDlg" />
+        <DialogRef Id="ErrorDlg" />
+        <DialogRef Id="FatalError" />
+        <DialogRef Id="FilesInUse" />
+        <DialogRef Id="MsiRMFilesInUse" />
+        <DialogRef Id="PrepareDlg" />
+        <DialogRef Id="ProgressDlg" />
+        <DialogRef Id="ResumeDlg" />
+        <DialogRef Id="UserExit" />
+        <!-- Далее, мы публикуем диалоговые окна в определенном порядке, параметры публикации описаны тут, а условия тут -->
+        <Publish Dialog="BrowseDlg" Control="OK" Event="DoAction" Value="WixUIValidatePath" Order="3">1</Publish>
+        <Publish Dialog="BrowseDlg" Control="OK" Event="SpawnDialog" Value="InvalidDirDlg" Order="4"><![CDATA[NOT WIXUI_DONTVALIDATEPATH AND WIXUI_INSTALLDIR_VALID<>"1"</Publish>
+        <Publish Dialog="ExitDialog" Control="Finish" Event="EndDialog" Value="Return" Order="999">1</Publish>
+        
+        <!-- Начало сценария, окно приветствия -->
+        <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="LicenseAgreementDlg">NOT Installed</Publish>
+        <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="VerifyReadyDlg">Installed AND PATCH</Publish>
+        <!-- Для окна лицензионного соглашения изменяем переход на PasswordDlg -->
+        <Publish Dialog="LicenseAgreementDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg">1</Publish>
+        <Publish Dialog="LicenseAgreementDlg" Control="Next" Event="NewDialog" Value="PasswordDlg">LicenseAccepted = "1"</Publish>
+        <!-- Добавляем наше диалоговое окно, при этом меняем значение Value для перехода на InstallDirDlg и возврата к LicenseAgreementDlg →
+
+        <Publish Dialog="PasswordDlg" Control="Back" Event="NewDialog" Value="LicenseAgreementDlg">1</Publish>
+        <Publish Dialog="PasswordDlg" Control="Next" Event="NewDialog" Value="InstallDirDlg">1</Publish>
+        <!-- Для окна выбора пути установки изменяем возврат к PasswordDlg -->
+        <Publish Dialog="InstallDirDlg" Control="Back" Event="NewDialog" Value="PasswordDlg">1</Publish>
+        <!-- Дальше можно ничего не трогать -->
+        <Publish Dialog="InstallDirDlg" Control="Next" Event="SetTargetPath" Value="[WIXUI_INSTALLDIR]" Order="1">1</Publish>
+        <Publish Dialog="InstallDirDlg" Control="Next" Event="DoAction" Value="WixUIValidatePath" Order="2">NOT WIXUI_DONTVALIDATEPATH</Publish>
+        <Publish Dialog="InstallDirDlg" Control="Next" Event="SpawnDialog" Value="InvalidDirDlg" Order="3"><![CDATA[NOT WIXUI_DONTVALIDATEPATH AND WIXUI_INSTALLDIR_VALID<>"1"</Publish>
+        <Publish Dialog="InstallDirDlg" Control="Next" Event="NewDialog" Value="VerifyReadyDlg" Order="4">WIXUI_DONTVALIDATEPATH OR WIXUI_INSTALLDIR_VALID="1"</Publish>
+        <Publish Dialog="InstallDirDlg" Control="ChangeFolder" Property="_BrowseProperty" Value="[WIXUI_INSTALLDIR]" Order="1">1</Publish>
+        <Publish Dialog="InstallDirDlg" Control="ChangeFolder" Event="SpawnDialog" Value="BrowseDlg" Order="2">1</Publish>
+        <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="InstallDirDlg" Order="1">NOT Installed</Publish>
+        <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="MaintenanceTypeDlg" Order="2">Installed AND NOT PATCH</Publish>
+        <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg" Order="2">Installed AND PATCH</Publish>
+        <Publish Dialog="MaintenanceWelcomeDlg" Control="Next" Event="NewDialog" Value="MaintenanceTypeDlg">1</Publish>
+        <Publish Dialog="MaintenanceTypeDlg" Control="RepairButton" Event="NewDialog" Value="VerifyReadyDlg">1</Publish>
+        <Publish Dialog="MaintenanceTypeDlg" Control="RemoveButton" Event="NewDialog" Value="VerifyReadyDlg">1</Publish>
+        <Publish Dialog="MaintenanceTypeDlg" Control="Back" Event="NewDialog" Value="MaintenanceWelcomeDlg">1</Publish>
+        <Property Id="ARPNOMODIFY" Value="1" />
+        </UI>
+        <UIRef Id="WixUI_Common" />
+    </Fragment>
+</Wix> Теперь осталось добавить наш новый сценарий, картинки баннера и хедера в проект, для этого в файле Product.wxs указываем: Product.wxs <!-- Тут указываем свою цепочку диалоговых окон -->
+<UIRef Id="MyWixUI_InstallDir"/>
+<!-- Тут указываем картинку для баннера -->
+<WixVariable Id="WixUIBannerBmp" Value="Banner.bmp" />
+<!-- Тут указываем картинку для хедера диалогового окна -->
+<WixVariable Id="WixUIDialogBmp" Value="Dialog.bmp" /> <!-- Тут указываем свою цепочку диалоговых окон -->
+<UIRef Id="MyWixUI_InstallDir"/>
+<!-- Тут указываем картинку для баннера -->
+<WixVariable Id="WixUIBannerBmp" Value="Banner.bmp" />
+<!-- Тут указываем картинку для хедера диалогового окна -->
+<WixVariable Id="WixUIDialogBmp" Value="Dialog.bmp" /> На этом вся работы выполнена, можно запускать проект и наслаждаться результатом. Рисунок №2  Рисунок №2 Кастомизация исполняемого установщика EXE Основная цель использования альтернативного установщика EXE - инсталляция дополнительных компонентов для работы основного продукта. Также для удобства мы запросим пароли пользователя и рута, передадим их в качестве параметров в установщик MSI, который запускается в тихом режим, без демонстрации диалоговых окон. Для наших целей нам подойдет кастомизация окна опций установщика MSI, где в качестве шаблона установщика мы используем RtfLargeTheme.xml и файл локализации RtfTheme.wxl. RtfLargeTheme.xml RtfTheme.wxl. Копируем эти файлы в наш проект, предварительно переименовав в MyRtfLargeTheme.xml и MyRtfTheme.wxl, соответственно. Файлы расположены тут: C:\Program Files (x86)\WiX Toolset v3.11\SDK\themes. MyRtfLargeTheme.xml MyRtfTheme.wxl, C:\Program Files (x86)\WiX Toolset v3.11\SDK\themes. Чтобы попасть в опции необходимо нажать кнопку “Опции” в окне приветствия, после запуска установщика EXE, далее нам откроется окно запроса паролей пользователя и рута, как показано на рисунке 3. Рисунок №3  Рисунок №3 Для получения такого окна необходимо изменить файл шаблона MyRtfLargeTheme.xml, разделы <Page Name=“Install“> и <Page Name=“Options“>, содержание которого выглядит так: MyRtfLargeTheme.xml <Page Name=“Install“> <Page Name=“Options“> <!--Перевод для ссылок вида #(loc.name) указываем в файле локализации, обратите внимание на то, что в проекте MSI ссылки были вида !(loc.name)-->
+<!--Описываем окно Приветствия, добавляем версию проекта и кнопку Опции-->
+<Page Name="Install">
+    <Text X="11" Y="80" Width="-11" Height="-70" TabStop="no" FontId="2" HexStyle="0x800000" DisablePrefix="yes" />
+    <Richedit Name="EulaRichedit" X="12" Y="81" Width="-12" Height="-71" TabStop="yes" FontId="0" />
+        <Text Name="InstallVersion" X="11" Y="-41" Width="210" Height="17" FontId="3" DisablePrefix="yes" HideWhenDisabled="yes">#(loc.InstallVersion)</Text>
+        <Checkbox Name="EulaAcceptCheckbox" X="-11" Y="-41" Width="260" Height="17" TabStop="yes" FontId="3" HideWhenDisabled="yes">#(loc.InstallAcceptCheckbox)</Checkbox>
+        <!--Добавляем кнопку Опции, где и буду запрашиваться наши параметры-->
+        <Button Name="OptionsButton" X="-191" Y="-11" Width="75" Height="23" TabStop="yes" FontId="0" HideWhenDisabled="yes">#(loc.InstallOptionsButton)</Button>
+        <Button Name="InstallButton" X="-91" Y="-11" Width="95" Height="23" TabStop="yes" FontId="0">#(loc.InstallInstallButton)</Button>
+        <Button Name="WelcomeCancelButton" X="-11" Y="-11" Width="75" Height="23" TabStop="yes" FontId="0">#(loc.InstallCloseButton)</Button>
+    </Page>
+
+
+<!--Описываем окно Опции, добавляем поля для ввода паролей пользователя и рута-->
+<Page Name="Options">
+        <Text X="11" Y="80" Width="-11" Height="30" FontId="2" DisablePrefix="yes">#(loc.OptionsHeader)</Text>
+         <!--Создаем поле для ввода пароля пользователя--> 
+        <Text X="11" Y="121" Width="-11" Height="17" FontId="3" DisablePrefix="yes">#(loc.OptionsUserPwd)</Text>
+        <Editbox Name="UserPwdEditbox" X="11" Y="143" Width="-91" Height="21" TabStop="yes" FontId="3" FileSystemAutoComplete="yes">DefaultUserPwd</Editbox>
+         <!--Создаем поле для ввода пароля рута--> 
+        <Text X="11" Y="171" Width="-11" Height="17" FontId="3" DisablePrefix="yes">#(loc.OptionsRootPwd)</Text>
+        <Editbox Name="RootPwdEditbox" X="11" Y="193" Width="-91" Height="21" TabStop="yes" FontId="3" FileSystemAutoComplete="yes">DefaultRootPwd</Editbox>
+        <!--Кнопки ОК и Отмена-->
+        <Button Name="OptionsOkButton" X="-91" Y="-11" Width="75" Height="23" TabStop="yes" FontId="0">#(loc.OptionsOkButton)</Button>
+        <Button Name="OptionsCancelButton" X="-11" Y="-11" Width="75" Height="23" TabStop="yes" FontId="0">#!(loc.!(loc.(loc.OptionsCancelButton)</Button>
+    </Page> <!--Перевод для ссылок вида #(loc.name) указываем в файле локализации, обратите внимание на то, что в проекте MSI ссылки были вида !(loc.name)-->
+<!--Описываем окно Приветствия, добавляем версию проекта и кнопку Опции-->
+<Page Name="Install">
+    <Text X="11" Y="80" Width="-11" Height="-70" TabStop="no" FontId="2" HexStyle="0x800000" DisablePrefix="yes" />
+    <Richedit Name="EulaRichedit" X="12" Y="81" Width="-12" Height="-71" TabStop="yes" FontId="0" />
+        <Text Name="InstallVersion" X="11" Y="-41" Width="210" Height="17" FontId="3" DisablePrefix="yes" HideWhenDisabled="yes">#(loc.InstallVersion)</Text>
+        <Checkbox Name="EulaAcceptCheckbox" X="-11" Y="-41" Width="260" Height="17" TabStop="yes" FontId="3" HideWhenDisabled="yes">#(loc.InstallAcceptCheckbox)</Checkbox>
+        <!--Добавляем кнопку Опции, где и буду запрашиваться наши параметры-->
+        <Button Name="OptionsButton" X="-191" Y="-11" Width="75" Height="23" TabStop="yes" FontId="0" HideWhenDisabled="yes">#(loc.InstallOptionsButton)</Button>
+        <Button Name="InstallButton" X="-91" Y="-11" Width="95" Height="23" TabStop="yes" FontId="0">#(loc.InstallInstallButton)</Button>
+        <Button Name="WelcomeCancelButton" X="-11" Y="-11" Width="75" Height="23" TabStop="yes" FontId="0">#(loc.InstallCloseButton)</Button>
+    </Page>
+
+
+<!--Описываем окно Опции, добавляем поля для ввода паролей пользователя и рута-->
+<Page Name="Options">
+        <Text X="11" Y="80" Width="-11" Height="30" FontId="2" DisablePrefix="yes">#(loc.OptionsHeader)</Text>
+         <!--Создаем поле для ввода пароля пользователя--> 
+        <Text X="11" Y="121" Width="-11" Height="17" FontId="3" DisablePrefix="yes">#(loc.OptionsUserPwd)</Text>
+        <Editbox Name="UserPwdEditbox" X="11" Y="143" Width="-91" Height="21" TabStop="yes" FontId="3" FileSystemAutoComplete="yes">DefaultUserPwd</Editbox>
+         <!--Создаем поле для ввода пароля рута--> 
+        <Text X="11" Y="171" Width="-11" Height="17" FontId="3" DisablePrefix="yes">#(loc.OptionsRootPwd)</Text>
+        <Editbox Name="RootPwdEditbox" X="11" Y="193" Width="-91" Height="21" TabStop="yes" FontId="3" FileSystemAutoComplete="yes">DefaultRootPwd</Editbox>
+        <!--Кнопки ОК и Отмена-->
+        <Button Name="OptionsOkButton" X="-91" Y="-11" Width="75" Height="23" TabStop="yes" FontId="0">#(loc.OptionsOkButton)</Button>
+        <Button Name="OptionsCancelButton" X="-11" Y="-11" Width="75" Height="23" TabStop="yes" FontId="0">#!(loc.!(loc.(loc.OptionsCancelButton)</Button>
+    </Page> Содержание файла локализации MyRtfTheme.wxl я показывать не буду, думаю, что с ним вы разберетесь самостоятельно. MyRtfTheme.wxl Нам осталось указать получившиеся шаблон и локализацию в проект, для этого нам нужно внести изменения в файл Bundle.wxs, добавив следующее: Bundle.wxs <BootstrapperApplicationRef Id="WixStandardBootstrapperApplication.RtfLicense">
+      <bal:WixStandardBootstrapperApplication
+          <!-- Укажем файл лицензионного соглашения, который расположен в корне проекта--> 
+      LicenseFile="EULA-RU.rtf"
+          <!-- Укажем иконку для проекта, которая расположена в корне проекта--> 
+      LogoFile="logo.ico"
+          <!-- Укажем возможность починки проекта через инсталлятор-->
+      SuppressRepair="no"
+          <!-- Укажем созданные шаблон и файл локализации, которые расположены в корне проекта--> 
+          ThemeFile="MyRtfLargeTheme.xml"
+          LocalizationFile="MyRtfTheme.wxl"
+          <!-- Показываем версию проекта в окне установщика--> 
+          ShowVersion="yes"/>
+</BootstrapperApplicationRef>
+
+<!-- Создадим две переменные для хранения значений паролей, полученных в окне опций. Использовать переменные не обязательно, но в данном случае нас интересует параметр Hidden=”yes”, который позволяет скрыть значение паролей при передаче в качестве параметров.-->
+
+<!-- В Value записываем значение, полученное из контрола EditBox [UserPwdEditbox], определенного в опциях -->
+<Variable Name="UserPwdVariable" Type="string" bal:Overridable="yes" Value="[UserPwdEditbox]" Hidden="yes" />
+
+<!-- В Value записываем значение, полученное из контрола EditBox [RootPwdEditbox], определенного в опциях -->
+<Variable Name="RootPwdVariable" Type="string" bal:Overridable="yes" Value="[RootPwdEditbox]" Hidden="yes" />
+
+<!-- В цепочке мы указываем наш установщик и передаем пароли как параметры -->
+<Chain>
+   <!--Установка дополнительной компоненты-->
+   <ExePackage Id="InstallPackage" …
+   </ExePackage>
+    
+   <!--Запускаем основной проект и параметрами передаем пароли-->
+   <MsiPackage Id="InstallMSI" SourceFile= "$(var.WixToolSet_MSI.TargetDir)WixToolSet_MSI.msi"
+               DisplayName="Установка MSI"
+               Visible="yes"
+               Vital="yes">
+      <MsiProperty Name="APPLICATIONFOLDER" Value="[SourceFolder]"/>
+<!--Передаем значения полученных паролей в качестве параметров-->
+      <MsiProperty Name="PROPPWDROOT" Value="[RootPwdVariable]" />
+      <MsiProperty Name="PROPPWDUSER" Value="[UserPwdVariable]" />
+   </MsiPackage>
+</Chain> <BootstrapperApplicationRef Id="WixStandardBootstrapperApplication.RtfLicense">
+      <bal:WixStandardBootstrapperApplication
+          <!-- Укажем файл лицензионного соглашения, который расположен в корне проекта--> 
+      LicenseFile="EULA-RU.rtf"
+          <!-- Укажем иконку для проекта, которая расположена в корне проекта--> 
+      LogoFile="logo.ico"
+          <!-- Укажем возможность починки проекта через инсталлятор-->
+      SuppressRepair="no"
+          <!-- Укажем созданные шаблон и файл локализации, которые расположены в корне проекта--> 
+          ThemeFile="MyRtfLargeTheme.xml"
+          LocalizationFile="MyRtfTheme.wxl"
+          <!-- Показываем версию проекта в окне установщика--> 
+          ShowVersion="yes"/>
+</BootstrapperApplicationRef>
+
+<!-- Создадим две переменные для хранения значений паролей, полученных в окне опций. Использовать переменные не обязательно, но в данном случае нас интересует параметр Hidden=”yes”, который позволяет скрыть значение паролей при передаче в качестве параметров.-->
+
+<!-- В Value записываем значение, полученное из контрола EditBox [UserPwdEditbox], определенного в опциях -->
+<Variable Name="UserPwdVariable" Type="string" bal:Overridable="yes" Value="[UserPwdEditbox]" Hidden="yes" />
+
+<!-- В Value записываем значение, полученное из контрола EditBox [RootPwdEditbox], определенного в опциях -->
+<Variable Name="RootPwdVariable" Type="string" bal:Overridable="yes" Value="[RootPwdEditbox]" Hidden="yes" />
+
+<!-- В цепочке мы указываем наш установщик и передаем пароли как параметры -->
+<Chain>
+   <!--Установка дополнительной компоненты-->
+   <ExePackage Id="InstallPackage" …
+   </ExePackage>
+    
+   <!--Запускаем основной проект и параметрами передаем пароли-->
+   <MsiPackage Id="InstallMSI" SourceFile= "$(var.WixToolSet_MSI.TargetDir)WixToolSet_MSI.msi"
+               DisplayName="Установка MSI"
+               Visible="yes"
+               Vital="yes">
+      <MsiProperty Name="APPLICATIONFOLDER" Value="[SourceFolder]"/>
+<!--Передаем значения полученных паролей в качестве параметров-->
+      <MsiProperty Name="PROPPWDROOT" Value="[RootPwdVariable]" />
+      <MsiProperty Name="PROPPWDUSER" Value="[UserPwdVariable]" />
+   </MsiPackage>
+</Chain> В итоге у нас получилась некая обертка, которая позволяет установить все необходимые зависимости или компоненты для вашего продукта, а после сам продукт, предварительно запросив всю необходимую информацию. Рисунок №4  Рисунок №4 Как мы видим, сложности в получении необходимой информации для полной и качественной установки вашего приложения нет, все будет зависеть только от вашей фантазии и разумности. Надеюсь, сильно ругать не будете, это моя первая статья. Проба пера! Всем спасибо и до скорого! Автор статьи: Сокол Даниил Автор статьи: Сокол Даниил  П.С. Полезные ссылки для изучения набора утилит WixToolSet. П.С. Полезные ссылки для изучения набора утилит WixToolSet. Статьи от @Terror, где описаны основы работы с wixtoolset: Terror Создание инсталлятора с помощью WiX.
+Создание инсталлятора с помощью WiX. Часть 2.
+Создание инсталлятора с помощью WiX. Часть 3.
+Статья от автора @Revolution, где описан прекрасный способ сборки пакета msi со сторонними файлами:
+Автоматическое добавление файлов в WiX инсталлятор. Создание инсталлятора с помощью WiX. Создание инсталлятора с помощью WiX. WiX Создание инсталлятора с помощью WiX. Часть 2. Создание инсталлятора с помощью WiX. Часть 2. WiX. Часть 2 Создание инсталлятора с помощью WiX. Часть 3. Создание инсталлятора с помощью WiX. Часть 3. WiX. Часть 3 Статья от автора @Revolution, где описан прекрасный способ сборки пакета msi со сторонними файлами: Статья от автора @Revolution, где описан прекрасный способ сборки пакета msi со сторонними файлами: Revolution Автоматическое добавление файлов в WiX инсталлятор. Автоматическое добавление файлов в WiX инсталлятор. WiX инсталлятор ]]></text>
+</doc>

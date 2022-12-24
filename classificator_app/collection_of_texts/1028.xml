@@ -1,0 +1,60 @@
+<?xml version="1.0" ?>
+<doc>
+	<label auto="true" type="str" verify="true"><![CDATA[Other]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[thenonsense]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-09-01, 19:57]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/post/685958/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Сайонара, Хабр]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Разработка игр]]></item>
+		<item type="str"><![CDATA[Прототипирование]]></item>
+		<item type="str"><![CDATA[Дизайн игр]]></item>
+		<item type="str"><![CDATA[Игры и игровые консоли]]></item>
+		<item type="str"><![CDATA[Godot]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[gamedev]]></item>
+		<item type="str"><![CDATA[demo]]></item>
+		<item type="str"><![CDATA[игростроение]]></item>
+		<item type="str"><![CDATA[разработка игр]]></item>
+		<item type="str"><![CDATA[godot]]></item>
+		<item type="str"><![CDATA[unigine]]></item>
+		<item type="str"><![CDATA[концепции]]></item>
+		<item type="str"><![CDATA[прототипирование]]></item>
+		<item type="str"><![CDATA[невангеры]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[Не думал, что всё закончится вот так...
+Напоследок покажу ещё несколько прототипов и концептов:
+Мехаон
+(ранний прототип на Godot engine, gles2 рендер, пока без демо)
+Открыть
+Manaburn
+(прототип на Godot engine, gles2 рендер, есть демо-версия)
+Открыть
+Spiderwalk
+(прототип на Unigine engine, есть демо-версия)
+Открыть
+Necrodrive
+(прототип на rg3d engine (с недавнего времени ставшим Fyrox), есть демо-версия)
+Открыть
+Прочее
+Микрокосм - jrpg в космосе, где главными героями выступают звездолётики (Godot, gles3).
+Открыть
+Махолёт - прототип с летающим грузовозом, собранный на сибирском джеме (Godot, gles3).
+Открыть
+Тантрамантра - полигон для биомашинок, собранный на Unigine.
+Открыть
+Ещё несколько роликов: по мотивам проекта Невангеры и разные мини-зарисовки в Blender
+Ролики
+Рендеры
+Счастливо оставаться
+Butterfly, butterfly
+Flying into the wind
+You can be sure of it
+That's no place to begin Не думал, что всё закончится вот так... Напоследок покажу ещё несколько прототипов и концептов: Мехаон (ранний прототип на Godot engine, gles2 рендер, пока без демо)   Открыть Открыть       Manaburn (прототип на Godot engine, gles2 рендер, есть демо-версия)   Открыть Открыть             Spiderwalk (прототип на Unigine engine, есть демо-версия)   Открыть Открыть            Necrodrive (прототип на rg3d engine (с недавнего времени ставшим Fyrox), есть демо-версия)   Открыть Открыть            Прочее Микрокосм - jrpg в космосе, где главными героями выступают звездолётики (Godot, gles3). Микрокосм jrpg в космосе   Открыть Открыть             Махолёт - прототип с летающим грузовозом, собранный на сибирском джеме (Godot, gles3). Махолёт прототип с летающим грузовозом   Открыть Открыть            Тантрамантра - полигон для биомашинок, собранный на Unigine. Тантрамантра полигон для биомашинок   Открыть Открыть           Ещё несколько роликов: по мотивам проекта Невангеры и разные мини-зарисовки в Blender Невангеры Ролики Ролики       Рендеры Рендеры         Счастливо оставаться  Butterfly, butterfly
+Flying into the wind
+You can be sure of it
+That's no place to begin Butterfly, butterfly Flying into the wind You can be sure of it That's no place to begin ]]></text>
+</doc>

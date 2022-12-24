@@ -1,0 +1,34 @@
+<?xml version="1.0" ?>
+<doc>
+	<original_author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Colton Ogden]]></item>
+	</original_author>
+	<label auto="true" type="str" verify="true"><![CDATA[Other]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[BasicSloth]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-12-01, 09:12]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/post/702756/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Лекция 7. Pokemon — CS50`s Introduction to Game Development с русскими субтитрами]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Программирование]]></item>
+		<item type="str"><![CDATA[Разработка игр]]></item>
+		<item type="str"><![CDATA[Lua]]></item>
+		<item type="str"><![CDATA[Дизайн игр]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[love2d]]></item>
+		<item type="str"><![CDATA[pokemon]]></item>
+		<item type="str"><![CDATA[покемоны]]></item>
+		<item type="str"><![CDATA[lua]]></item>
+		<item type="str"><![CDATA[cs50]]></item>
+		<item type="str"><![CDATA[программирование]]></item>
+		<item type="str"><![CDATA[лекция]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[Привет! Перевод очередной лекции на этот раз о создании RPG и о Pokemon в частности.
+В этом видео
+Стек состояний
+Пошаговая система
+Пользовательские интерфейсы
+Механики РПГ Привет! Перевод очередной лекции на этот раз о создании RPG и о Pokemon в частности.]]></text>
+</doc>

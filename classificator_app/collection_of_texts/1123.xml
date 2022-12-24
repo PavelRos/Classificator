@@ -1,0 +1,439 @@
+<?xml version="1.0" ?>
+<doc>
+	<label auto="true" type="str" verify="true"><![CDATA[Other]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[CTI]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-07-26, 17:44]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/company/cti/blog/679160/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Что умеет умный ИТ-секретарь]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Блог компании CTI — Communications. Technology. Innovations]]></item>
+		<item type="str"><![CDATA[Интернет вещей]]></item>
+		<item type="str"><![CDATA[Голосовые интерфейсы]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[unified communications]]></item>
+		<item type="str"><![CDATA[унифицированные коммуникации]]></item>
+		<item type="str"><![CDATA[умный офис]]></item>
+		<item type="str"><![CDATA[голосовое управление]]></item>
+		<item type="str"><![CDATA[голосовые помощники]]></item>
+		<item type="str"><![CDATA[iot]]></item>
+		<item type="str"><![CDATA[iot+uc]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[Голосовые помощники уже используются для решения разных задач и в колл-центрах, и на производстве, и дома. Также очевиден тренд – разработка, развитие и интеграция решений из сегментов UC и IoT – это новый виток в развитии обоих направлений, когда умные датчики самостоятельно отправляют сообщения со статусом производственного процесса, оповещают о неполадках, выполняют массу других функций, «завязанных» на коммуникационные каналы. Развитие таких интеграций – настолько креативный процесс, что ограничен он только творческими возможностями разработчиков. На наших глазах создается целая экосистема с принципиально новым пользовательским опытом.  
+Какой он, современный секретарь в «Офисе будущего»?
+Благодаря симбиозу технологий совместной работы, универсальной платформы интернета вещей CTI IoT Platform и голосовых помощников с искусственным интеллектом можно создавать умные переговорные комнаты, аудитории, производственные помещения.
+Например, умный секретарь от CTI позволяет через голосовые команды управлять всеми процессами в переговорной комнате: регулировать климат, освещение, управлять оборудованием, заказывать напитки, организовывать собрания, бронировать помещения, подключать удаленных участников и прочее. Объединив разрозненные системы в высокоэффективное рабочее пространство, можно вывести комфорт и продуктивность совместной работы сотрудников на новый уровень.
+Давайте посмотрим, как это работает, и немного расскажем о наших секретах  
+Мы в CTI занимаемся сложными интеграционными проектами и автоматизацией процессов. Делаем это ещё с тех времён, когда вместо какой-нибудь «Алисы» энтузиасты вручную собирали умные розетки на базе ESP8266 или Arduino, а понятие Internet of Things (IoT) не приобрело широкую популярность.
+Одна из концепций, которую развиваем, — объединение унифицированных коммуникаций (UC), мультимедия и Интернета вещей (IoT). В первое понятие входит как офисная видеоконференцсвязь, так и умные голосовые помощники.  В современных офисных пространствах на стенах перед входом в кабинет вешают информационные тачпанели или используют настольные варианты, которые стоят в самом кабинете. На такую панель без проблем выводится любая информация и простым нажатием на кнопки можно реализовать любой запрос (настроить кондиционер, заказать напитки, запустить проектор, приглушить свет и т.д.). Но для этого нужно нажимать и выбирать пункт из меню. А удобнее ведь просто сказать …
+Два кофе в переговорку
+Эта идея зародилась в CTI в отделе «Дополнительные сервисы» давно и пережила несколько итераций — почти каждый сотрудник внёс свой вклад. Мы хотели, чтобы в переговорке каждый мог сказать умной колонке свои пожелания по напиткам и заказ автоматически уходил секретарю или «хозяйке офиса».
+Итак, мы взяли колонку «Яндекс.Алиса» и под неё написали навык на Python 3, который сейчас крутится в офисе на нашем внутреннем сервере и обрабатывает все команды из переговорок. Заказ поступает в Telegram-бота, который мониторит «хозяйка офиса». В боте две кнопки, которые показывают возможно принять и выполнить заказ или нет.
+Первоначально приходилось вручную обрабатывать все словоформы, поскольку человек может сказать как «зелёный чай», так и, например, «чашку зелёного чая». Впоследствии Яндекс добавил систему интентов, куда стало возможно вводить леммы.
+Поначалу мы реализовывали только самые простые команды, но всем хотелось разнообразия: указывать тип напитка с добавкой, например, молоко к кофе. Иногда нужно знать параметр, который человек не назвал: тот же чай бывает чёрным или зелёным. В таких ситуациях боту приходится переспрашивать, если информации было недостаточно. Подобный процесс называется заполнением слотов (slot-filling). В движке Amazon Alexa он, например, реализован прямо из коробки: можно перечислить требуемые слоты в настройках навыка, и Alexa будет задавать вопросы самостоятельно. Но у Яндекса пока такого нет — пришлось написать обработку вручную.
+Основная версия кода выглядит вот так:
+# coding: utf-8
+# Импортирует поддержку UTF-8.
+"""
+ МОДУЛЬ  DrinksIntent заказ напитков
+ МЕТОД - НОВЫЙ NLP метод
+ https://yandex.ru/dev/dialogs/alice/doc/nlu-docpage/
+"""
+from __future__ import unicode_literals
+from superIntent import superIntent
+from utils import *
+import random  #  для генерации случайных ответов
+import requests # для отправки HTTP GET/POST  запросов
+
+
+class Intent(superIntent):
+    intent_name = "DrinksIntent"
+    slot_dict = {
+                 'water': 'вода',
+                 'tea': 'чай',
+                 'coffee': 'кофе',
+                 'black': 'чёрный',
+                 'green': 'зелёный',
+                 'milk': 'с молоком',
+                 'pure': 'негазированая',
+                 'spring':'газированая'
+                 }
+    
+
+    def __init__(self, log, config,enable=True):
+        super().__init__(self.intent_name, log, config, enable)  #вызываем конструктор родительского класса
+        self.user_id = ""
+        self.lastmsg = False
+        self.order_id = 0 # номер заказа
+    
+    def slot(self,req,slot):
+        return super().getSlot(req,self.intent_name,slot)
+       
+    def Run(self, req, res, tbot,params=False):
+        self.DisambiguationCheck(req,res)
+        
+        if self.intent_name in req['request']['nlu']['intents']:
+            self.log.debug("Request has this intent!")
+        else:
+            return False
+        
+        if super().preRun(req,res):
+            self.log.debug("Start proceed")
+            room = self.last_room    
+            if len(room) and self.config.has_option('rooms',room) and self.config.has_option(room,'chat_id'):  #если есть в комнате свой чат
+                self.log.debug("room: %s what: %s sort: %s qnt: %s" % (room,self.slot(req,'what'),self.slot(req,'sort'), self.slot(req,'qnt')))
+                if self.slot(req,'what'):
+                    what = self.slot(req,'what')['value']
+                    if self.slot(req,'qnt') and self.slot(req,'sort'):
+                        qnt = self.slot(req,'qnt')['value']
+                        if  what == 'water'  and self.slot(req,'sort')['value']=='spring' and self.slot(req,'prep') and self.slot(req,'prep')['value'] == 'without':
+                            sort = self.slot_dict['pure']
+                        else:
+                            sort = self.slot_dict[self.slot(req,'sort')['value']]
+                        self.lastmsg = tbot.send_text(self.config[room]['chat_id'],"Заказ напитков от пользователя '%s' в комнату: <b>%s</b>\n %s %s : <b>%d</b>"   % (self.getAuthName(), self.config['rooms'][room], self.slot_dict[what], sort, qnt ), buttons_type = False )
+                        tbot.setLastMsg(self.lastmsg)
+                        if self.config.has_option(room,'drinks_chat_id'): #если есть доп. чат для напитков
+                            tbot.send_text(self.config[room]['drinks_chat_id'],"Заказ напитков от пользователя '%s' в комнату: <b>%s</b>\n %s %s : <b>%d</b>"   % (self.getAuthName(), self.config['rooms'][room], self.slot_dict[what], sort, qnt ) , buttons_type =1 )
+                        super().setRes(res, text="%s, Напиток %s  %s  - заказан, в количестве %d " % (self.getAuthName(), self.slot_dict[what], sort, qnt)  )
+                        self.order_id += 1
+                        self.log.info( "New order: %d" % self.order_id )
+                    elif self.slot(req,'qnt') and not self.slot(req,'sort'): #  неуказан тип-характеристика напитка, создаем уточнение
+                        qnt = self.slot(req,'qnt')['value']
+                        if what=='water':
+                            super().setRes(res, text="Уточните пожалуйста, вам воду с газом или без?" )
+                        elif what =='tea':
+                            super().setRes(res, text="Уточните пожалуйста, чай чёрный или зеленый?" )
+                        else:
+                            super().setRes(res, text="Уточните пожалуйста, кофе чёрный или с молоком?" )
+                        super().saveSlot( 'what',what )  # сохраняем в сессии уже определенный слот
+                        super().saveSlot( 'qnt', qnt ) # сохраняем в сессии уже определенный слот
+                        super().createDisambiguation('sort',2)
+                    else:  # Неуказано кол-во напитков, или вообще ничего -  создаем уточнение
+                        if self.slot(req,'sort'): 
+                            super().saveSlot('sort', self.slot(req,'sort')['value'] )  # сохраняем в сессии уже определенный слот    
+                        super().setRes(res, text="Уточните, пожалуйста, сколько нужно?" )
+                        super().saveSlot('what',what )  # сохраняем в сессии уже определенный слот
+                        super().createDisambiguation('qnt',2)
+                        
+                    return True
+                
+            return False
+            #self.log.info("Request tokens Matched!")
+            # TODO HERE:
+            # room = self.last_room
+            # if len(room) and self.config.has_option('rooms',room) and self.config.has_option(room,'Tea-URL'):
+            # url = self.config[room]['Tea-URL']
+                
+        else:    
+            return False
+    
+    def DisambiguationCheck(self, req, res):
+         self.log.debug(req)
+         qnt = find_yandexnumber(req['request']['nlu']['entities'])
+         sort = ""
+         if  check_needles( req['request']['nlu']['tokens'],['зелёного','зелёный', 'зелёные','зелёных' ,'зеленого','зеленый', 'зеленые','зеленых'  ] ):
+            sort = 'green'
+         if  check_needles( req['request']['nlu']['tokens'],['чёрного','чёрный', 'чёрные','чёрных' ,'черного','черный', 'черные','черных'  ] ):
+            sort = 'black'
+         if  check_needles( req['request']['nlu']['tokens'],['молоком','молоко','молока' ] ):
+            sort = 'milk'
+         if check_needles( req['request']['nlu']['tokens'],['газированная','газированную'] ) or ( check_needles( req['request']['nlu']['tokens'],['газом'] ) and check_needles( req['request']['nlu']['tokens'],['с'] ) ):
+            sort = 'spring'
+         if check_needles( req['request']['nlu']['tokens'],['негазированная','без','негазированную', 'бес', 'вес' ] ) or ( check_needles( req['request']['nlu']['tokens'],['газа'] ) and check_needles( req['request']['nlu']['tokens'],['без','бес','вес'] ) ):
+            sort = 'pure'
+         dis  = self.getDisambiguation()
+         if dis:
+            self.log.debug(dis)
+            dis['attempts'] -= 1
+            if super().getSavedSlot('what'):
+                req['request']['nlu']['intents'][self.intent_name] = {
+                    'slots': {
+                        'what':{ 'value': super().getSavedSlot('what')  }
+                    }
+                }
+            for s in ('sort','qnt' ):
+                if super().getSavedSlot(s):
+                    req['request']['nlu']['intents'][self.intent_name]['slots'][s] = { 'value': super().getSavedSlot(s) }
+                
+                
+                if qnt and int(qnt['value']) > 0  and dis['slot']=='qnt':
+                    req['request']['nlu']['intents'][self.intent_name]['slots']['qnt'] = { 'value': int(qnt['value']) } 
+                if sort:
+                    req['request']['nlu']['intents'][self.intent_name]['slots']['sort'] = { 'value': sort }
+                
+            self.flushSession()
+Результат
+Голосовое управление впечатляет гостей нашего офиса: люди интересуются системой, спрашивают, можно ли сделать так у них и интегрировать в их систему (спойлер: можно как угодно).
+Помимо демонстрационного эффекта есть и чисто практический: уменьшается время реакции и минимизируется количество ошибок по принятию заказа. Этот бизнес-процесс породил и другие. Например, через собственного голосового ассистента наши сотрудники взаимодействуют с административно-хозяйственным отделом (заказ уборки помещений), с кадрами (заказ различных справок, уточнение количество дней отпуска). Ассистент принимает голосовые заявки, обрабатывает и сообщает о статусе их выполнения.
+А нашим партнерам мы помогли реализовать интересный кейс в кафе, где заказ формируется человеком, а развозится роботом. Мы предложили собирать заказ с помощью голосового ассистента и сразу передавать его в гейткипер и на кухню, а далее развозить роботом. Получилось почти полностью автоматизированное кафе – «кафе будущего».
+Алиса, открой окно
+Более технически сложный кейс — организация автоматического проветривания. Помозговали, от каких параметров отталкиваться, и сделали.
+Начали с выбора железа. Вообще, на рынке большое количество устройств и технологий для автоматизации. У нас есть экспертиза работы как с дорогими решениями (Crestron, AMX и т. п.), так и с бюджетными DIY на Arduino и Raspberry Pi. Опыт и текущая обстановка показали, что требуется законченное многофункциональное устройство с небольшим бюджетом, широкими возможностями по кастомизации, хорошим комьюнити, открытыми протоколами и при этом российского производства. Так что в основу проекта лег контроллер для промышленной и домашней автоматизации от компании Wiren Board. Он очень гибок и поддерживает большинство существующих протоколов.
+У Wiren Board есть универсальный комбинированный датчик WB-MSW, измеряющий температуру, влажность, уровень углекислого газа и ещё несколько показателей — именно с него стали для начала брать информацию. Позже, помимо показания температуры, мы с помощью датчика движения и видеоаналитики решили оценивать количество людей в помещении. Например, можно включать проветривание, только когда в переговорке нет людей или наоборот их слишком много. На такой случай мы сделали настраиваемые пресеты. В зависимости от этих условий система принимает решение — открывать окна или нет. По аналогии настроили работу кондиционера, но сейчас мы рассматриваем более сложный кейс с окном.
+Многие системы электроприводов окон очень дорогие и поставляются чуть ли не под заказ. Здесь нас спас небольшой российский стартап Drivent.ru. Ребята работают больше над качеством, чем над массовостью. Их приводы управляются через Wi-Fi по протоколу MQTT. Можно задавать положения: открыть окно на небольшой уровень проветривания или на полный.
+Разумеется, всё это интегрировано в нашу IoT-платформу и работает как полноценная климатическая система. Главные сервисы на Wiren Board: это MQTT-брокер Mosquitto, Node-RED (чтобы связать MQTT и разнообразное оборудование), Zigbee2MQTT (для беспроводных датчиков) — старались выбирать открытые, не проприетарные инструменты, не требующие сертификаций или подписания NDA. В помещении у нас отдельный датчик температуры WB-MSW v.3, подключенный по Modbus протоколу. Климат-контроль, занимающийся обогревом и охлаждением помещения, связан с системой проветривания: например, окна закрываются при падении температуры ниже критического минимума, даже если при этом целевое содержание CO2 не достигнуто. Приоритет данных показателей тоже настраивается в пресете.
+В дополнение всё это точно также управляется через Алису: можно установить голосом целевую температуру, включить/выключить отдельные функции. Если проветривание мешает, его можно временно отключить с автоматическим возвратом через заданное время.
+Это лишь два простых примера, которые мы реализовали в начале пути создания «Офиса будущего» и самого умного и сговорчивого секретаря. Причем используемый голосовой бот может быть любым – от любого производителя. Наш умный секретарь понимает речь человека за счет встроенного механизма распознавания речи (Automatic Speech Recognition, ASR) и может выполнять задания, не связанные с физическим трудом, общается с помощью голоса за счет механизмов синтеза речи (Тext To Speech, TTS), встраивается в АТС организации как полноценный абонент с отдельным номером, может самостоятельно осуществлять и принимать звонки, соединять между собой сотрудников компании, умеет идентифицировать звонящего сотрудника независимо от источника звонка (мобильный телефон/внутренний телефон АТС предприятия), а также может применять технологии идентификации человека по пин-коду в IVR.
+Также наш умный секретарь формирует и предоставляет отчеты, озвучивая их голосом или отправляя текстовый вариант на e-mail и в мессенджеры, через голосовые команды помогает бронировать переговорные комнаты, назначать совещания, приглашать сотрудников на встречу, заказывать напитки, формировать заявки для служб АХО, HR и т.д. 
+А начиналось все с заказа кофе в переговорку. Голосовые помощники уже используются для решения разных задач и в колл-центрах, и на производстве, и дома. Также очевиден тренд – разработка, развитие и интеграция решений из сегментов UC и IoT – это новый виток в развитии обоих направлений, когда умные датчики самостоятельно отправляют сообщения со статусом производственного процесса, оповещают о неполадках, выполняют массу других функций, «завязанных» на коммуникационные каналы. Развитие таких интеграций – настолько креативный процесс, что ограничен он только творческими возможностями разработчиков. На наших глазах создается целая экосистема с принципиально новым пользовательским опытом.   Какой он, современный секретарь в «Офисе будущего»? Какой он, современный секретарь в «Офисе будущего»? Благодаря симбиозу технологий совместной работы, универсальной платформы интернета вещей CTI IoT Platform и голосовых помощников с искусственным интеллектом можно создавать умные переговорные комнаты, аудитории, производственные помещения. Например, умный секретарь от CTI позволяет через голосовые команды управлять всеми процессами в переговорной комнате: регулировать климат, освещение, управлять оборудованием, заказывать напитки, организовывать собрания, бронировать помещения, подключать удаленных участников и прочее. Объединив разрозненные системы в высокоэффективное рабочее пространство, можно вывести комфорт и продуктивность совместной работы сотрудников на новый уровень. Давайте посмотрим, как это работает, и немного расскажем о наших секретах   Давайте посмотрим, как это работает, и немного расскажем о наших секретах Мы в CTI занимаемся сложными интеграционными проектами и автоматизацией процессов. Делаем это ещё с тех времён, когда вместо какой-нибудь «Алисы» энтузиасты вручную собирали умные розетки на базе ESP8266 или Arduino, а понятие Internet of Things (IoT) не приобрело широкую популярность. Одна из концепций, которую развиваем, — объединение унифицированных коммуникаций (UC), мультимедия и Интернета вещей (IoT). В первое понятие входит как офисная видеоконференцсвязь, так и умные голосовые помощники.  В современных офисных пространствах на стенах перед входом в кабинет вешают информационные тачпанели или используют настольные варианты, которые стоят в самом кабинете. На такую панель без проблем выводится любая информация и простым нажатием на кнопки можно реализовать любой запрос (настроить кондиционер, заказать напитки, запустить проектор, приглушить свет и т.д.). Но для этого нужно нажимать и выбирать пункт из меню. А удобнее ведь просто сказать … Два кофе в переговорку Эта идея зародилась в CTI в отделе «Дополнительные сервисы» давно и пережила несколько итераций — почти каждый сотрудник внёс свой вклад. Мы хотели, чтобы в переговорке каждый мог сказать умной колонке свои пожелания по напиткам и заказ автоматически уходил секретарю или «хозяйке офиса». Итак, мы взяли колонку «Яндекс.Алиса» и под неё написали навык на Python 3, который сейчас крутится в офисе на нашем внутреннем сервере и обрабатывает все команды из переговорок. Заказ поступает в Telegram-бота, который мониторит «хозяйка офиса». В боте две кнопки, которые показывают возможно принять и выполнить заказ или нет.   Первоначально приходилось вручную обрабатывать все словоформы, поскольку человек может сказать как «зелёный чай», так и, например, «чашку зелёного чая». Впоследствии Яндекс добавил систему интентов, куда стало возможно вводить леммы.   Поначалу мы реализовывали только самые простые команды, но всем хотелось разнообразия: указывать тип напитка с добавкой, например, молоко к кофе. Иногда нужно знать параметр, который человек не назвал: тот же чай бывает чёрным или зелёным. В таких ситуациях боту приходится переспрашивать, если информации было недостаточно. Подобный процесс называется заполнением слотов (slot-filling). В движке Amazon Alexa он, например, реализован прямо из коробки: можно перечислить требуемые слоты в настройках навыка, и Alexa будет задавать вопросы самостоятельно. Но у Яндекса пока такого нет — пришлось написать обработку вручную. Основная версия кода выглядит вот так: # coding: utf-8
+# Импортирует поддержку UTF-8.
+"""
+ МОДУЛЬ  DrinksIntent заказ напитков
+ МЕТОД - НОВЫЙ NLP метод
+ https://yandex.ru/dev/dialogs/alice/doc/nlu-docpage/
+"""
+from __future__ import unicode_literals
+from superIntent import superIntent
+from utils import *
+import random  #  для генерации случайных ответов
+import requests # для отправки HTTP GET/POST  запросов
+
+
+class Intent(superIntent):
+    intent_name = "DrinksIntent"
+    slot_dict = {
+                 'water': 'вода',
+                 'tea': 'чай',
+                 'coffee': 'кофе',
+                 'black': 'чёрный',
+                 'green': 'зелёный',
+                 'milk': 'с молоком',
+                 'pure': 'негазированая',
+                 'spring':'газированая'
+                 }
+    
+
+    def __init__(self, log, config,enable=True):
+        super().__init__(self.intent_name, log, config, enable)  #вызываем конструктор родительского класса
+        self.user_id = ""
+        self.lastmsg = False
+        self.order_id = 0 # номер заказа
+    
+    def slot(self,req,slot):
+        return super().getSlot(req,self.intent_name,slot)
+       
+    def Run(self, req, res, tbot,params=False):
+        self.DisambiguationCheck(req,res)
+        
+        if self.intent_name in req['request']['nlu']['intents']:
+            self.log.debug("Request has this intent!")
+        else:
+            return False
+        
+        if super().preRun(req,res):
+            self.log.debug("Start proceed")
+            room = self.last_room    
+            if len(room) and self.config.has_option('rooms',room) and self.config.has_option(room,'chat_id'):  #если есть в комнате свой чат
+                self.log.debug("room: %s what: %s sort: %s qnt: %s" % (room,self.slot(req,'what'),self.slot(req,'sort'), self.slot(req,'qnt')))
+                if self.slot(req,'what'):
+                    what = self.slot(req,'what')['value']
+                    if self.slot(req,'qnt') and self.slot(req,'sort'):
+                        qnt = self.slot(req,'qnt')['value']
+                        if  what == 'water'  and self.slot(req,'sort')['value']=='spring' and self.slot(req,'prep') and self.slot(req,'prep')['value'] == 'without':
+                            sort = self.slot_dict['pure']
+                        else:
+                            sort = self.slot_dict[self.slot(req,'sort')['value']]
+                        self.lastmsg = tbot.send_text(self.config[room]['chat_id'],"Заказ напитков от пользователя '%s' в комнату: <b>%s</b>\n %s %s : <b>%d</b>"   % (self.getAuthName(), self.config['rooms'][room], self.slot_dict[what], sort, qnt ), buttons_type = False )
+                        tbot.setLastMsg(self.lastmsg)
+                        if self.config.has_option(room,'drinks_chat_id'): #если есть доп. чат для напитков
+                            tbot.send_text(self.config[room]['drinks_chat_id'],"Заказ напитков от пользователя '%s' в комнату: <b>%s</b>\n %s %s : <b>%d</b>"   % (self.getAuthName(), self.config['rooms'][room], self.slot_dict[what], sort, qnt ) , buttons_type =1 )
+                        super().setRes(res, text="%s, Напиток %s  %s  - заказан, в количестве %d " % (self.getAuthName(), self.slot_dict[what], sort, qnt)  )
+                        self.order_id += 1
+                        self.log.info( "New order: %d" % self.order_id )
+                    elif self.slot(req,'qnt') and not self.slot(req,'sort'): #  неуказан тип-характеристика напитка, создаем уточнение
+                        qnt = self.slot(req,'qnt')['value']
+                        if what=='water':
+                            super().setRes(res, text="Уточните пожалуйста, вам воду с газом или без?" )
+                        elif what =='tea':
+                            super().setRes(res, text="Уточните пожалуйста, чай чёрный или зеленый?" )
+                        else:
+                            super().setRes(res, text="Уточните пожалуйста, кофе чёрный или с молоком?" )
+                        super().saveSlot( 'what',what )  # сохраняем в сессии уже определенный слот
+                        super().saveSlot( 'qnt', qnt ) # сохраняем в сессии уже определенный слот
+                        super().createDisambiguation('sort',2)
+                    else:  # Неуказано кол-во напитков, или вообще ничего -  создаем уточнение
+                        if self.slot(req,'sort'): 
+                            super().saveSlot('sort', self.slot(req,'sort')['value'] )  # сохраняем в сессии уже определенный слот    
+                        super().setRes(res, text="Уточните, пожалуйста, сколько нужно?" )
+                        super().saveSlot('what',what )  # сохраняем в сессии уже определенный слот
+                        super().createDisambiguation('qnt',2)
+                        
+                    return True
+                
+            return False
+            #self.log.info("Request tokens Matched!")
+            # TODO HERE:
+            # room = self.last_room
+            # if len(room) and self.config.has_option('rooms',room) and self.config.has_option(room,'Tea-URL'):
+            # url = self.config[room]['Tea-URL']
+                
+        else:    
+            return False
+    
+    def DisambiguationCheck(self, req, res):
+         self.log.debug(req)
+         qnt = find_yandexnumber(req['request']['nlu']['entities'])
+         sort = ""
+         if  check_needles( req['request']['nlu']['tokens'],['зелёного','зелёный', 'зелёные','зелёных' ,'зеленого','зеленый', 'зеленые','зеленых'  ] ):
+            sort = 'green'
+         if  check_needles( req['request']['nlu']['tokens'],['чёрного','чёрный', 'чёрные','чёрных' ,'черного','черный', 'черные','черных'  ] ):
+            sort = 'black'
+         if  check_needles( req['request']['nlu']['tokens'],['молоком','молоко','молока' ] ):
+            sort = 'milk'
+         if check_needles( req['request']['nlu']['tokens'],['газированная','газированную'] ) or ( check_needles( req['request']['nlu']['tokens'],['газом'] ) and check_needles( req['request']['nlu']['tokens'],['с'] ) ):
+            sort = 'spring'
+         if check_needles( req['request']['nlu']['tokens'],['негазированная','без','негазированную', 'бес', 'вес' ] ) or ( check_needles( req['request']['nlu']['tokens'],['газа'] ) and check_needles( req['request']['nlu']['tokens'],['без','бес','вес'] ) ):
+            sort = 'pure'
+         dis  = self.getDisambiguation()
+         if dis:
+            self.log.debug(dis)
+            dis['attempts'] -= 1
+            if super().getSavedSlot('what'):
+                req['request']['nlu']['intents'][self.intent_name] = {
+                    'slots': {
+                        'what':{ 'value': super().getSavedSlot('what')  }
+                    }
+                }
+            for s in ('sort','qnt' ):
+                if super().getSavedSlot(s):
+                    req['request']['nlu']['intents'][self.intent_name]['slots'][s] = { 'value': super().getSavedSlot(s) }
+                
+                
+                if qnt and int(qnt['value']) > 0  and dis['slot']=='qnt':
+                    req['request']['nlu']['intents'][self.intent_name]['slots']['qnt'] = { 'value': int(qnt['value']) } 
+                if sort:
+                    req['request']['nlu']['intents'][self.intent_name]['slots']['sort'] = { 'value': sort }
+                
+            self.flushSession() # coding: utf-8
+# Импортирует поддержку UTF-8.
+"""
+ МОДУЛЬ  DrinksIntent заказ напитков
+ МЕТОД - НОВЫЙ NLP метод
+ https://yandex.ru/dev/dialogs/alice/doc/nlu-docpage/
+"""
+from __future__ import unicode_literals
+from superIntent import superIntent
+from utils import *
+import random  #  для генерации случайных ответов
+import requests # для отправки HTTP GET/POST  запросов
+
+
+class Intent(superIntent):
+    intent_name = "DrinksIntent"
+    slot_dict = {
+                 'water': 'вода',
+                 'tea': 'чай',
+                 'coffee': 'кофе',
+                 'black': 'чёрный',
+                 'green': 'зелёный',
+                 'milk': 'с молоком',
+                 'pure': 'негазированая',
+                 'spring':'газированая'
+                 }
+    
+
+    def __init__(self, log, config,enable=True):
+        super().__init__(self.intent_name, log, config, enable)  #вызываем конструктор родительского класса
+        self.user_id = ""
+        self.lastmsg = False
+        self.order_id = 0 # номер заказа
+    
+    def slot(self,req,slot):
+        return super().getSlot(req,self.intent_name,slot)
+       
+    def Run(self, req, res, tbot,params=False):
+        self.DisambiguationCheck(req,res)
+        
+        if self.intent_name in req['request']['nlu']['intents']:
+            self.log.debug("Request has this intent!")
+        else:
+            return False
+        
+        if super().preRun(req,res):
+            self.log.debug("Start proceed")
+            room = self.last_room    
+            if len(room) and self.config.has_option('rooms',room) and self.config.has_option(room,'chat_id'):  #если есть в комнате свой чат
+                self.log.debug("room: %s what: %s sort: %s qnt: %s" % (room,self.slot(req,'what'),self.slot(req,'sort'), self.slot(req,'qnt')))
+                if self.slot(req,'what'):
+                    what = self.slot(req,'what')['value']
+                    if self.slot(req,'qnt') and self.slot(req,'sort'):
+                        qnt = self.slot(req,'qnt')['value']
+                        if  what == 'water'  and self.slot(req,'sort')['value']=='spring' and self.slot(req,'prep') and self.slot(req,'prep')['value'] == 'without':
+                            sort = self.slot_dict['pure']
+                        else:
+                            sort = self.slot_dict[self.slot(req,'sort')['value']]
+                        self.lastmsg = tbot.send_text(self.config[room]['chat_id'],"Заказ напитков от пользователя '%s' в комнату: <b>%s</b>\n %s %s : <b>%d</b>"   % (self.getAuthName(), self.config['rooms'][room], self.slot_dict[what], sort, qnt ), buttons_type = False )
+                        tbot.setLastMsg(self.lastmsg)
+                        if self.config.has_option(room,'drinks_chat_id'): #если есть доп. чат для напитков
+                            tbot.send_text(self.config[room]['drinks_chat_id'],"Заказ напитков от пользователя '%s' в комнату: <b>%s</b>\n %s %s : <b>%d</b>"   % (self.getAuthName(), self.config['rooms'][room], self.slot_dict[what], sort, qnt ) , buttons_type =1 )
+                        super().setRes(res, text="%s, Напиток %s  %s  - заказан, в количестве %d " % (self.getAuthName(), self.slot_dict[what], sort, qnt)  )
+                        self.order_id += 1
+                        self.log.info( "New order: %d" % self.order_id )
+                    elif self.slot(req,'qnt') and not self.slot(req,'sort'): #  неуказан тип-характеристика напитка, создаем уточнение
+                        qnt = self.slot(req,'qnt')['value']
+                        if what=='water':
+                            super().setRes(res, text="Уточните пожалуйста, вам воду с газом или без?" )
+                        elif what =='tea':
+                            super().setRes(res, text="Уточните пожалуйста, чай чёрный или зеленый?" )
+                        else:
+                            super().setRes(res, text="Уточните пожалуйста, кофе чёрный или с молоком?" )
+                        super().saveSlot( 'what',what )  # сохраняем в сессии уже определенный слот
+                        super().saveSlot( 'qnt', qnt ) # сохраняем в сессии уже определенный слот
+                        super().createDisambiguation('sort',2)
+                    else:  # Неуказано кол-во напитков, или вообще ничего -  создаем уточнение
+                        if self.slot(req,'sort'): 
+                            super().saveSlot('sort', self.slot(req,'sort')['value'] )  # сохраняем в сессии уже определенный слот    
+                        super().setRes(res, text="Уточните, пожалуйста, сколько нужно?" )
+                        super().saveSlot('what',what )  # сохраняем в сессии уже определенный слот
+                        super().createDisambiguation('qnt',2)
+                        
+                    return True
+                
+            return False
+            #self.log.info("Request tokens Matched!")
+            # TODO HERE:
+            # room = self.last_room
+            # if len(room) and self.config.has_option('rooms',room) and self.config.has_option(room,'Tea-URL'):
+            # url = self.config[room]['Tea-URL']
+                
+        else:    
+            return False
+    
+    def DisambiguationCheck(self, req, res):
+         self.log.debug(req)
+         qnt = find_yandexnumber(req['request']['nlu']['entities'])
+         sort = ""
+         if  check_needles( req['request']['nlu']['tokens'],['зелёного','зелёный', 'зелёные','зелёных' ,'зеленого','зеленый', 'зеленые','зеленых'  ] ):
+            sort = 'green'
+         if  check_needles( req['request']['nlu']['tokens'],['чёрного','чёрный', 'чёрные','чёрных' ,'черного','черный', 'черные','черных'  ] ):
+            sort = 'black'
+         if  check_needles( req['request']['nlu']['tokens'],['молоком','молоко','молока' ] ):
+            sort = 'milk'
+         if check_needles( req['request']['nlu']['tokens'],['газированная','газированную'] ) or ( check_needles( req['request']['nlu']['tokens'],['газом'] ) and check_needles( req['request']['nlu']['tokens'],['с'] ) ):
+            sort = 'spring'
+         if check_needles( req['request']['nlu']['tokens'],['негазированная','без','негазированную', 'бес', 'вес' ] ) or ( check_needles( req['request']['nlu']['tokens'],['газа'] ) and check_needles( req['request']['nlu']['tokens'],['без','бес','вес'] ) ):
+            sort = 'pure'
+         dis  = self.getDisambiguation()
+         if dis:
+            self.log.debug(dis)
+            dis['attempts'] -= 1
+            if super().getSavedSlot('what'):
+                req['request']['nlu']['intents'][self.intent_name] = {
+                    'slots': {
+                        'what':{ 'value': super().getSavedSlot('what')  }
+                    }
+                }
+            for s in ('sort','qnt' ):
+                if super().getSavedSlot(s):
+                    req['request']['nlu']['intents'][self.intent_name]['slots'][s] = { 'value': super().getSavedSlot(s) }
+                
+                
+                if qnt and int(qnt['value']) > 0  and dis['slot']=='qnt':
+                    req['request']['nlu']['intents'][self.intent_name]['slots']['qnt'] = { 'value': int(qnt['value']) } 
+                if sort:
+                    req['request']['nlu']['intents'][self.intent_name]['slots']['sort'] = { 'value': sort }
+                
+            self.flushSession() Результат Голосовое управление впечатляет гостей нашего офиса: люди интересуются системой, спрашивают, можно ли сделать так у них и интегрировать в их систему (спойлер: можно как угодно).  Помимо демонстрационного эффекта есть и чисто практический: уменьшается время реакции и минимизируется количество ошибок по принятию заказа. Этот бизнес-процесс породил и другие. Например, через собственного голосового ассистента наши сотрудники взаимодействуют с административно-хозяйственным отделом (заказ уборки помещений), с кадрами (заказ различных справок, уточнение количество дней отпуска). Ассистент принимает голосовые заявки, обрабатывает и сообщает о статусе их выполнения. А нашим партнерам мы помогли реализовать интересный кейс в кафе, где заказ формируется человеком, а развозится роботом. Мы предложили собирать заказ с помощью голосового ассистента и сразу передавать его в гейткипер и на кухню, а далее развозить роботом. Получилось почти полностью автоматизированное кафе – «кафе будущего». Алиса, открой окно Более технически сложный кейс — организация автоматического проветривания. Помозговали, от каких параметров отталкиваться, и сделали. Начали с выбора железа. Вообще, на рынке большое количество устройств и технологий для автоматизации. У нас есть экспертиза работы как с дорогими решениями (Crestron, AMX и т. п.), так и с бюджетными DIY на Arduino и Raspberry Pi. Опыт и текущая обстановка показали, что требуется законченное многофункциональное устройство с небольшим бюджетом, широкими возможностями по кастомизации, хорошим комьюнити, открытыми протоколами и при этом российского производства. Так что в основу проекта лег контроллер для промышленной и домашней автоматизации от компании Wiren Board. Он очень гибок и поддерживает большинство существующих протоколов.   У Wiren Board есть универсальный комбинированный датчик WB-MSW, измеряющий температуру, влажность, уровень углекислого газа и ещё несколько показателей — именно с него стали для начала брать информацию. Позже, помимо показания температуры, мы с помощью датчика движения и видеоаналитики решили оценивать количество людей в помещении. Например, можно включать проветривание, только когда в переговорке нет людей или наоборот их слишком много. На такой случай мы сделали настраиваемые пресеты. В зависимости от этих условий система принимает решение — открывать окна или нет. По аналогии настроили работу кондиционера, но сейчас мы рассматриваем более сложный кейс с окном.   Многие системы электроприводов окон очень дорогие и поставляются чуть ли не под заказ. Здесь нас спас небольшой российский стартап Drivent.ru. Ребята работают больше над качеством, чем над массовостью. Их приводы управляются через Wi-Fi по протоколу MQTT. Можно задавать положения: открыть окно на небольшой уровень проветривания или на полный.  Разумеется, всё это интегрировано в нашу IoT-платформу и работает как полноценная климатическая система. Главные сервисы на Wiren Board: это MQTT-брокер Mosquitto, Node-RED (чтобы связать MQTT и разнообразное оборудование), Zigbee2MQTT (для беспроводных датчиков) — старались выбирать открытые, не проприетарные инструменты, не требующие сертификаций или подписания NDA. В помещении у нас отдельный датчик температуры WB-MSW v.3, подключенный по Modbus протоколу. Климат-контроль, занимающийся обогревом и охлаждением помещения, связан с системой проветривания: например, окна закрываются при падении температуры ниже критического минимума, даже если при этом целевое содержание CO2 не достигнуто. Приоритет данных показателей тоже настраивается в пресете.   В дополнение всё это точно также управляется через Алису: можно установить голосом целевую температуру, включить/выключить отдельные функции. Если проветривание мешает, его можно временно отключить с автоматическим возвратом через заданное время. Это лишь два простых примера, которые мы реализовали в начале пути создания «Офиса будущего» и самого умного и сговорчивого секретаря. Причем используемый голосовой бот может быть любым – от любого производителя. Наш умный секретарь понимает речь человека за счет встроенного механизма распознавания речи (Automatic Speech Recognition, ASR) и может выполнять задания, не связанные с физическим трудом, общается с помощью голоса за счет механизмов синтеза речи (Тext To Speech, TTS), встраивается в АТС организации как полноценный абонент с отдельным номером, может самостоятельно осуществлять и принимать звонки, соединять между собой сотрудников компании, умеет идентифицировать звонящего сотрудника независимо от источника звонка (мобильный телефон/внутренний телефон АТС предприятия), а также может применять технологии идентификации человека по пин-коду в IVR. Также наш умный секретарь формирует и предоставляет отчеты, озвучивая их голосом или отправляя текстовый вариант на e-mail и в мессенджеры, через голосовые команды помогает бронировать переговорные комнаты, назначать совещания, приглашать сотрудников на встречу, заказывать напитки, формировать заявки для служб АХО, HR и т.д.  А начиналось все с заказа кофе в переговорку. ]]></text>
+</doc>

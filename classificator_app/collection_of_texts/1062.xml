@@ -1,0 +1,60 @@
+<?xml version="1.0" ?>
+<doc>
+	<label auto="true" type="str" verify="true"><![CDATA[Other]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[thenonsense]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-08-22, 17:15]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/post/683986/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Godot | Open Dungeon | Часть alpha]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Open source]]></item>
+		<item type="str"><![CDATA[Разработка игр]]></item>
+		<item type="str"><![CDATA[Прототипирование]]></item>
+		<item type="str"><![CDATA[Игры и игровые консоли]]></item>
+		<item type="str"><![CDATA[Godot]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[godot]]></item>
+		<item type="str"><![CDATA[программирование]]></item>
+		<item type="str"><![CDATA[туториал]]></item>
+		<item type="str"><![CDATA[gamedev]]></item>
+		<item type="str"><![CDATA[gdscript]]></item>
+		<item type="str"><![CDATA[обучение]]></item>
+		<item type="str"><![CDATA[разработка игр]]></item>
+		<item type="str"><![CDATA[прототипирование]]></item>
+		<item type="str"><![CDATA[3d]]></item>
+		<item type="str"><![CDATA[opensource]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[Пошаговая инструкция по созданию минималистичной заготовки 3D-игры на движке Godot.
+вот что получится в итоге
+Архив с готовыми файлами проекта можно взять на странице: https://thenonsense.itch.io/opendungeon
+Open Dungeon
+thenonsense.itch.io
+А мы начнём сборку этого прототипа с нуля. Первое, что потребуется сделать - загрузить актуальную версию движка Godot с сайта https://godotengine.org/ в разделе Download.
+Скачиваем стандартную версию для своей системы
+В стандартной версии код мы будем писать на языке GDScript, внутри самого редактора, не используя сторонние среды написания кода.
+Распакуем скачанный файл и запустим Godot engine. В появившемся окне справа нажмём на кнопку New Project.
+Новый проект
+Создание 3d сцены, камера
+Объекты на сцене
+Персонаж и управляющий скрипт
+Добавляем интерактив
+
+Колонны и столкновения
+
+Стартовый экран
+Здоровье и игровой цикл
+На этом всё,
+вот результирующий код скрипта Main.gd
+Ах да, чтобы запускать игру отдельно от редактора, вам нужно собрать игровой билд под определённую операционную систему/технологию.
+Сборка запускаемого билда
+Начинающим в Godot также полезно будет прочитать статью про общие полезные возможности движка:
+Godot 100 мелочей
+а также материал о создании игры на джем, за короткое время:
+Как собрать махолёт, или Jam, Godot и Blender
+Продолжение:
+Часть beta Пошаговая инструкция по созданию минималистичной заготовки 3D-игры на движке Godot.  вот что получится в итоге Архив с готовыми файлами проекта можно взять на странице: https://thenonsense.itch.io/opendungeon https://thenonsense.itch.io/opendungeon Open Dungeon
+thenonsense.itch.io  Open Dungeon
+thenonsense.itch.io Open Dungeon Open Dungeon thenonsense.itch.io А мы начнём сборку этого прототипа с нуля. Первое, что потребуется сделать - загрузить актуальную версию движка Godot с сайта https://godotengine.org/ в разделе Download. https://godotengine.org/ Download Скачиваем стандартную версию для своей системы  Скачиваем стандартную версию для своей системы В стандартной версии код мы будем писать на языке GDScript, внутри самого редактора, не используя сторонние среды написания кода. Распакуем скачанный файл и запустим Godot engine. В появившемся окне справа нажмём на кнопку New Project. New Project Новый проект Новый проект                Создание 3d сцены, камера Создание 3d сцены, камера                                        Объекты на сцене Объекты на сцене                                               Персонаж и управляющий скрипт Персонаж и управляющий скрипт                                                                                         Добавляем интерактив Добавляем интерактив                                                           Колонны и столкновения Колонны и столкновения                                                                                                                                                       Стартовый экран Стартовый экран                                                                     Здоровье и игровой цикл Здоровье и игровой цикл                        ]]></text>
+</doc>

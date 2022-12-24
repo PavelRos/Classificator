@@ -1,0 +1,177 @@
+<?xml version="1.0" ?>
+<doc>
+	<label auto="true" type="str" verify="true"><![CDATA[Other]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[juunitaki]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-04-19, 00:01]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/post/661689/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Как отформатировать текст в Интернет по ширине с переносами]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Веб-дизайн]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[HTML]]></item>
+		<item type="str"><![CDATA[css]]></item>
+		<item type="str"><![CDATA[javascript]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[Большинство сайтов в интернете используют выравнивание текста влево и не используют переносы. Дизайнеры утверждают, что возможности браузеров по форматированию текста далеки от возможностей настольных издательских систем в плане изменения расстояния между словами, между отдельными символами в словах, расстановке переносов и т. д. Все выглядит ужасно, поэтому рекомендуется никогда не использовать выравнивание текста по ширине в Web.
+Однако, я решил попробовать читать новостные сайты, habr или lib.ru с "книжным форматированием".
+Для внесения изменений в сторонние web-страницы я использую расширение браузера Tampermonkey. Вот скрипт, который меняет форматирование текста на Хабре и других сайтах, которые нужно перечислить в директивах @match:
+// ==UserScript==
+// @name         P-justify-hyphens
+// @version      0.1
+// @description  try to take over the world!
+// @match        https://www.rbc.ru/*
+// @match        https://lenta.ru/*
+// @match        https://habr.com/*
+// ==/UserScript==
+
+(function() {
+    'use strict';
+
+    var styles = `
+    p {
+        -webkit-hyphens: auto;
+        -moz-hyphens: auto;
+        -ms-hyphens: auto;
+        text-align: justify;
+    }
+`;
+
+    var styleSheet = document.createElement("style");
+    styleSheet.innerText = styles;
+    document.head.appendChild(styleSheet);
+
+    document.documentElement.setAttribute("lang", 'ru');
+})();
+На lib.ru есть формат вывода книг под названием "Fine HTML". Чтобы его можно было читать, кроме выравнивания абзацев и переносов ему нужны поля. Поэтому для lib.ru я сделал отдельный скрипт:
+// ==UserScript==
+// @name         lib.ru-justify-hyphens
+// @version      0.1
+// @description  try to take over the world!
+// @match        http://lib.ru/*.html
+// ==/UserScript==
+
+(function() {
+    'use strict';
+
+    var styles = `
+    body {
+        -moz-hyphens: auto;
+        text-align: justify;
+        font-size: 28;
+        margin-left:500px;
+        margin-right:500px;
+    }
+`;
+
+    var styleSheet = document.createElement("style");
+    styleSheet.innerText = styles;
+    document.head.appendChild(styleSheet);
+
+    document.documentElement.setAttribute("lang", 'ru');
+})(); Большинство сайтов в интернете используют выравнивание текста влево и не используют переносы. Дизайнеры утверждают, что возможности браузеров по форматированию текста далеки от возможностей настольных издательских систем в плане изменения расстояния между словами, между отдельными символами в словах, расстановке переносов и т. д. Все выглядит ужасно, поэтому рекомендуется никогда не использовать выравнивание текста по ширине в Web. утверждают Однако, я решил попробовать читать новостные сайты, habr или lib.ru с "книжным форматированием". Для внесения изменений в сторонние web-страницы я использую расширение браузера Tampermonkey. Вот скрипт, который меняет форматирование текста на Хабре и других сайтах, которые нужно перечислить в директивах @match: Tampermonkey @match // ==UserScript==
+// @name         P-justify-hyphens
+// @version      0.1
+// @description  try to take over the world!
+// @match        https://www.rbc.ru/*
+// @match        https://lenta.ru/*
+// @match        https://habr.com/*
+// ==/UserScript==
+
+(function() {
+    'use strict';
+
+    var styles = `
+    p {
+        -webkit-hyphens: auto;
+        -moz-hyphens: auto;
+        -ms-hyphens: auto;
+        text-align: justify;
+    }
+`;
+
+    var styleSheet = document.createElement("style");
+    styleSheet.innerText = styles;
+    document.head.appendChild(styleSheet);
+
+    document.documentElement.setAttribute("lang", 'ru');
+})(); // ==UserScript==
+// @name         P-justify-hyphens
+// @version      0.1
+// @description  try to take over the world!
+// @match        https://www.rbc.ru/*
+// @match        https://lenta.ru/*
+// @match        https://habr.com/*
+// ==/UserScript==
+
+(function() {
+    'use strict';
+
+    var styles = `
+    p {
+        -webkit-hyphens: auto;
+        -moz-hyphens: auto;
+        -ms-hyphens: auto;
+        text-align: justify;
+    }
+`;
+
+    var styleSheet = document.createElement("style");
+    styleSheet.innerText = styles;
+    document.head.appendChild(styleSheet);
+
+    document.documentElement.setAttribute("lang", 'ru');
+})(); На lib.ru есть формат вывода книг под названием "Fine HTML". Чтобы его можно было читать, кроме выравнивания абзацев и переносов ему нужны поля. Поэтому для lib.ru я сделал отдельный скрипт: // ==UserScript==
+// @name         lib.ru-justify-hyphens
+// @version      0.1
+// @description  try to take over the world!
+// @match        http://lib.ru/*.html
+// ==/UserScript==
+
+(function() {
+    'use strict';
+
+    var styles = `
+    body {
+        -moz-hyphens: auto;
+        text-align: justify;
+        font-size: 28;
+        margin-left:500px;
+        margin-right:500px;
+    }
+`;
+
+    var styleSheet = document.createElement("style");
+    styleSheet.innerText = styles;
+    document.head.appendChild(styleSheet);
+
+    document.documentElement.setAttribute("lang", 'ru');
+})(); // ==UserScript==
+// @name         lib.ru-justify-hyphens
+// @version      0.1
+// @description  try to take over the world!
+// @match        http://lib.ru/*.html
+// ==/UserScript==
+
+(function() {
+    'use strict';
+
+    var styles = `
+    body {
+        -moz-hyphens: auto;
+        text-align: justify;
+        font-size: 28;
+        margin-left:500px;
+        margin-right:500px;
+    }
+`;
+
+    var styleSheet = document.createElement("style");
+    styleSheet.innerText = styles;
+    document.head.appendChild(styleSheet);
+
+    document.documentElement.setAttribute("lang", 'ru');
+})(); ]]></text>
+</doc>

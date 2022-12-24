@@ -1,0 +1,44 @@
+<?xml version="1.0" ?>
+<doc>
+	<original_author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Colton Ogden]]></item>
+	</original_author>
+	<label auto="true" type="str" verify="true"><![CDATA[Develop]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[BasicSloth]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-12-12, 12:36]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/post/704888/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Лекция 8. Helicopter Game 3D — CS50`s Introduction to Game Development с русскими субтитрами]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Программирование]]></item>
+		<item type="str"><![CDATA[Разработка игр]]></item>
+		<item type="str"><![CDATA[Unity]]></item>
+		<item type="str"><![CDATA[Дизайн игр]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[unity]]></item>
+		<item type="str"><![CDATA[unity3d]]></item>
+		<item type="str"><![CDATA[unity3d уроки]]></item>
+		<item type="str"><![CDATA[программирование]]></item>
+		<item type="str"><![CDATA[cs50]]></item>
+		<item type="str"><![CDATA[cs50 на русском]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[Привет! Перевод очередной лекции на этот раз о знакомстве с Unity и о Helicopter Game 3D в частности
+В этом видео
+Unity
+C#
+Blender
+Компоненты
+Коллайдеры и триггеры
+Префабы
+Скроллинг текстуры
+Аудио Привет! Перевод очередной лекции на этот раз о знакомстве с Unity и о Helicopter Game 3D в частности В этом видео Unity
+C#
+Blender
+Компоненты
+Коллайдеры и триггеры
+Префабы
+Скроллинг текстуры
+Аудио Unity Unity C# C# Blender Blender Компоненты Компоненты Коллайдеры и триггеры Коллайдеры и триггеры Префабы Префабы Скроллинг текстуры Скроллинг текстуры Аудио Аудио    ]]></text>
+</doc>

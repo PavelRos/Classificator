@@ -1,0 +1,440 @@
+<?xml version="1.0" ?>
+<doc>
+	<label auto="true" type="str" verify="true"><![CDATA[Develop]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[DinoZavr4]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-12-05, 00:18]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/post/703418/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Как я создал дополнение для чата в minecraft]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[JavaScript]]></item>
+		<item type="str"><![CDATA[Игры и игровые консоли]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Аддон]]></item>
+		<item type="str"><![CDATA[аддоносоздание]]></item>
+		<item type="str"><![CDATA[Minecraft]]></item>
+		<item type="str"><![CDATA[JavaScript]]></item>
+		<item type="str"><![CDATA[Json]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[Совсем недавно, тоесть пару месяцев назад, я задумался - "Хм, что можно сделать такое, что бы понравилось людям?". Я начал раздумывать, что можно сделать такое - npc окна это php, чат тоже php.. Стоп, дополнение для чата можно сделать на JavaScript. И вот я начал делать это дополнение для minecraft bedrock, точнее, не дополнение, а аддон.
+Аддон этот был написан на JavaScript, по меньшей части JSON. В этой статье я расскажу, как я создавал этот аддон, как его создать самому и зачем. Давайте начнём.
+Пустой аддон, но отображаемый
+В самом начале разработки, необходимо создать пустой аддон, чтобы потом использовать js. Для этого, по пути Android/data/com.mojang.../files/games/com.mojang/behaivor_packs/ создаёте папку вашего аддона, можно с любым названием. У меня это chat_dino.
+Далее нужно создать сам файл отображения. Название его должно быть manifest.json. Вот пару функций, которые должны содержаться в манифесте:
+"name" и "description". Они отвечают за название и описание.
+"version" и "uuid". Они отвечают за версию и уникальный айди набора.
+Пути, по которым расположены скрипты. Их обязательно надо указать, чтобы скрипты работали.
+В нашем случае, пути к скриптам будут в папке scripts. Давайте напишем код файла manifest.json на JSON:
+{
+  "format_version": 2,
+  "header": {
+    "name": "Название",
+    "description": "Описание",
+    "uuid": "Уникальный id",
+    "version": [ 1, 0, 3 ],
+    "min_engine_version": [ 1, 14, 0 ]
+  },
+  "modules": [
+    {
+      "description": "Описание",
+      "type": "data",
+      "uuid": "Уникальный id 2",
+      "version": [ 1, 0, 0 ]
+    },
+    {
+      "description": "Описание",
+      "language": "javascript",
+      "type": "script",
+      "uuid": "Уникальный id 3",
+      "version": [0, 0, 1],
+      "entry": "scripts/main/index.js"
+    }
+  ],
+  "dependencies": [
+    {
+      "uuid": "Уникальный id 4",
+      "version": [ 0, 1, 0 ]
+    },
+    {
+      "uuid": "Уникальный id 5",
+      "version": [ 0, 1, 0 ]
+    }
+  ]
+}
+Мы написали код для нашего аддона. Уникальный id - это id, использующийся для того, чтобы не путать один аддон с другим. Его можно сгенерировать на любом сайте, например, uuidgener*tor.net. Вместо * используйте a (англ.), просто боюсь нарушить авторские права. И каждый уникальный id должен быть разным, тоесть в нашем манифесте нужно 5 разных uuid. Теперь зайдем в майнкрафт, взглянем во вкладку "наборы параметров" - там появился наш аддон. Правда, пока что он пустой. Если у вас ничего не получилось, проверьте правильность uuid, или вместо Android/data/... используйте games/com.mojang/...
+Создаём необходимые пути
+В папке нашего аддона, там где манифест, создаёте 2 папки - scripts и functions. В папке scripts создайте папку main. А в main создайте файл index.js и папку misc. В парке misc создайте 2 файла - chat.js и second.js.
+Далее определяемся с функциями - в папке functions создаёте папку func1. А в func1 файл func1.mcfunction.
+Под конец в папке аддона создадим папку pack_icon.jpg, в которой будет иконка аддона.
+А зачем?
+При создании аддона возникает вопрос - "А зачем?". Ответ прост. Для сервера необходим антиспам и дополнение для чата. Если раньше сообщения выглядили так:
+<nickname> Привет
+То будут выглядеть вот так:
+[Player] nickname: Привет
+Круто, правда? Также пользователь не сможет писать 2 раза одни и теже сообщения либо не сможет писать их слишком быстро.
+Вот как выглядит это в чате:
+Моё дополнение для чата
+Пишем скрипты
+Для начала разберёмся с функциями. Функции - это много команд в одной. В нашем случае, команда выглядит так:
+/function func1/func1
+Функция func1 расположена в папке func1. Вот скрипт этого добра:
+gamerule commandblockoutput false
+gamerule sendcommandfeedback false
+Оно просто отключает уведомления в чате. Чтобы оно работало автоматом, нужно поставить командной блок (цикл, раб. всегда) с командой /function func1/func1. Но это же не удобно?! Давайте автоматизируем этот процесс. Я не указал этого в путях, но укажу здесь. В папке functions создайте файл tick.json. Он будет отвечать за автоматическое выполнение функций. Запишем JSON код
+{
+ "values": [
+  "func1/func1"
+ ]
+}
+Готово. Мы закончили с функциями.
+Теперь переходим к JavaScript - запишем этот код в файле index.js
+import { chatrank } from './misc/chat.js'
+import { world } from 'mojang-minecraft'
+import { timer } from './misc/second.js'
+let tick = 0, worldLoaded = false, loadTime = 0;
+
+world.events.beforeChat.subscribe((data) => {
+    chatrank(data)
+})
+world.events.tick.subscribe((ticks) => {
+    tick++
+    if (!world.getDimension("overworld").runCommand('testfor @a').error && !worldLoaded) {
+        loadTime = tick
+        worldLoaded = true;
+        world.getDimension("overworld").runCommand(`tellraw @a {"rawtext":[{"text":"§l§eМир был загружен в ${loadTime} тиках!"}]}`)
+        world.getDimension("overworld").runCommand(`scoreboard objectives add chatsSent dummy`)
+    }
+    if(tick >= 20){
+        tick = 0
+        timer()
+    }
+})
+При заходе в мир будет писать "Мир был загружен в (количество) тиках!". Эти тики означают на сколько быстро был загружен мир или сколько в нём кадров/сек. Иногда это количество 86-194. Такое количество нормальное. А другое - не очень.Также мы импортировали библиотеки timer, world, chatrank.
+Слудющий файл - chat.js. Это, пожалуй, самый важный и большой файл, не считая манифеста. Но и без других файлов он не будет работать. Запишем скрипт:
+import { world } from "mojang-minecraft"
+
+let messages = new Map()
+
+function chatrank(data){
+    const tags = data.sender.getTags()
+    data.sender.runCommand(`scoreboard players add @s chatsSent 0`)
+    let score = parseInt(data.sender.runCommand(`scoreboard players test @s chatsSent *`).statusMessage.match(/-?\d+/)[0])
+    let ranks = [];
+    for(const tag of tags){
+        if(tag.startsWith('rank:')){
+            ranks.push(tag.replace('rank:', ''))
+        }
+    }
+    if(ranks.length == 0)ranks = ["§l§aPlayer"]
+    
+    if(data.message.startsWith("!*")){
+        data.cancel = true
+        return
+    }
+    if(score >= 3){
+        data.cancel = true
+        return world.getDimension("overworld").runCommand(`tellraw "${data.sender.nameTag}" {"rawtext":[{"text":"§l§4Ты пишешь сообщения слишком быстро!"}]}`)
+    }
+    if(!messages.get(data.sender.name)){
+        messages.set(data.sender.name, data.message)
+    }else {
+        const oldMsg = messages.get(data.sender.name)
+        if(oldMsg == data.message){
+            data.cancel = true
+            return world.getDimension("overworld").runCommand(`tellraw "${data.sender.nameTag}" {"rawtext":[{"text":"§l§cНе повторяй одни и теже сообщения!"}]}`)
+        }
+    }
+    let text = `§f[${ranks}§r§f] §7${data.sender.nameTag}: §f${data.message}`
+    world.getDimension('overworld').runCommand(`tellraw @a {"rawtext":[{"translate":${JSON.stringify(text)}}]}`)
+    messages.set(data.sender.name, data.message)
+    data.sender.runCommand(`scoreboard players add @s chatsSent 1`)
+    data.cancel = true
+}
+export { chatrank }
+Мы импортировали world и экспортировали chatrank. Вы можете изменить некоторые нюансы - сообщения при спаме, Player по умолчанию.
+Далее - second.js
+import { world } from 'mojang-minecraft'
+let seconds = 0
+
+export function timer(){
+    seconds++
+    if(seconds >= 4){
+        world.getDimension("overworld").runCommand(`scoreboard players reset * chatsSent`)
+        world.getDimension("overworld").runCommand(`scoreboard players set "dummy" chatsSent 1`)
+        seconds = 0
+        return seconds
+    }
+}
+Думаю, тут объяснений не надо.
+Мы закончили со скриптами и создали все файлы - идём тестировать!
+Как это работает?
+Всё просто - вы не можете писать одни и теже сообщения, или писать их слишком быстро. Чтобы задать ранг, например ADMIN (по умолчанию Player), нужно использовать эту команду:
+/tag @s add rank:РАНГ
+#вот для красным ADMIN
+/tag @s add rank:§l§cADMIN
+Теперь перед вашим ником будет написанно ADMIN - пусть все знают, кто на сервере босс!
+Современные проблемы - требуют современных решений
+В нашем аддоне нашлось пару багов. Один из них - кавычка. Если вы попробуете написать подобное сообщение:
+Привет, я тут "босс"!
+То дополнение не будет работать. Ваше сообщение будет выглядеть вот так:
+<nickname> Привет, я тут "босс"!
+Но, как говорится, современные проблемы - требуют современных решений. Давайте в chat.js, в команде tellraw изменим кавычки. Вместо "текст" поставим 'текст'. Если вы на старой версии, вам выдаст синтаксическую ошибку.
+Баг2 - проблема с версиями. Если вы не на релизе, а на бета-версии, ваши сообщения будут выглядеть вот так:
+command шепчет вам: [Player] nickname: Привет!
+Поэтому, ничто не остаётся кроме того как перейти на версию релиза, например, 1.19.11.
+Ставим авторские права
+Авторские права на аддон можно делать только по желанию, и только если вы его выкладываете публично. Если же аддон был скачан, и в нём были теже авторские права, вы не можете поставить авторские права.
+В папке аддона создадим файл - LICENSE.txt или LICENSE.md. Ну, если лицензия короткая, READ_ME.txt. Запишем это:
+1. #пункт лицензии 1
+2. #и так далее
+
+AntiSpam for my server
+©2022
+
+#либо так:
+#(C) 2022
+Конечно, всё что после "#" не используйте. Это комментарий.
+На этом всё. Надеюсь, статья была полезной. Совсем недавно, тоесть пару месяцев назад, я задумался - "Хм, что можно сделать такое, что бы понравилось людям?". Я начал раздумывать, что можно сделать такое - npc окна это php, чат тоже php.. Стоп, дополнение для чата можно сделать на JavaScript. И вот я начал делать это дополнение для minecraft bedrock, точнее, не дополнение, а аддон. Аддон этот был написан на JavaScript, по меньшей части JSON. В этой статье я расскажу, как я создавал этот аддон, как его создать самому и зачем. Давайте начнём. Пустой аддон, но отображаемый В самом начале разработки, необходимо создать пустой аддон, чтобы потом использовать js. Для этого, по пути Android/data/com.mojang.../files/games/com.mojang/behaivor_packs/ создаёте папку вашего аддона, можно с любым названием. У меня это chat_dino. Далее нужно создать сам файл отображения. Название его должно быть manifest.json. Вот пару функций, которые должны содержаться в манифесте: "name" и "description". Они отвечают за название и описание.
+"version" и "uuid". Они отвечают за версию и уникальный айди набора.
+Пути, по которым расположены скрипты. Их обязательно надо указать, чтобы скрипты работали. "name" и "description". Они отвечают за название и описание. "name" и "description". Они отвечают за название и описание. "version" и "uuid". Они отвечают за версию и уникальный айди набора. "version" и "uuid". Они отвечают за версию и уникальный айди набора. Пути, по которым расположены скрипты. Их обязательно надо указать, чтобы скрипты работали. Пути, по которым расположены скрипты. Их обязательно надо указать, чтобы скрипты работали. В нашем случае, пути к скриптам будут в папке scripts. Давайте напишем код файла manifest.json на JSON: {
+  "format_version": 2,
+  "header": {
+    "name": "Название",
+    "description": "Описание",
+    "uuid": "Уникальный id",
+    "version": [ 1, 0, 3 ],
+    "min_engine_version": [ 1, 14, 0 ]
+  },
+  "modules": [
+    {
+      "description": "Описание",
+      "type": "data",
+      "uuid": "Уникальный id 2",
+      "version": [ 1, 0, 0 ]
+    },
+    {
+      "description": "Описание",
+      "language": "javascript",
+      "type": "script",
+      "uuid": "Уникальный id 3",
+      "version": [0, 0, 1],
+      "entry": "scripts/main/index.js"
+    }
+  ],
+  "dependencies": [
+    {
+      "uuid": "Уникальный id 4",
+      "version": [ 0, 1, 0 ]
+    },
+    {
+      "uuid": "Уникальный id 5",
+      "version": [ 0, 1, 0 ]
+    }
+  ]
+} {
+  "format_version": 2,
+  "header": {
+    "name": "Название",
+    "description": "Описание",
+    "uuid": "Уникальный id",
+    "version": [ 1, 0, 3 ],
+    "min_engine_version": [ 1, 14, 0 ]
+  },
+  "modules": [
+    {
+      "description": "Описание",
+      "type": "data",
+      "uuid": "Уникальный id 2",
+      "version": [ 1, 0, 0 ]
+    },
+    {
+      "description": "Описание",
+      "language": "javascript",
+      "type": "script",
+      "uuid": "Уникальный id 3",
+      "version": [0, 0, 1],
+      "entry": "scripts/main/index.js"
+    }
+  ],
+  "dependencies": [
+    {
+      "uuid": "Уникальный id 4",
+      "version": [ 0, 1, 0 ]
+    },
+    {
+      "uuid": "Уникальный id 5",
+      "version": [ 0, 1, 0 ]
+    }
+  ]
+} Мы написали код для нашего аддона. Уникальный id - это id, использующийся для того, чтобы не путать один аддон с другим. Его можно сгенерировать на любом сайте, например, uuidgener*tor.net. Вместо * используйте a (англ.), просто боюсь нарушить авторские права. И каждый уникальный id должен быть разным, тоесть в нашем манифесте нужно 5 разных uuid. Теперь зайдем в майнкрафт, взглянем во вкладку "наборы параметров" - там появился наш аддон. Правда, пока что он пустой. Если у вас ничего не получилось, проверьте правильность uuid, или вместо Android/data/... используйте games/com.mojang/... Создаём необходимые пути В папке нашего аддона, там где манифест, создаёте 2 папки - scripts и functions. В папке scripts создайте папку main. А в main создайте файл index.js и папку misc. В парке misc создайте 2 файла - chat.js и second.js. Далее определяемся с функциями - в папке functions создаёте папку func1. А в func1 файл func1.mcfunction. Под конец в папке аддона создадим папку pack_icon.jpg, в которой будет иконка аддона. А зачем? При создании аддона возникает вопрос - "А зачем?". Ответ прост. Для сервера необходим антиспам и дополнение для чата. Если раньше сообщения выглядили так: <nickname> Привет <nickname> Привет То будут выглядеть вот так: [Player] nickname: Привет [Player] nickname: Привет Круто, правда? Также пользователь не сможет писать 2 раза одни и теже сообщения либо не сможет писать их слишком быстро. Вот как выглядит это в чате:  Моё дополнение для чата Пишем скрипты Для начала разберёмся с функциями. Функции - это много команд в одной. В нашем случае, команда выглядит так: /function func1/func1 /function func1/func1 Функция func1 расположена в папке func1. Вот скрипт этого добра: gamerule commandblockoutput false
+gamerule sendcommandfeedback false gamerule commandblockoutput false
+gamerule sendcommandfeedback false Оно просто отключает уведомления в чате. Чтобы оно работало автоматом, нужно поставить командной блок (цикл, раб. всегда) с командой /function func1/func1. Но это же не удобно?! Давайте автоматизируем этот процесс. Я не указал этого в путях, но укажу здесь. В папке functions создайте файл tick.json. Он будет отвечать за автоматическое выполнение функций. Запишем JSON код {
+ "values": [
+  "func1/func1"
+ ]
+} {
+ "values": [
+  "func1/func1"
+ ]
+} Готово. Мы закончили с функциями. Теперь переходим к JavaScript - запишем этот код в файле index.js import { chatrank } from './misc/chat.js'
+import { world } from 'mojang-minecraft'
+import { timer } from './misc/second.js'
+let tick = 0, worldLoaded = false, loadTime = 0;
+
+world.events.beforeChat.subscribe((data) => {
+    chatrank(data)
+})
+world.events.tick.subscribe((ticks) => {
+    tick++
+    if (!world.getDimension("overworld").runCommand('testfor @a').error && !worldLoaded) {
+        loadTime = tick
+        worldLoaded = true;
+        world.getDimension("overworld").runCommand(`tellraw @a {"rawtext":[{"text":"§l§eМир был загружен в ${loadTime} тиках!"}]}`)
+        world.getDimension("overworld").runCommand(`scoreboard objectives add chatsSent dummy`)
+    }
+    if(tick >= 20){
+        tick = 0
+        timer()
+    }
+}) import { chatrank } from './misc/chat.js'
+import { world } from 'mojang-minecraft'
+import { timer } from './misc/second.js'
+let tick = 0, worldLoaded = false, loadTime = 0;
+
+world.events.beforeChat.subscribe((data) => {
+    chatrank(data)
+})
+world.events.tick.subscribe((ticks) => {
+    tick++
+    if (!world.getDimension("overworld").runCommand('testfor @a').error && !worldLoaded) {
+        loadTime = tick
+        worldLoaded = true;
+        world.getDimension("overworld").runCommand(`tellraw @a {"rawtext":[{"text":"§l§eМир был загружен в ${loadTime} тиках!"}]}`)
+        world.getDimension("overworld").runCommand(`scoreboard objectives add chatsSent dummy`)
+    }
+    if(tick >= 20){
+        tick = 0
+        timer()
+    }
+}) При заходе в мир будет писать "Мир был загружен в (количество) тиках!". Эти тики означают на сколько быстро был загружен мир или сколько в нём кадров/сек. Иногда это количество 86-194. Такое количество нормальное. А другое - не очень.Также мы импортировали библиотеки timer, world, chatrank. Слудющий файл - chat.js. Это, пожалуй, самый важный и большой файл, не считая манифеста. Но и без других файлов он не будет работать. Запишем скрипт: import { world } from "mojang-minecraft"
+
+let messages = new Map()
+
+function chatrank(data){
+    const tags = data.sender.getTags()
+    data.sender.runCommand(`scoreboard players add @s chatsSent 0`)
+    let score = parseInt(data.sender.runCommand(`scoreboard players test @s chatsSent *`).statusMessage.match(/-?\d+/)[0])
+    let ranks = [];
+    for(const tag of tags){
+        if(tag.startsWith('rank:')){
+            ranks.push(tag.replace('rank:', ''))
+        }
+    }
+    if(ranks.length == 0)ranks = ["§l§aPlayer"]
+    
+    if(data.message.startsWith("!*")){
+        data.cancel = true
+        return
+    }
+    if(score >= 3){
+        data.cancel = true
+        return world.getDimension("overworld").runCommand(`tellraw "${data.sender.nameTag}" {"rawtext":[{"text":"§l§4Ты пишешь сообщения слишком быстро!"}]}`)
+    }
+    if(!messages.get(data.sender.name)){
+        messages.set(data.sender.name, data.message)
+    }else {
+        const oldMsg = messages.get(data.sender.name)
+        if(oldMsg == data.message){
+            data.cancel = true
+            return world.getDimension("overworld").runCommand(`tellraw "${data.sender.nameTag}" {"rawtext":[{"text":"§l§cНе повторяй одни и теже сообщения!"}]}`)
+        }
+    }
+    let text = `§f[${ranks}§r§f] §7${data.sender.nameTag}: §f${data.message}`
+    world.getDimension('overworld').runCommand(`tellraw @a {"rawtext":[{"translate":${JSON.stringify(text)}}]}`)
+    messages.set(data.sender.name, data.message)
+    data.sender.runCommand(`scoreboard players add @s chatsSent 1`)
+    data.cancel = true
+}
+export { chatrank } import { world } from "mojang-minecraft"
+
+let messages = new Map()
+
+function chatrank(data){
+    const tags = data.sender.getTags()
+    data.sender.runCommand(`scoreboard players add @s chatsSent 0`)
+    let score = parseInt(data.sender.runCommand(`scoreboard players test @s chatsSent *`).statusMessage.match(/-?\d+/)[0])
+    let ranks = [];
+    for(const tag of tags){
+        if(tag.startsWith('rank:')){
+            ranks.push(tag.replace('rank:', ''))
+        }
+    }
+    if(ranks.length == 0)ranks = ["§l§aPlayer"]
+    
+    if(data.message.startsWith("!*")){
+        data.cancel = true
+        return
+    }
+    if(score >= 3){
+        data.cancel = true
+        return world.getDimension("overworld").runCommand(`tellraw "${data.sender.nameTag}" {"rawtext":[{"text":"§l§4Ты пишешь сообщения слишком быстро!"}]}`)
+    }
+    if(!messages.get(data.sender.name)){
+        messages.set(data.sender.name, data.message)
+    }else {
+        const oldMsg = messages.get(data.sender.name)
+        if(oldMsg == data.message){
+            data.cancel = true
+            return world.getDimension("overworld").runCommand(`tellraw "${data.sender.nameTag}" {"rawtext":[{"text":"§l§cНе повторяй одни и теже сообщения!"}]}`)
+        }
+    }
+    let text = `§f[${ranks}§r§f] §7${data.sender.nameTag}: §f${data.message}`
+    world.getDimension('overworld').runCommand(`tellraw @a {"rawtext":[{"translate":${JSON.stringify(text)}}]}`)
+    messages.set(data.sender.name, data.message)
+    data.sender.runCommand(`scoreboard players add @s chatsSent 1`)
+    data.cancel = true
+}
+export { chatrank } Мы импортировали world и экспортировали chatrank. Вы можете изменить некоторые нюансы - сообщения при спаме, Player по умолчанию. Далее - second.js import { world } from 'mojang-minecraft'
+let seconds = 0
+
+export function timer(){
+    seconds++
+    if(seconds >= 4){
+        world.getDimension("overworld").runCommand(`scoreboard players reset * chatsSent`)
+        world.getDimension("overworld").runCommand(`scoreboard players set "dummy" chatsSent 1`)
+        seconds = 0
+        return seconds
+    }
+} import { world } from 'mojang-minecraft'
+let seconds = 0
+
+export function timer(){
+    seconds++
+    if(seconds >= 4){
+        world.getDimension("overworld").runCommand(`scoreboard players reset * chatsSent`)
+        world.getDimension("overworld").runCommand(`scoreboard players set "dummy" chatsSent 1`)
+        seconds = 0
+        return seconds
+    }
+} Думаю, тут объяснений не надо. Мы закончили со скриптами и создали все файлы - идём тестировать! Как это работает? Всё просто - вы не можете писать одни и теже сообщения, или писать их слишком быстро. Чтобы задать ранг, например ADMIN (по умолчанию Player), нужно использовать эту команду: /tag @s add rank:РАНГ
+#вот для красным ADMIN
+/tag @s add rank:§l§cADMIN /tag @s add rank:РАНГ
+#вот для красным ADMIN
+/tag @s add rank:§l§cADMIN Теперь перед вашим ником будет написанно ADMIN - пусть все знают, кто на сервере босс! Современные проблемы - требуют современных решений В нашем аддоне нашлось пару багов. Один из них - кавычка. Если вы попробуете написать подобное сообщение: Привет, я тут "босс"! Привет, я тут "босс"! То дополнение не будет работать. Ваше сообщение будет выглядеть вот так: <nickname> Привет, я тут "босс"! <nickname> Привет, я тут "босс"! Но, как говорится, современные проблемы - требуют современных решений. Давайте в chat.js, в команде tellraw изменим кавычки. Вместо "текст" поставим 'текст'. Если вы на старой версии, вам выдаст синтаксическую ошибку. Баг2 - проблема с версиями. Если вы не на релизе, а на бета-версии, ваши сообщения будут выглядеть вот так: command шепчет вам: [Player] nickname: Привет! command шепчет вам: [Player] nickname: Привет! Поэтому, ничто не остаётся кроме того как перейти на версию релиза, например, 1.19.11. Ставим авторские права Авторские права на аддон можно делать только по желанию, и только если вы его выкладываете публично. Если же аддон был скачан, и в нём были теже авторские права, вы не можете поставить авторские права. В папке аддона создадим файл - LICENSE.txt или LICENSE.md. Ну, если лицензия короткая, READ_ME.txt. Запишем это: 1. #пункт лицензии 1
+2. #и так далее
+
+AntiSpam for my server
+©2022
+
+#либо так:
+#(C) 2022 1. #пункт лицензии 1
+2. #и так далее
+
+AntiSpam for my server
+©2022
+
+#либо так:
+#(C) 2022 Конечно, всё что после "#" не используйте. Это комментарий. На этом всё. Надеюсь, статья была полезной.]]></text>
+</doc>

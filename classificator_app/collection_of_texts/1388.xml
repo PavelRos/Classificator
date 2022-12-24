@@ -1,0 +1,38 @@
+<?xml version="1.0" ?>
+<doc>
+	<original_author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Colton Ogden]]></item>
+	</original_author>
+	<label auto="true" type="str" verify="true"><![CDATA[Other]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[BasicSloth]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-04-21, 11:02]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/post/662185/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Лекция 4. Super Mario Bros. — CS50`s Introduction to Game Development с русскими субтитрами]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Программирование]]></item>
+		<item type="str"><![CDATA[Разработка игр]]></item>
+		<item type="str"><![CDATA[Lua]]></item>
+		<item type="str"><![CDATA[Дизайн игр]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[love2d]]></item>
+		<item type="str"><![CDATA[разработка игр]]></item>
+		<item type="str"><![CDATA[cs50]]></item>
+		<item type="str"><![CDATA[cs50 на русском]]></item>
+		<item type="str"><![CDATA[геймдизайн]]></item>
+		<item type="str"><![CDATA[программирование]]></item>
+		<item type="str"><![CDATA[лекции]]></item>
+		<item type="str"><![CDATA[super mario bros]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[Привет! Перевод пятой лекции о создании Super Mario Bros.
+В этом видео:
+Тайловые карты.
+2D-анимация.
+Процедурная генерация уровней.
+Физика платформера. Привет! Перевод пятой лекции о создании Super Mario Bros. В этом видео: В этом видео: Тайловые карты.
+2D-анимация.
+Процедурная генерация уровней.
+Физика платформера. Тайловые карты. Тайловые карты. 2D-анимация. 2D-анимация. Процедурная генерация уровней. Процедурная генерация уровней. Физика платформера. Физика платформера.  ]]></text>
+</doc>

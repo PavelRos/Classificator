@@ -1,0 +1,28 @@
+<?xml version="1.0" ?>
+<doc>
+	<label auto="true" type="str" verify="true"><![CDATA[Other]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[ArraLazur]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-08-17, 16:27]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/post/683124/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Отладка в C++ геометрии и топологии]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Open source]]></item>
+		<item type="str"><![CDATA[C++]]></item>
+		<item type="str"><![CDATA[Работа с 3D-графикой]]></item>
+		<item type="str"><![CDATA[Visual Studio]]></item>
+		<item type="str"><![CDATA[CAD/CAM]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[отладка]]></item>
+		<item type="str"><![CDATA[c++]]></item>
+		<item type="str"><![CDATA[графика]]></item>
+		<item type="str"><![CDATA[3d]]></item>
+		<item type="str"><![CDATA[3д моделирование]]></item>
+		<item type="str"><![CDATA[cad]]></item>
+		<item type="str"><![CDATA[cam]]></item>
+		<item type="str"><![CDATA[сапр]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[]]></text>
+</doc>

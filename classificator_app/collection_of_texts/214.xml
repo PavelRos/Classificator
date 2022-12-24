@@ -1,0 +1,541 @@
+<?xml version="1.0" ?>
+<doc>
+	<label auto="true" type="str" verify="true"><![CDATA[Develop]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[wikendp]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-12-12, 02:04]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/post/704796/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Hashmap по версии Golang вместе с реализацией на дженериках]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Go]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[go]]></item>
+		<item type="str"><![CDATA[hashmap]]></item>
+		<item type="str"><![CDATA[структуры данных]]></item>
+		<item type="str"><![CDATA[dictionary]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[Привет. Сегодня рассмотрим такую интересную структуру данных как hashmap, а именно ее реализацию в Go. Вкратце разберем что такое hashmap, как это выглядит под капотом Go 1.19. Посмотрим отличия реализации с Java и Python. Реализуем hashmap из-под капота с помощью дженериков.
+Что такое hashmap
+Для тех, кто еще не знаком с hashmap, прикладываю информацию из Википедии:
+Hashmap - это структура данных, которая позволяет хранить пары ключ-значение. Ключи в hashmap уникальные. Можно представить как обычный массив, в котором для индекса можем использовать не только целые числа, но и, например, строки.
+Сложность:
+Операция
+Средняя
+Худшая
+Вставка
+Поиск
+Удаление
+Память
+При углублении в реализацию такой структуры данных можно встретить следующие слова: хэш-функция, коллизии, бакеты, фактор заполненности. Разберемся что они значат:
+Хэш-функция(Hash function). Под ней понимают функцию, которая принимает значение (ключ) неопределенного размера и возвращает значение фиксированной длины. В случае c Go она возвращает uint64. Одно из главных свойств - стабильность. Для одного и того же переданного значения она должна возвращать один и тот же результат;
+Бакет(Bucket/Slot). Так называемая структура данных, в которой хранятся ключи и значения в мапе. В некоторых реализациях hashmap в одном бакете хранится одно значение, а в других - несколько. Например, в Go данные внутри бакета хранятся в массиве, и в одном бакете может быть до восьми элементов;
+Коллизия (Collision). Так как хэш-функция не идеальна, передав в нее два разных значения мы можем получить один и тот же результат. В случае с бакетами нам нужно два разных значения положить в один и тот же бакет. Это называется коллизией. Для реализации hashmap необходимо иметь алгоритм их разрешения. Существует несколько таких алгоритмов (стратегий):
+Closed addressing. Храним элементы с одинаковым хэшем с помощью дополнительных структур данных, таких как: связный список, двоичное дерево, массив и др. Используется в следующих языках: Go, Java, Scala;
+Open addressing. В бакете хранится только одно значение. При возникновении коллизии выбирается следующий свободный бакет по какой-либо формуле. Такая стратегия используется в Python, Ruby, Rust, C++ и др;
+Perfect hashing. Выбирается такая хэш-функция, при которой не будет коллизий. Подбирается для статичного, заранее известного набора ключей.
+Фактор заполненности мапы (Overload factor). Это число (порог), превысив которое считается, что нужно увеличить количество бакетов (обычно вдвое) для сохранения константной скорости
+Как hashmap реализована в Go
+Упрощенный вариант работы hashmap в Go.
+Рассмотрим по шагам упрощенный принцип работы hashmap. Для примера будем хранить оценки фильмов в формате название-оценка:
+Передаем ключ "The Matrix" в хэш-функцию. Получаем uint64 - 18002143618149980261;
+Вычисляем маску для наших бакетов. Она равна n-1, где n - количество бакетов. В примере 4 бакета, а маска равна 3;
+Вычисляем номер бакета, в котором сохраним наше значение. Для этого используем битовое "и": hash & mask == 18002143618149980261 & 3 == 01 & 11(отбросили нули) = 01, что рано 1 в десятичной системе счисления;
+Идем в бакет по индексу 1 и перебором проверяем массив на наличие нашего ключа. Если находим совпадение по ключу, то перезаписываем значение, иначе добавляем в первое свободное место;
+Под капотом структуры мапы и бакета выглядят так:
+runtime/map.go
+// A header for a Go map.
+type hmap struct {
+ count     int // размер мапы. используется функцией len()
+ flags     uint8
+ B         uint8  // log_2 количества бакетов. Для 8 бакетов B=3, для 16 B=4 и так далее.
+ noverflow uint16 // примерное число переполненных бакетов
+ hash0     uint32 // seed для хэш-функции, генерируется при создании мапы. нужен для рандомизации хэш-функции
+
+ buckets    unsafe.Pointer // ссылка на массив из 2^B бакетов; nil, если count==0
+ oldbuckets unsafe.Pointer // ссылка на массив предыдущих бакетов. в процессе роста мапы здесь будет массив старых бакетов, откуда потихоньку будут переноситься значения в новые бакеты.
+ nevacuate  uintptr        // количество "эвакуированных" бакетов.
+
+ extra *mapextra // опциональные поля
+}
+
+// A bucket for a Go map.
+type bmap struct {
+ tophash [bucketCnt]uint8 // массив tophash
+ // После массива tophash идет массив размера bucketCnt ключей и массив размера bucketCnt элементов.
+}
+В структуре бакета явно не описаны поля ключей, значений и ссылка на overflow бакет. Для получения этих значений используется адресная арифметика через unsafe.Pointer.
+Интересности реализации:
+В качестве ключа можно использовать любой тип данных для которого определена операция сравнения. Например, можно использовать структуру с тем же условием для всех ее полей;
+При отсутствии элемента возвращается нулевое значение для типа. Вторым параметром можно получить флаг наличия элемента по ключу;
+Нельзя получить адрес элемента. Потому что при росте мапы оно переедет в другой бакет и адрес у него, соответственно, поменяется;
+Мапа не безопасна для конкурентного использования. Для этого можно использовать обертку из sync.Map или мьютекс;
+Порядок итерации не сохраняется. При каждой новой итерации мапы последовательность возвращаемых элементов может отличаться. Под капотом каждый раз выбирается рандомный бакет, с которого начинается итерация. Для сохранения нужного порядка придется сохранять ключи в отдельном массиве и итерироваться по нему;
+При каждом создании мапы генерируется seed для рандомизации хэш-функции. Это сделано для безопасности, так как зная хэш-функцию можно подобрать такие ключи, что все значения попадут в один бакет и мы получим линейную скорость поиска;
+При коллизиях используется стратегия сlosed addressing. Мы перебираем все ячейки бакета (их 8) и ищем первое свободное место;
+OverloadFactor равен 6.5 (~81% заполненности бакетов). Когда бакеты в среднем заполнены больше чем на 6.5 элементов, тригерится рост мапы, и все элементы перемещаются в новые бакеты, которых создается в два раза больше.
+При росте элементы переносятся в новые бакеты постепенно, а не все сразу;
+Некоторые отличия от реализаций в других языках
+Python 3.6+. Подробнее можно посмотреть в очень интересном (правда) докладе Raymond Hettinger Modern Python Dictionaries (2017)
+Сохраняется последовательность вставки;
+При коллизиях свободный бакет ищется с помощью стратегии open addressing. Для оптимизации поиска свободного бакета используются следующие формулы: j = ((5*j) + 1) mod 2**i и j = (5*j) + 1 + perturb;
+Данные хранятся отдельно от бакетов. Сами бакеты используются только как указатели (индексы) на данные. Выглядит это примерно так:
+  indices =  [None, 1, None, None, None, 0, None, 2]
+  entries =  [[-9092791511155847987, 'timmy', 'red'],
+              [-8522787127447073495, 'barry', 'green'],
+              [-6480567542315338377, 'guido', 'blue']]
+Рядом с данными хранится полный хэш. Это позволяет не пересчитывать его при росте мапы.
+LoadFactor - 2/3 = ~66%
+Java. Разбор можно почитать в статье Внутренняя работа HashMap в Java:
+При коллизиях используется стратегия сlosed addressing, но вместо массивов используется связный список. Также когда длина списка больше восьми он превращается в TreeMap. Это дает скорость поиска вместо как в случае со связным списком или массивом;
+Все ключи должны быть объектами. Для этого примитивные типы (boolean, int, char, float и т.д) должны быть сконвертированы в объекты через boxing;
+LoadFactor по умолчанию - 75%. При создании мапы можно указать свое значение параметра.
+Также небольшое сравнение с реализациями Java и C++ можно посмотреть у Dave Cheney.
+Кодирование
+Реализуем базово hashmap из исходников Go 1.19. Не будем учитывать рост мапы, конкурентное обращение и возможность использовать разные типы для ключей.
+Начнем с ведер
+Определим структуру бакета.
+Нам нужно два массива для ключей и значений, и ссылка на бакет для хранения дополнительных значений в случае переполнения текущего. Для оптимизации поиска храним массив первых восьми бит от хэша ключа, которые называются tophash.
+const bucketSize = 8 // размер массивов внутри бакета
+
+type bucket[T any] struct {
+ tophash [bucketSize]uint8 // массив первых восьми бит от хэша ключа; некоторые значения используем как флаги, подробности ниже.
+
+ keys   [bucketSize]string // массив ключей
+ values [bucketSize]T // массив значений
+
+ overflow *bucket[T] // ссылка на бакет в случае переполнения текущего
+}
+Про tophash
+В массиве с tophash мы резервируем несколько значений для дальнейшего использования. Ко всем значениям tophash, которые меньше minTopHash будем прибавлять его.
+const (
+ emptyRest  = 0 // эта и все следующие ячейки с бОльшим индексом пустые
+ emptyCell  = 1 // ячейка пустая
+ minTopHash = 3 // минимальное значение tophash означающее что в ячейке есть значение
+)
+По умолчанию, в Go массив заполнен нулевыми значениями, соответственно для tophash массива, который типа uint8, будут нули. При добавлении или получении элемента из бакета в первую очередь ориентируемся на массив tophash, а не массив ключей. Это позволяет оптимизировать поиск внутри бакета.
+Добавляем элемент в мапу
+Алгоритм добавления элемента:
+В цикле ищем совпадения по tophash и ключу или свободное место. Сохраняем данные и возвращаем соответствующий флаг для подсчета элементов в мапе.
+Если не нашли нужного места, то повторяем упражнения на overflow бакете.
+// Добавляем значение в бакет.
+// Если переданные ключ уже присутствует в бакете, то значение перезапишется.
+// Если бакет переполнен, то значение сохраняется в бакете overflow.
+func (b *bucket[T]) Put(key string, topHash uint8, value T) (isAdded bool) {
+ var insertIdx *int
+
+ for i := range b.tophash {
+  // сравниваем tophash а не ключ, т.к. это позволяет нам использовать флаги и это работает быстрее
+  if b.tophash[i] != topHash {
+   if b.tophash[i] == emptyRest {
+    insertIdx = new(int)
+    *insertIdx = i
+    break
+   }
+
+   if insertIdx == nil && isCellEmpty(b.tophash[i]) {
+    insertIdx = new(int)
+    *insertIdx = i
+   }
+   continue
+  }
+
+  // tophash значения не уникальны, по этому при совпадении проверяем дополнительно и сам ключ
+  if b.keys[i] != key {
+   continue
+  }
+
+  b.values[i] = value
+  return false
+ }
+  
+   // проверяем overflow бакет.
+ if insertIdx == nil || b.overflow != nil {
+  if b.overflow == nil {
+   b.overflow = &Bucket[T]{}
+  }
+
+  return b.overflow.Put(key, topHash, value)
+ }
+
+ // сохраняем ключ, значение и tophash
+ b.keys[*insertIdx] = key
+ b.values[*insertIdx] = value
+ b.tophash[*insertIdx] = topHash
+
+ // возвращаем признак успеха. по нему калькулируем количество элементов в мапе.
+ return true
+}
+
+// проверяем что значение tophash <= чем зарезервированное значение для пустой ячейки
+func isCellEmpty(val uint8) bool {
+ return val <= emptyCell
+}
+Получаем элемент
+Алгоритм поиска элемента такой же как и в методе Put. Дополнительно возвращаем флаг наличия элемента в бакете.
+func (b bucket[T]) Get(key string, topHash uint8) (T, bool) {
+ for i := range b.tophash {
+  if b.tophash[i] != topHash {
+   // константа означает что все следующие ячейки пустые -- выходим из цикла.
+   if b.tophash[i] == emptyRest {
+    break
+   }
+   continue
+  }
+
+  if !isCellEmpty(b.tophash[i]) && b.keys[i] == key {
+   return b.values[i], true
+  }
+ }
+
+ // проверим бакет overflow
+ if b.overflow != nil {
+  return b.overflow.Get(key, topHash)
+ }
+
+ return *new(T), false
+}
+Удаляем элемент
+Вместо фактического удаления просто помечаем ячейку пустой.
+// Delete - удаляет элемент по переданному ключу
+func (b *bucket[T]) Delete(key string, topHash uint8) (deleted bool) {
+ for i := range b.tophash {
+  if b.tophash[i] != topHash {
+   // если встречаем флаг все след. ячейки пустые, то просто выходим из функции
+   if b.tophash[i] == emptyRest {
+    return false
+   }
+   continue
+  }
+
+  // дополнительно проверяем совпадение по ключу, т.к. tophash не уникальный
+  if b.keys[i] == key {
+   b.tophash[i] = emptyCell
+   return true
+  }
+ }
+
+ // проверяем overflow бакет
+ if b.overflow != nil {
+  return b.overflow.Delete(key, topHash)
+ }
+
+ return false
+}
+Структура мапы
+Храним размер мапы, количество бакетов, seed для хэш-функции и слайс самих бакетов.
+// hmap - структура мапы
+type hmap[T any] struct {
+ len  int // количество реальных значений в мапе
+ b    uint8 // log_2 от количества бакетов
+ seed uint64 // начальный хэш
+
+ buckets []Bucket[T] // слайс бакетов
+}
+
+// интерфейс hashmap, методы которого реализуем
+type Hashmap[T any] interface {
+ Get(key string) T
+ Get2(key string) (T, bool)
+ Put(key string, value T)
+ Delete(key string)
+ Range(f func(k string, v T) bool)
+ Len() int
+}
+При инициализации генерируем seed и создаем нужное количество бакетов.
+const (
+ // Максимальное среднее количество элементов в бакете которое тригерит рост мапы - 6.5
+ // Представлен как loadFactorNum/loadFactorDen, для того чтобы производить вычисления через int.
+ loadFactorNum = 13
+ loadFactorDen = 2
+
+    ptrSize = 4 << (^uintptr(0) >> 63) // размер указателя. используется для вычисления tophash
+)
+
+func New[T any](size int) Hashmap[T] {
+ h := new(hmap[T])
+
+ h.seed = generateSeed()
+
+ // тот самый log_2 от количества элементов
+ B := uint8(0)
+ // увеличиваем B пока средняя заполненность бакетов > loadFactor 
+ for overLoadFactor(size, B) {
+  B++
+ }
+ h.b = B
+
+ h.buckets = make([]bucket[T], bucketsNum(h.b))
+
+ return h
+}
+
+// функция определяет будут ли бакеты, для size количества элементов, загружены больше чем loadFactor в среднем.
+// этой же функцией потом будем определять нужно ли начать рост мапы
+func overLoadFactor(size int, b uint8) bool {
+ return size > bucketSize && uint64(size) > loadFactorNum*(bucketsNum(b)/loadFactorDen)
+}
+
+// здесь b - log_2 от количества элементов
+func bucketsNum(b uint8) uint64 {
+ return 1 << b
+}
+Get/Set/Delete
+Основную логику мы заложили в модели бакета. Остается только вычислить tophash и номер бакета. Для put/delete учитываем изменение количества хранимых элементов.
+// Get - возвращает значение по ключу key
+// вернется нулевое значение типа <T> если по ключу key не существует значение.
+func (h hmap[T]) Get(key string) T {
+ tophash, targetBucket := h.locateBucket(key)
+
+    v, _ := h.buckets[targetBucket].Get(key, tophash)
+    return v
+}
+
+// Get2 - возвращает значение по ключу key и флаг наличия этого значения в мапе
+// вернет нулевое значение типа <T> и false если по ключу key не существует значения.
+func (h hmap[T]) Get2(key string) (T, bool) {
+ tophash, targetBucket := h.locateBucket(key)
+
+    return h.buckets[targetBucket].Get(key, tophash)
+}
+
+// Put - добавляет элемент в мапу
+func (h hmap[T]) Put(key string, value T) {
+ tophash, targetBucket := h.locateBucket(key)
+
+ if h.buckets[targetBucket].Put(key, tophash, value) {
+  h.len++
+ }
+}
+
+// Delete - удаляем элемент из мапы по переданному ключу
+func (h hmap[T]) Delete(key string) {
+ tophash, targetBucket := h.locateBucket(key)
+ if h.buckets[targetBucket].Delete(key, tophash){
+  h.len--
+ }
+}
+Вычисление номера бакета и tophash:
+// locateBucket - возвращает индекс бакета и tophash
+func (h hmap[T]) locateBucket(key string) (tophash uint8, targetBucket uint64) {
+ hash := hash(key, h.seed)
+ tophash = topHash(hash)
+ mask := bucketMask(h.b)
+
+ targetBucket = hash & mask
+
+ return tophash, targetBucket
+}
+
+// возвращает первые 8 бит от значения
+func topHash(val uint64) uint8 {
+ tophash := uint8(val >> (ptrSize*8 - 8))
+ if tophash < minTopHash {
+  tophash += minTopHash
+ }
+ return tophash
+}
+
+// bucketMask возвращает маску бакетов
+func bucketMask(b uint8) uint64 {
+ return bucketsNum(b) - 1
+}
+
+// для хэширования используется алгоритм wyhash
+func hash(key string, seed uint64) uint64 {
+ return wyhash.Hash([]byte(key), seed)
+}
+Итерация
+Итерацию сделаем через callback функцию. Вместо оператора break будем использовать флаг возвращаемый callback функцией. Для рандомизации последовательности значений при итерации будем так же начинать со случайного бакета.
+// Range - итерация по всем значениям с вызовом переданной функции
+func (m hmap[T]) Range(f func(key string, value T) bool) {
+ for i := range m.randRangeSequence() {
+  bucket := &m.buckets[i]
+  for bucket != nil {
+   for j, th := range bucket.tophash {
+    // идет к след. бакету если видим флаг о пустых ячейках после индекса j
+    if th == emptyRest {
+     continue
+    }
+    // если в ячейке есть значение, то передаем в функцию
+    if th >= minTopHash {
+     // прерываем итерацию если получили false
+     if !f(bucket.keys[j], bucket.values[j]) {
+      return
+     }
+    }
+   }
+   // проверяем overflow бакеты
+   bucket = bucket.overflow
+  }
+ }
+}
+
+// формируем последовательность индексов для начала поиска со случайного бакета.
+func (m hmap[T]) randRangeSequence() []int {
+ i := rand.Intn(len(m.buckets))
+
+ seq := make([]int, 0, len(m.buckets))
+ for len(seq) != len(m.buckets) {
+  seq = append(seq, i)
+  i++
+  if i >= len(m.buckets) {
+   i = 0
+  }
+ }
+
+ return seq
+}
+Тесты, бенчмарки
+Исходники тестов можно посмотреть на Github. Ради интереса напишем бенчмарки для сравнения с мапой из коробки.
+При сравнении методов Put и Get в пределах выделенной памяти разница достигает 20%:
+var sizes = []int{128, 1024, 8192}
+func BenchmarkGet(b *testing.B) {
+ for _, n := range sizes {
+  // выделяем память под n элементов
+  mm := New[int64](n)
+  for i := 0; i < n; i++ {
+   mm.Put(fmt.Sprintf("key__%d", i), int64(i)*2)
+  }
+
+  b.Run(fmt.Sprintf("generic-map_%d", n), func(b *testing.B) {
+   var got int64
+   j := 0
+   for i := 0; i < b.N; i++ {
+    if j > n {
+     j = 0
+    }
+    got = mm.Get(fmt.Sprintf("key__%d", j))
+    j++
+   }
+   _ = got
+  })
+ }
+ // такой же код для std мапы 
+}
+go test . -run=^$ -bench . -benchmem
+goos: darwin
+goarch: arm64
+pkg: github.com/w1kend/go-map
+BenchmarkGet/generic-map_128-8          12884936                85.63 ns/op            8 B/op          1 allocs/op
+BenchmarkGet/generic-map_1024-8         13559966                87.57 ns/op           14 B/op          1 allocs/op
+BenchmarkGet/generic-map_8192-8         11720404               101.1 ns/op            22 B/op          1 allocs/op
+BenchmarkGet/std-map_128-8              17141264                70.01 ns/op            8 B/op          1 allocs/op
+BenchmarkGet/std-map_1024-8             16442701                72.42 ns/op           14 B/op          1 allocs/op
+BenchmarkGet/std-map_8192-8             14521720                81.84 ns/op           22 B/op          1 allocs/op
+BenchmarkPut/generic-map_128-8          16028941                74.27 ns/op            8 B/op          1 allocs/op
+BenchmarkPut/generic-map_1024-8         15961150                75.22 ns/op           14 B/op          1 allocs/op
+BenchmarkPut/generic-map_8192-8         12941882                85.13 ns/op           22 B/op          1 allocs/op
+BenchmarkPut/std-map_128-8              16949132                70.37 ns/op            8 B/op          1 allocs/op
+BenchmarkPut/std-map_1024-8             16461930                71.99 ns/op           14 B/op          1 allocs/op
+BenchmarkPut/std-map_8192-8             14040560                82.28 ns/op           22 B/op          1 allocs/op
+Переполнение мапы. Выделяем память на 1000 элементов и заполняем до 10 000, 100 000 и 1 000 000 элементов:
+func BenchmarkPutWithOverflow(b *testing.B) {
+ startSize := 1_000
+ targetSize := []int{10_000, 100_000, 1_000_000}
+
+ for _, n := range targetSize {
+  mm := New[int64](startSize)
+  b.Run(fmt.Sprintf("generic-map-with-overflow__%d", n), func(b *testing.B) {
+   j := 0
+   for i := 0; i < b.N; i++ {
+    if j > n {
+     j = 0
+    }
+    mm.Put(fmt.Sprintf("key__%d", j), int64(j))
+    j++
+   }
+  })
+ }
+
+ for _, n := range targetSize {
+  stdm := make(map[string]int64, startSize)
+  b.Run(fmt.Sprintf("std-map-with-evacuation__%d", n), func(b *testing.B) {
+   j := 0
+   for i := 0; i < b.N; i++ {
+    if j > n {
+     j = 0
+    }
+    stdm[fmt.Sprintf("key__%d", j)] = int64(j)
+    j++
+   }
+  })
+ }
+}
+go test . -run=^$ -bench ^BenchmarkPutWithOverflow$ -benchmem
+goos: darwin
+goarch: arm64
+pkg: github.com/w1kend/go-map
+BenchmarkPutWithOverflow/generic-map-with-overflow__10000-8             11472094               104.9 ns/op            23 B/op          1 allocs/op
+BenchmarkPutWithOverflow/generic-map-with-overflow__100000-8             3440781               344.7 ns/op            23 B/op          1 allocs/op
+BenchmarkPutWithOverflow/generic-map-with-overflow__1000000-8            1000000              8376 ns/op              57 B/op          3 allocs/op
+BenchmarkPutWithOverflow/std-map-with-evacuation__10000-8               14312827                83.43 ns/op           23 B/op          1 allocs/op
+BenchmarkPutWithOverflow/std-map-with-evacuation__100000-8              12691999                90.62 ns/op           23 B/op          1 allocs/op
+BenchmarkPutWithOverflow/std-map-with-evacuation__1000000-8              7283215               168.7 ns/op            23 B/op          1 allocs/op
+Пока что такой бенчмарк не особо информативный, так как, очевидно, что результаты будут хуже. Интересно на сколько:
+Увеличение элементов с 1000 до
+Std map
+Generic map
+Разница
+10 000
+83.43 ns/op
+104.9 ns/op
+1.25
+100 000
+90.62 ns/op
+344.7 ns/op
+3.8
+1 000 000
+168.7 ns/op
+8376 ns/op
+49.65
+На этом все, спасибо за внимание. Ставьте лайки, подписывайтесь на гитхаб.
+В следующей части:
+Научим мапу расти;
+Замерим производительность при росте;
+Добавим дженерик ключи;
+Подумаем про конкурентное обращение.
+И, наверное, стоит добавить что смысл данной статьи именно показать как hashmap реализована в Go под капотом, и показать более читаемый пример реализации на самом Go.
+Ссылки
+Исходники
+Картинки гоферов
+Гоферы от Ashley McNamara
+Go:
+GopherCon 2016: Keith Randall - Inside the Map Implementation
+How the Go runtime implements maps efficiently (without generics)
+Python:
+Raymond Hettinger Modern Python Dictionaries A confluence of a dozen great ideas PyCon 2017 Raymond Hettinger. More compact dictionaries with faster iteration
+Java:
+Внутренняя работа HashMap в Java
+The Java HashMap Under the Hood
+Лекция cs166 stanford про Liner probing
+An Analysis of Hash Map Implementations in Popular Languages   Привет. Сегодня рассмотрим такую интересную структуру данных как hashmap, а именно ее реализацию в Go. Вкратце разберем что такое hashmap, как это выглядит под капотом Go 1.19. Посмотрим отличия реализации с Java и Python. Реализуем hashmap из-под капота с помощью дженериков. Что такое hashmap Для тех, кто еще не знаком с hashmap, прикладываю информацию из Википедии:
+Hashmap - это структура данных, которая позволяет хранить пары ключ-значение. Ключи в hashmap уникальные. Можно представить как обычный массив, в котором для индекса можем использовать не только целые числа, но и, например, строки. Википедии  Сложность: Операция
+Средняя
+Худшая
+Вставка
+Поиск
+Удаление
+Память Операция
+Средняя
+Худшая
+Вставка
+Поиск
+Удаление
+Память Операция
+Средняя
+Худшая
+Вставка
+Поиск
+Удаление
+Память Операция
+Средняя
+Худшая
+Вставка
+Поиск
+Удаление
+Память Операция
+Средняя
+Худшая Операция Операция Операция Средняя Средняя Средняя Худшая Худшая Худшая Вставка Вставка Вставка       Поиск Поиск Поиск     ]]></text>
+</doc>

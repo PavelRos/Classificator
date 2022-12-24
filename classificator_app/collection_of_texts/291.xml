@@ -1,0 +1,254 @@
+<?xml version="1.0" ?>
+<doc>
+	<label auto="true" type="str" verify="true"><![CDATA[Develop]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Dimalovanyy]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-12-09, 07:58]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/post/704436/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Используем Objective-C в C++ без проблем]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[C++]]></item>
+		<item type="str"><![CDATA[Objective C]]></item>
+		<item type="str"><![CDATA[C]]></item>
+		<item type="str"><![CDATA[Разработка под MacOS]]></item>
+		<item type="str"><![CDATA[Системы сборки]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[apple]]></item>
+		<item type="str"><![CDATA[c++]]></item>
+		<item type="str"><![CDATA[objective-c]]></item>
+		<item type="str"><![CDATA[objective-c++]]></item>
+		<item type="str"><![CDATA[macos]]></item>
+		<item type="str"><![CDATA[makefile]]></item>
+		<item type="str"><![CDATA[cmake]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[Коротко о себе
+Я программист энтузиаст, люблю пробовать что-то новое и затрагивать неизвестные для меня области программирования. На работе и дома я в основном пишу на С++, но далеко им не ограничиваюсь.
+Описание задачи
+Однажды, для одного домашнего проекта, мне пришлось реализовывать приложение которое будет воспроизводить аудио на OSX. Я сразу же полез в какой-то cpp-awesome и нашел себе подходящую библиотечку, но потом что-то ударило мне в голову и я вспомнил про многими (в моих кругах) хвалений Apple SDK. Посмотрел я немного на него, и что-то не увидел там C++ или хотяб C в выпадающем окне с языками... Хорошо, подумал я, в Objective-C должна же быть прямая совместимость с C++ или C, и что если писать все на том же С++, использовать все то что я так давно и хорошо знаю, но при этом использовать Objective-C заголовки Apple SDK.
+Для упрощения задачи будем считать что нам нужно реализовать некий класс Printer(std::string) с методом Print, которий должен печатать в Stdout, сообщение которое было передано в конструкторе используя инструменты Foundation/Foundation.h (NSLog).
+Printer.h
+Система
+Собирать все я буду на OSX 12.6 (M1). Компилировать буду Apple clang 14 arm. Но так же можно использовать GCC и LLVM Clang без проблем. Использовал C++20, но там достаточно и С++17.
+Проба пера
+Первым делом просто пробуем подключить #include <Foundation/Foundation.h> в заголовочный файл Printer.h который позднее будет использован в main.cpp. Компилятор явно дал мне понять что скомпилировать Objective-C и C++ вместе (в cpp) файле у меня не получится...
+Глава 1 (Си)
+Отойдем от нашей главной задачи (чтобы вернутся потом к ней) и попробуем воспользоваться линкером и прямой совместимостью Objecive-C и C++ к Си.
+printer.h
+Так как Objective-C может спокойно использовать Си код без особого труда пишем printer.m файл
+printer.m
+Makefile
+Используем printer.h в нашем main.cpp и все бы ничего, но линкер все равно ругается. Дело тут в том, что objective-c компилируется как Си, значит и использовать его нужно соответствующе. Необходимо добавить extern "C", чтобы указать линковщику что реализация данного заголовочного файла была скомпилирована как Си код.
+main.cpp
+Дальше не буду добвавлять main.cpp, так как вызывающий код там будет очень похож и очевиден.
+
+Хорошо, мы подружили C++ с C и Objective-C, уже что-то, но пока это далеко от поставленной задачи.
+Глава 2 (С++)
+Давайте все таки вернёмся к нашему классу Printer и сделаем так чтобы сообщение хранилось собственно в классе.
+Код
+Все бы ничего но теперь компилятор ругается что он встретил С++ код там где его не должно быть. Тут на помощь приходит Objective-C++ (.mm файл). По сути это даже не новый язык, а просто надстройка над Objective-C, которая позволяет использовать внутри C++ код. меняем printer2.m -> printer2.mm. При этом, так как printer2.mm будет скомпилирован как С++ исходник, нам уже не требуется писать extern "C" для помощи линкеру.
+Хорошо, вроде как подружили, но есть 2 нюанса:
+Почему мы просто не можем миксовать файлы С++ и Objective-C в Objective-C++ и использовать его во всем проекте?
+
+Тут у меня явного ответа нету, скажу лишь что когда я хочу писать на С++ и использовать инструменты которые написаны на Objective-C последнее что я хочу видеть, это миграцию всего проекта на Objective-C++ и замена .cpp на .mm.
+
+Плюс там значительно падает, и так не очень хорошее, время компиляции и не работают многие оптимизации.
+То что я сделал это конечно хорошо, но в реальной задачи в полях у нас тоже объекты из Apple SDK на Objective-C, значит наше решении уже нам не подходит, потому что .cpp файл будет использовать заголовочный файл с объектами из Objective-C что я показывал в проблеме "Проба Пера". Тут мы плавно подбираемся к финальной версии.
+Финальная версия
+Для использования класса с объектами из Objective-C при этом, он не может быть в заголовочном файле, так как он используется C++ кодом, будет использована идиома PIMPL.
+#ifndef PRINTER_3_H
+#define PRINTER_3_H
+#include <memory>
+#include <string>
+
+using unique_void_ptr = std::unique_ptr<void, void(*)(void const*)>;
+class Printer3 {
+public:
+    Printer3(const std::string& message);
+    void Print() const;
+private:
+    unique_void_ptr pImpl_;    
+};
+
+#endif
+Тут класс ( с Objective-C объектами) будет находиться в указателе pImpl_. Да, указатель на void, но forward declaration не прокатит, так как класс будет не C++ классом.
+#import <Foundation/Foundation.h>
+#include "printer3.h"
+
+@interface PrinterImpl: NSObject {
+    NSString* _message;
+}
+@property (assign)NSString *message;
+
+- (id)initWithMessage:(NSString *)message;
+- (void)Print;
+@end
+@implementation PrinterImpl
+@synthesize message = _message;
+
+- (id)initWithMessage:(NSString *)message {
+    self = [super init];
+    if (self) {
+        self.message = message;
+    }
+    return self;
+}
+
+- (void)Print {
+    NSLog(@"Objective Str: %@", _message);
+}
+@end
+
+template<typename T>
+auto unique_void(T * ptr) -> unique_void_ptr{
+    return unique_void_ptr(ptr, [](void const * data) {
+            [(id)data dealloc];
+    });
+}
+
+Printer3::Printer3(const std::string& message) : pImpl_(unique_void(
+    [[PrinterImpl alloc] 
+        initWithMessage: [[NSString alloc] initWithCString: message.c_str() encoding:NSUTF8StringEncoding]
+    ]
+)) {}
+
+void Printer3::Print() const {
+    [(id)pImpl_.get() Print];
+}
+Тут я создаю в конструкторе новый объект типа PrinterImpl и выделяю на него память, unique_void функция создаст новый указатель и позаботится о том чтобы память потом почистилась. Дальше во всех вызовах к Printer3 мы делегируем работу PrinterImpl.
+Makefile
+Bonus (CMake)
+Бонусом добавляю CMakeLists.txt чтобы можно было генерировать xcodeproject.
+CMakeLists.txt
+Заключение
+К чему этот надуманный пример с принтером? Вместо NSString в последнем примере может быть любой объект из Apple SDK или с любой другой Objective-C библиотеки (В моем случае это AVAudioPlayer из фреймворка AVAudio). Это все можно инициализировать в конструкторе C++ класса и вызывать Objective-C код прямо из C++.
+Ресурсы
+https://en.cppreference.com/w/cpp/language/pimpl
+https://andreicalazans.medium.com/how-to-interop-between-objective-c-and-c-cd0d7ff0e100 Коротко о себе Я программист энтузиаст, люблю пробовать что-то новое и затрагивать неизвестные для меня области программирования. На работе и дома я в основном пишу на С++, но далеко им не ограничиваюсь. Описание задачи Однажды, для одного домашнего проекта, мне пришлось реализовывать приложение которое будет воспроизводить аудио на OSX. Я сразу же полез в какой-то cpp-awesome и нашел себе подходящую библиотечку, но потом что-то ударило мне в голову и я вспомнил про многими (в моих кругах) хвалений Apple SDK. Посмотрел я немного на него, и что-то не увидел там C++ или хотяб C в выпадающем окне с языками... Хорошо, подумал я, в Objective-C должна же быть прямая совместимость с C++ или C, и что если писать все на том же С++, использовать все то что я так давно и хорошо знаю, но при этом использовать Objective-C заголовки Apple SDK. Apple SDK хорошо Для упрощения задачи будем считать что нам нужно реализовать некий класс Printer(std::string) с методом Print, которий должен печатать в Stdout, сообщение которое было передано в конструкторе используя инструменты Foundation/Foundation.h (NSLog). Для упрощения задачи будем считать что нам нужно реализовать некий класс Printer(std::string) с методом Print, которий должен печатать в Stdout, сообщение которое было передано в конструкторе используя инструменты Foundation/Foundation.h (NSLog). Printer.h Printer.h     Система Собирать все я буду на OSX 12.6 (M1). Компилировать буду Apple clang 14 arm. Но так же можно использовать GCC и LLVM Clang без проблем. Использовал C++20, но там достаточно и С++17. Проба пера Первым делом просто пробуем подключить #include <Foundation/Foundation.h> в заголовочный файл Printer.h который позднее будет использован в main.cpp. Компилятор явно дал мне понять что скомпилировать Objective-C и C++ вместе (в cpp) файле у меня не получится... #include <Foundation/Foundation.h> Printer.h Глава 1 (Си) Отойдем от нашей главной задачи (чтобы вернутся потом к ней) и попробуем воспользоваться линкером и прямой совместимостью Objecive-C и C++ к Си. printer.h printer.h     Так как Objective-C может спокойно использовать Си код без особого труда пишем printer.m файл  printer.m printer.m     Makefile Makefile      Используем printer.h в нашем main.cpp и все бы ничего, но линкер все равно ругается. Дело тут в том, что objective-c компилируется как Си, значит и использовать его нужно соответствующе. Необходимо добавить extern "C", чтобы указать линковщику что реализация данного заголовочного файла была скомпилирована как Си код.  main.cpp main.cpp     Дальше не буду добвавлять main.cpp, так как вызывающий код там будет очень похож и очевиден. Дальше не буду добвавлять main.cpp, так как вызывающий код там будет очень похож и очевиден. Хорошо, мы подружили C++ с C и Objective-C, уже что-то, но пока это далеко от поставленной задачи.  Глава 2 (С++) Давайте все таки вернёмся к нашему классу Printer и сделаем так чтобы сообщение хранилось собственно в классе.  Код Код               Все бы ничего но теперь компилятор ругается что он встретил С++ код там где его не должно быть. Тут на помощь приходит Objective-C++ (.mm файл). По сути это даже не новый язык, а просто надстройка над Objective-C, которая позволяет использовать внутри C++ код. меняем printer2.m -> printer2.mm. При этом, так как printer2.mm будет скомпилирован как С++ исходник, нам уже не требуется писать extern "C" для помощи линкеру. меняем printer2.m -> printer2.mm extern "C" Хорошо, вроде как подружили, но есть 2 нюанса: Почему мы просто не можем миксовать файлы С++ и Objective-C в Objective-C++ и использовать его во всем проекте?
+
+Тут у меня явного ответа нету, скажу лишь что когда я хочу писать на С++ и использовать инструменты которые написаны на Objective-C последнее что я хочу видеть, это миграцию всего проекта на Objective-C++ и замена .cpp на .mm.
+
+Плюс там значительно падает, и так не очень хорошее, время компиляции и не работают многие оптимизации.
+То что я сделал это конечно хорошо, но в реальной задачи в полях у нас тоже объекты из Apple SDK на Objective-C, значит наше решении уже нам не подходит, потому что .cpp файл будет использовать заголовочный файл с объектами из Objective-C что я показывал в проблеме "Проба Пера". Тут мы плавно подбираемся к финальной версии. Почему мы просто не можем миксовать файлы С++ и Objective-C в Objective-C++ и использовать его во всем проекте?
+
+Тут у меня явного ответа нету, скажу лишь что когда я хочу писать на С++ и использовать инструменты которые написаны на Objective-C последнее что я хочу видеть, это миграцию всего проекта на Objective-C++ и замена .cpp на .mm.
+
+Плюс там значительно падает, и так не очень хорошее, время компиляции и не работают многие оптимизации. Почему мы просто не можем миксовать файлы С++ и Objective-C в Objective-C++ и использовать его во всем проекте?
+
+Тут у меня явного ответа нету, скажу лишь что когда я хочу писать на С++ и использовать инструменты которые написаны на Objective-C последнее что я хочу видеть, это миграцию всего проекта на Objective-C++ и замена .cpp на .mm.
+
+Плюс там значительно падает, и так не очень хорошее, время компиляции и не работают многие оптимизации.     и так не очень хорошее, То что я сделал это конечно хорошо, но в реальной задачи в полях у нас тоже объекты из Apple SDK на Objective-C, значит наше решении уже нам не подходит, потому что .cpp файл будет использовать заголовочный файл с объектами из Objective-C что я показывал в проблеме "Проба Пера". Тут мы плавно подбираемся к финальной версии. То что я сделал это конечно хорошо, но в реальной задачи в полях у нас тоже объекты из Apple SDK на Objective-C, значит наше решении уже нам не подходит, потому что .cpp файл будет использовать заголовочный файл с объектами из Objective-C что я показывал в проблеме "Проба Пера". Тут мы плавно подбираемся к финальной версии.  Финальная версия Для использования класса с объектами из Objective-C при этом, он не может быть в заголовочном файле, так как он используется C++ кодом, будет использована идиома PIMPL. PIMPL #ifndef PRINTER_3_H
+#define PRINTER_3_H
+#include <memory>
+#include <string>
+
+using unique_void_ptr = std::unique_ptr<void, void(*)(void const*)>;
+class Printer3 {
+public:
+    Printer3(const std::string& message);
+    void Print() const;
+private:
+    unique_void_ptr pImpl_;    
+};
+
+#endif #ifndef PRINTER_3_H
+#define PRINTER_3_H
+#include <memory>
+#include <string>
+
+using unique_void_ptr = std::unique_ptr<void, void(*)(void const*)>;
+class Printer3 {
+public:
+    Printer3(const std::string& message);
+    void Print() const;
+private:
+    unique_void_ptr pImpl_;    
+};
+
+#endif Тут класс ( с Objective-C объектами) будет находиться в указателе pImpl_. Да, указатель на void, но forward declaration не прокатит, так как класс будет не C++ классом.  #import <Foundation/Foundation.h>
+#include "printer3.h"
+
+@interface PrinterImpl: NSObject {
+    NSString* _message;
+}
+@property (assign)NSString *message;
+
+- (id)initWithMessage:(NSString *)message;
+- (void)Print;
+@end
+@implementation PrinterImpl
+@synthesize message = _message;
+
+- (id)initWithMessage:(NSString *)message {
+    self = [super init];
+    if (self) {
+        self.message = message;
+    }
+    return self;
+}
+
+- (void)Print {
+    NSLog(@"Objective Str: %@", _message);
+}
+@end
+
+template<typename T>
+auto unique_void(T * ptr) -> unique_void_ptr{
+    return unique_void_ptr(ptr, [](void const * data) {
+            [(id)data dealloc];
+    });
+}
+
+Printer3::Printer3(const std::string& message) : pImpl_(unique_void(
+    [[PrinterImpl alloc] 
+        initWithMessage: [[NSString alloc] initWithCString: message.c_str() encoding:NSUTF8StringEncoding]
+    ]
+)) {}
+
+void Printer3::Print() const {
+    [(id)pImpl_.get() Print];
+} #import <Foundation/Foundation.h>
+#include "printer3.h"
+
+@interface PrinterImpl: NSObject {
+    NSString* _message;
+}
+@property (assign)NSString *message;
+
+- (id)initWithMessage:(NSString *)message;
+- (void)Print;
+@end
+@implementation PrinterImpl
+@synthesize message = _message;
+
+- (id)initWithMessage:(NSString *)message {
+    self = [super init];
+    if (self) {
+        self.message = message;
+    }
+    return self;
+}
+
+- (void)Print {
+    NSLog(@"Objective Str: %@", _message);
+}
+@end
+
+template<typename T>
+auto unique_void(T * ptr) -> unique_void_ptr{
+    return unique_void_ptr(ptr, [](void const * data) {
+            [(id)data dealloc];
+    });
+}
+
+Printer3::Printer3(const std::string& message) : pImpl_(unique_void(
+    [[PrinterImpl alloc] 
+        initWithMessage: [[NSString alloc] initWithCString: message.c_str() encoding:NSUTF8StringEncoding]
+    ]
+)) {}
+
+void Printer3::Print() const {
+    [(id)pImpl_.get() Print];
+} Тут я создаю в конструкторе новый объект типа PrinterImpl и выделяю на него память, unique_void функция создаст новый указатель и позаботится о том чтобы память потом почистилась. Дальше во всех вызовах к Printer3 мы делегируем работу PrinterImpl. unique_void Makefile Makefile     Bonus (CMake) Бонусом добавляю CMakeLists.txt чтобы можно было генерировать xcodeproject. CMakeLists.txt CMakeLists.txt     Заключение К чему этот надуманный пример с принтером? Вместо NSString в последнем примере может быть любой объект из Apple SDK или с любой другой Objective-C библиотеки (В моем случае это AVAudioPlayer из фреймворка AVAudio). Это все можно инициализировать в конструкторе C++ класса и вызывать Objective-C код прямо из C++. AVAudioPlayer AVAudio Ресурсы https://en.cppreference.com/w/cpp/language/pimpl https://en.cppreference.com/w/cpp/language/pimpl https://andreicalazans.medium.com/how-to-interop-between-objective-c-and-c-cd0d7ff0e100 https://andreicalazans.medium.com/how-to-interop-between-objective-c-and-c-cd0d7ff0e100]]></text>
+</doc>

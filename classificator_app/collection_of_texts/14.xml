@@ -1,0 +1,1009 @@
+<?xml version="1.0" ?>
+<doc>
+	<label auto="true" type="str" verify="true"><![CDATA[Develop]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[fafnur]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-12-17, 11:59]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/post/706092/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Redux в Angular. Туда и обратно]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[JavaScript]]></item>
+		<item type="str"><![CDATA[Angular]]></item>
+		<item type="str"><![CDATA[TypeScript]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[redux]]></item>
+		<item type="str"><![CDATA[angular]]></item>
+		<item type="str"><![CDATA[ngrx]]></item>
+		<item type="str"><![CDATA[ngxs]]></item>
+		<item type="str"><![CDATA[akita]]></item>
+		<item type="str"><![CDATA[elf]]></item>
+		<item type="str"><![CDATA[nx]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[Пару лет назад из каждого утюга можно было услышать про Redux. Сейчас redux является чем-то обыденным в фронтенд разработке. На пороге 2023 года я хочу поделиться своим опытом использования redux в Angular, поговорить о разных реализациях, и рассказать к каким выводам я пришел за это время.
+Статья разбита на три блока:
+Введение, где я описываю процесс написания статьи.
+Все про redux, где я рассматриваю redux и реализации в Angular.
+Заключение, где я обобщаю информацию по разным реализациям redux, а также даю рекомендации по правилам организации state.
+В введении много пространных рассказов о том как я писал статью и с какими вопросами столкнулся. Если хотите почитать про redux, то сразу переходите ко второй части.
+Готовый проект можно посмотреть на сайте — redux.fafn.ru.
+Демонстрация разных реализаций redux в Angular
+redux.fafn.ru
+Весь код проекта можно посмотреть в репозитории на гитхабе - angular-samples.
+GitHub - Fafnur/angular-samples: Samples of using different solutions in Angular
+github.com
+приложения размещены в app/redux. 
+используемые библиотеки в libs/redux.
+Приятного прочтения!
+Введение
+Как я решил написать статью про redux
+В один из томных вечеров в Алмате, когда я в очередной раз делал ревью, ко мне пришла мысль, а почему бы не написать короткую статью на хабр про redux, в которой я рассмотрел основные нюансы и сказал бы как делать не нужно.
+Ведь я то не знаю и как нужно делать. Единственное к чему я пришел в последнее время - это делать все максимально просто. Ведь чем проще код, тем проще его поддерживать.
+И я подумал, отличная идея: “За субботу сделаю маленький проект, а потом в  воскресенье напишу статью! Идеальный план!”.
+Статью я планировал скидывать своим коллегам и говорить: “Посмотрите что пишут умные люди, делайте также!”. Но в итоге получилась повесть на несколько страниц.
+В тот вечер я был полон энтузиазма и сразу принялся за проект. Это был вечер пятницы.  
+Обычно вечерами пятницы мы ходим с коллегами в бар, но так как наш идейный вдохновитель и по совместительству директор чуть не сломался пополам после даунхилла и отлеживался в гостинице, я решил потратить вечер с пользой.
+Я быстро открыл консоль, зашел в папку с проектами Angular. Взял один из своих проектов, в котором рассказываю о разных решениях в Angular, и решил добавить туда и примеры использования redux.
+Я создал новое приложение и назвал его redux. 
+Но все застопорилось, когда пришли следующие вопросы:
+Какую реализацию reduх я буду использовать?
+На примере чего, я должен демонстрировать использование redux?
+А может использовать разные реализации и написать про их сравнение?
+А как сравнивать реализации, если они все будут подключены в одном проекте? Как тогда понять производительность?
+И что на счет UI? Каждая реализация должна использовать свои компоненты? Тогда как сравнивать, если каждая из реализаций использует все свое?
+В итоге вопросы немного загнали меня в ступор. Обычно я использую Ngrx для redux. Но будет несправедливо если я напишу статью только про Ngrx, и не расскажу про Ngxs или Akita. Тогда я решил написать про три самые популярные реализации: Ngrx, Ngxs и Akita.
+Так как используемый проект представлял собой монорепозиторий Nx, то проблема с общими компонентами решилась очень просто. Для этого я решил создать абстрактный класс Facade, который инкапсулировал бы в себе всю логику работы с конкретной реализацией redux. И каждая из реализаций redux предоставила бы свой Facade, который можно было бы использовать в компонентах.
+В качестве тематики я решил сделать микро новостной сайт, где на главной странице выводились бы списки новостей с разной фильтрацией, а при клике на превью "Новости" открывалась бы страница с полным описанием новости.
+А так как с последнего времени я перестал читать новости, статьи я решил взять с лучшего новостного ресурса — Панорамы.
+Последней задачей был вывод разных реализаций redux. Если делать одно приложение, то тогда в AppModule будет несколько разных реализаций redux, что может негативно влиять на каждую из реализаций.
+Я долго ходил вокруг да около и решил использовать микрофронтенды, в частности завернуть каждую реализацию redux в свое собственное приложение, а потом в shell приложении просто сделать выбор реализации и ее отображение.
+Как я создавал микрофронтенды для разных реализаций redux
+Запуск shell и remote приложений
+Должен сказать сразу, что до этого момента я никогда ранее не использовал микрофронтенды. Я был знаком с подходом, но на практике никогда не сталкивался. 
+Для тех кто в танке: микрофронтенды – это разделение приложения на несколько независимых, по аналогии с микросервисами. 
+Чтобы не дублироваться, есть хорошая недавняя статья на хабре про микрофронтенды - (Микро)фронтенды и микросервисы с помощью Webpack. Всем советую ознакомиться.
+Единственное, чего @FindYourDream не сказал – это, как же просто создать микрофронтенды в NX.
+В Nx достаточно запустить одну команду и у вас сгенерируется новое shell приложение, а также десяток remote:
+nx g /angular:host redux/dashboard --remotes=redux/ngrx,redux/ngxs,redux/akita
+Это все! Это реально все, больше ничего делать не нужно. Все конфиги созданы, все настроено к работе.
+Для того чтобы запустить проекты, выполните команду в консоли:
+nx serve redux-dashboard --devRemotes=redux-ngrx,redux-ngxs,redux-akita
+Запустится четыре приложения:
+localhost:4200 — redux-dashboard, основное shell приложение;
+localhost:4201 — redux-ngrx, remote приложение c Ngrx;
+localhost:4202 — redux-ngxs, remote приложение c Ngxs;
+localhost:4203 — redux-akita, remote приложение c Akita.
+Отмечу, что нужно учитывать при разработке remote приложений в Nx.
+Если вы создаете компоненты, которые потом экспортируете в модуле, то в Nx библиотеке помимо экспорта модуля с компонентом, необходимо экспортировать и сам компонент, иначе shell приложение при запуске remote приложения не сможет найти нужный компонент.
+При использовании навигации внутри remote приложения в shell приложении будет префикс. Например, в remote приложении есть новость: /post/id, то тогда в shell приложении путь будет /remote/post/id. Из-за этого приходится делать магию с путями. Либо вы используете токен префикса пути, где для путей добавляется префикс, либо пишете полноценный модуль навигации и смотрите: если это удаленное приложение, добавляете соответствующий префикс.
+Особую радость добавляет деплой и развертывание приложений. 
+Собранное приложение angular представляет собой набор статики. Для раздачи статики отлично подходит nginx.
+Я решил сделать следующую структуру:
+redux.fafn.ru  - основное shell приложение;
+ngrx.fafn.ru - приложение для демо ngrx;
+ngxs.fafn.ru - приложение для демо ngxs;
+akita.fafn.ru - приложение для демо akita.
+У меня уже есть один сервер, на котором я публикую демо своих проектов, на нем уже есть node и nginx. Я создал папочку под новый проект, спулил проект и собрал прод версии каждого из приложений. Создал конфиги приложений в nginx и перезапустил сервер.
+Когда я открыл сайт в браузере, то как и ожидалось – ничего не работает. 
+Для того чтобы все работало, необходимо добавить правила для раздачи некоторых файлов, которых нету по умолчанию.
+Далее нужно разрешить проблему с корсами. Так как это демо проект, то я просто всем разрешил делать кроссдоменные запросы. Однако, в production никогда так не делайте. Это чревато проблемами с безопасностью.
+Помню, по молодости мы с другом решили сделать сайт финансовой  пирамиды. Я тогда был слабоват в безопасности, и в первый же день, когда проект еще не был запущен, у нас украли все деньги со счета - это примерно десять баксов. После этого я начал более серьезно относиться к безопасности. 
+Немного колдунства и вы получите что-то наподобии этого:
+Как я написал цикл статей на медиуме
+Статьи на хабре - это статьи для души. 
+Это как-будто открыть бутылочку баролы или барбарески в пятницу вечером и сдобрить это оливками, орехами и грана падано.
+В процессе разработки проекта я снова понял, что для статьи на habr будет много лишней информации. И я решил описать весь процесс разработки на медиуме. Разбив контент на несколько частей у меня вышел цикл из тринадцати статей.
+Туда вошли статьи:
+Введение
+Генерация приложения с микрофронтендами.
+Создание базовых классов.
+Создание фейкового API для новостей.
+Создание UI компонентов для отображения новостей.
+Концепты и понятия в Redux.
+Рекомендации по организации state.
+Ngrx в действии: создание и тестирование.
+Использование Ngxs.
+Использование Akita.
+Сравнение разных реализаций redux. Ngrx vs Ngxs vs Akita.
+State management стандартными средствами Angular.
+Заключение.
+Цикл посвящен больше техническим моментам реализации разных реализаций redux. В данной статье я приведу обзор реализаций и разных нюансов.
+Все про redux
+Концепты и понятия Redux
+Наконец-то можно говорить про redux.
+Я сильно углублятся не буду, но напомню тем, кто забыл что это такое.
+Вся суть redux изображена выше на картинке.
+Компонент выводит что-то из store.
+Затем компонент диспатчит (порождает) экшен, который должен как-то изменить значение в store.
+Экшен попадает в редьюсер, специальную функцию которая меняет состояние store. Процесс изменения называется мутацией.
+После того как store был изменен, то и свойства которые были использованы в компоненте изменяются.
+Где же на практике можно использовать сей концепт?
+Часто в качестве примера приводят счетчик. Нажали на кнопку и значение счетчика увеличилось на 1.
+Это самый худший пример использования redux. Не используйте redux для счетчиков. Создайте переменную и увеличивайте ее значение на единицу. Если вы немного знакомы с JavaScript, то создайте замыкание – и будет вам счастье.
+Пример пополнения депозита с помощью Redux
+В примере выше показывается пополнение депозита.
+Сначала в UI происходит "клик" пополнения.
+Вызывается новый экшен.
+Экшен попадает в редьюсер.
+Редьюсер изменяет state.
+После того как изменился стейт, изменяется UI.
+Другой пример с обращением к API.
+Пример пополнения депозита с запросом к API
+Все делается аналогичным способом, только перед тем как изменить состояние идет запрос к API. И после того как получен ответ, экшен либо изменяется, либо порождается новый.
+Как работает Redux
+К моему большому сожалению, не каждый разработчик понимает как организован redux. Конечно, каждый фреймворк или библиотека будет делать это по своему, но каждый из них будет опираться на action, reducer и state.
+Что же собой представляет экшен на практике?
+В качестве экшена обычно выступает объект, у которого есть свойство type. Тип экшена это уникальная строка, которая позволяет различать экшены между собой.
+В разное время, по разному смотрели на создание экшенов. В одно время было популярно создавать каждый экшен в виде уникального класса, затем от этой затеи отказались и перешли к простым объектам с фиксированным типом.
+Примеры экшенов: 
+{ type: 'Post Load' }
+{ type: 'Post Load Success' } 
+{ type: 'Post Load Failure' }
+Самой важной частью redux является State. 
+Не зря же redux является state management’ом. Было бы странно, если стейт был бы не на первом месте. Но вы можете встретить много примеров кода, где разработчики умудряются использовать redux для других целей. Например, в качестве менеджера событий, то есть есть пустой стейт и множество экшенов. 
+Под state я подразумеваю объект, свойства которого могут быть использованы в приложении. Store это сервис который хранит все state в приложении и позволяет порождать экшены.
+Store это обычно класс, который содержит методы для вызова экшенов, а также хранит состояние state.
+Структура данных в store представляет собой обычный объект, где ключом выступает строка, а в качестве значения используется конкретный state.
+Например store из двух стейтов user и posts:
+{ 
+  users: {
+    current: { id: number };
+    loaded: boolean
+  }
+  posts: { 
+    entities: { [key: number]:  { id: number, title: string } }, 
+    ids: number[], 
+    loaded: boolean
+  }, 
+}
+Реализация асинхронных экшенов может быть достаточно разной, или не быть вовсе. 
+Например в Ngrx используются эффекты, в Ngxs экшены могут быть как синхронные, так и асинхронные, а в Akita решили что это для слабаков и не сделали их совсем*.
+После того как были определены actions и state, можно реализовать простенький редьюсер.
+Редьюсер реализуется в виде чистой функции, который содержит switch-case конструкцию, где в качестве выражения используется тип экшена:
+export function postReducer(state: PostState, action: Action): PostState {
+  let result: PostState;
+
+  switch (action.type) {
+    case '[Post] Load Success':
+      result = { 
+        ...state, 
+        posts: action.posts ?? [],
+        loaded: true
+      };
+      break;
+    default:
+      result = state ?? initialPostState;
+  }
+
+  return result;
+}
+В редьюсере представлены только те экшены, которые изменяют состояние стейта.
+Нет смысла добавлять в редьюсер экшены, которые не меняют состояние стейта. Это лишь приводит к бесполезному увеличению кода. Если вам когда-то потребуется добавить логику на конкретный экшен, то тогда и измените редьюсер, и напишите соответствующий тест на данную мутацию.
+Ngrx в действии
+Ngrx моя любимая реализация redux в Angular. Он был настолько понятным, что хотелось его использовать.
+Для установки нужно установить шесть пакетов, но формально достаточно и одного -@ngrx/store.
+А так для полной кучи можно установить: @ngrx/effects ,@ngrx/entity , @ngrx/router-store,@ngrx/schematics , @ngrx/store-devtools.
+После установки нужно подключить модуль в AppModule.
+И под конец сгенерировать новый feature store. Для этого достаточно запустить команду:
+ng g @ngrx/angular:ngrx post --module=libs/redux/ngrx/posts/state/src/lib/posts-state.module.ts
+К сожалению схематики ngrx меняет не так часто, как хотелось бы. Чтобы иметь актуальные рекомендации, необходимо установить плагин для eslint - eslint-plugin-ngrx.
+После выполнения команды будет сгенерирована следующая структура:
+posts
+├── +state
+│   ├── post.actions.ts
+│   ├── post.effects.ts
+│   ├── post.reducer.ts
+│   └── post.selectors.ts
+└── posts-state.module.ts
+Каждый созданный файл содержит конкретные абстракции redux:
+post.actions.ts — файл, который содержит все экшены;
+post.effects.ts — файл, который содержит все эффекты;
+post.reducer.ts — файл, который содержит интерфейс state и reducer;
+post.selectors.ts — файл, который содержит все селекторы.
+В Ngrx экшены создаются с помощью функций createAction и props. 
+Пример создания экшенов:
+export const load = createAction('[Post] Load');
+
+export const loadSuccess = createAction('[Post] Load Success', props<{ posts: Post[] }>());
+Если копнуть чуть глубже в интерфейсы, то можно увидеть, что createAction возвращает Action:
+export interface Action {
+    type: string;
+}
+Если открыть и посмотреть post.reducer.ts, то в данном файле можно увидеть state, initialState и reducer.
+Отмечу, что ngrx генерирует стейт с использованием @ngrx/entity. Это не всегда нужно. Данный пакет позволяет упростить работу с изменением коллекций сущностей в виде добавления или удаления сущности из коллекции и прочее.
+В файле сначала определяется интерфейс для стейта, а только потом реализация редьюсера.
+Пример простого state:
+export interface PostState  {
+  readonly loaded: boolean;
+  readonly posts: Post[] | null;
+}
+
+export const initialPostState: PostState = {
+  loaded: false,
+};
+Пример state с использованием ngrx/entity:
+export interface PostState extends EntityState<Post> {
+  readonly loaded: boolean;
+}
+
+export const postAdapter = createEntityAdapter<Post>({
+  selectId: (entity) => entity.uuid,
+});
+
+export const initialPostState: PostState = postAdapter.getInitialState({
+  loaded: false,
+});
+EntityState - это интерфейс вида:
+{ id: number[] | string[]; entities: Record<string, T>}
+Редьюсер в ngrx создается с помощью createReducer.
+Пример простого reducer:
+const reducer = createReducer(
+  initialPostState,
+  on(
+    PostActions.loadSuccess,
+    (state, { posts }): PostState => ({
+        ...state,
+        posts,
+        loaded: true,
+    })
+  ),
+);
+
+export function postReducer(state: PostState | undefined, action: Action): PostState {
+  return reducer(state, action);
+}
+Первый аргумент это начальное состояние state, начиная со второго аргумента идут конструкции с on. On первыми аргументами принимает конкретные виды экшенов, в конце идет колбек который вызывается при dispatch’е указанных экшенов ранее.
+Если развернуть результат createReducer и on, то получится функция содержащая "switch-case" конструкцию, где при происхождении конкретного экшена вызывается соответствующий колбек. 
+Пример reducer с использованием @ngrx/entity:
+const reducer = createReducer(
+  initialPostState,
+  on(
+    PostActions.loadSuccess,
+    (state, { posts }): PostState =>
+      postAdapter.setAll(posts, {
+        ...state,
+        loaded: true,
+      })
+  ),
+  on(PostActions.clearSuccess, (state): PostState => postAdapter.removeAll(state)),
+  on(PostActions.loadOneSuccess, PostActions.createSuccess, (state, { post }): PostState => postAdapter.upsertOne(post, state))
+);
+Как видно из примера, для большинства операций с изменением состояния state используется postAdapter, который берет на себя ответственность за изменение коллекции сущностей.
+Последней важной частью являются эффекты. Эффекты используются для выполнения асинхронных операций. Например, загрузка списка новостей:
+@Injectable()
+export class PostEffects {
+  load$ = createEffect(() => {
+    return this.actions.pipe(
+      ofType(PostActions.load),
+      switchMap(() =>
+        this.postApiService.get().pipe(
+          tap((posts) => this.postStore.set(posts)),
+          map((posts) => PostActions.loadSuccess({ posts })),
+          catchError((error) => of(PostActions.loadFailure({ error })))
+        )
+      )
+    );
+  });
+}
+В данном примере используются три экшена: load, loadSuccess и loadFailure.
+load - экшен, который запускает процесс загрузки списка новостей;
+loadSuccess - экшен, который принимает список новостей и говорит о том, что новости были успешно загружены;
+loadFailure - экшен, который говорит об ошибке загрузки списка новостей.
+actions - это все экшены, которые испускаются в приложении.
+ofType - оператор, который фильтрует список экшенов согласно переданному типу.
+У nx есть крутой оператор fetch, с помощью которого можно немного упростить эффекты:
+load$ = createEffect(() => {
+  return this.actions$.pipe(
+    ofType(PostActions.load),
+    fetch({
+      id: () => 'load',
+      run: () => this.postApiService.get().pipe(map((posts) => PostActions.loadSuccess({ posts }))),
+      onError: (action, error) => PostActions.loadFailure({ error }),
+    })
+  );
+});
+Использование ngrx далее заключается в использовании селекторов, которые представляют собой реактивные объекты, которые связаны с конкретными свойствами из state.
+Селекторы создаются с использованием функций createFeatureSelector и createSelector.
+Пример селектора, который возвращает стейт целиком:
+const selectPostState = createFeatureSelector<PostState>(POST_FEATURE_KEY);
+POST_FEATURE_KEY - это ключ, который используется в store .
+Пример простого селектора из конкретного state:
+const selectLoaded = createSelector(selectPostState, (state) => state.loaded);
+Для использования селектора в компоненте достаточно выбрать селектор из store:
+class SimpleComponent implements OnInit {
+  loaded$!: Observable<boolean>;
+
+  constructor(private readonly store: Store) {}
+
+  ngOnInit() {
+    this.loaded$ = this.store.select(selectLoaded);
+    this.store.dispatch(load());
+  }
+}
+Для того чтобы выполнить новый экшен, нужно вызвать метод dispatch в store.
+Ngxs в действии
+Второй популярной реализацией redux стало решение Ngxs. 
+Говорят что ребята из ngxs хотели написать легковесную версию redux, которая была проще в использовании чем ngrx и была бы больше приближена к фреймворку.
+Реализация redux в ngxs выглядит следующим образом:
+Компонент вызывает экшен, который порождает соответствующие апи запросы и изменяет store. После того как будут завершены все запросы и изменен store, изменения появляются в компоненте.
+Для установки ngxs достаточно установить один пакет:
+yarn add @ngxs/store
+Далее нужно подключить store в AppModule:
+@NgModule({
+  imports: [NgxsModule.forRoot([])],
+})
+export class AppModule {}
+После этого можно попробовать сгенерировать новый feature store используя ngxs cli.
+ngxs --name post
+Когда я писал статью, на моем macbook команды из ngxs cli не работали и я все создавал ручками.
+posts-state
+├── state
+│   ├── post.actions.ts
+│   └── post.state.ts
+└── posts-state.module.ts
+Каждый файл содержит конкретные абстракции redux:
+post.actions.ts — файл, который содержит все экшены;
+post.state.ts — файл, который содержит все селекторы, мутации и асинхронные экшены.
+Уже здесь можно заметить, что формально в ngxs используется два файла для абстракций, вместо четырех в ngrx.
+Начну с файла с экшенами. В ngxs принято создавать экшены в виде классов. Пример простого экшена:
+export class Load {
+  static readonly type = '[Post] Load';
+}
+Класс экшена имеет статическое свойство type. Если нужно передать данные в экшен, то данные добавляются в конструктор.
+Пример экшена с данными:
+export class LoadSuccess {
+  static readonly type = '[Post] Load Success';
+
+  constructor(public readonly posts: Post[]) {}
+}
+Далее переходим к сервису стейта - post.state.ts. 
+Класс сервиса state реализует модель хранилища, селекторы, мутации (редьюсер) и обработку экшенов.
+Интерфейс стейта в ngxs имеет суффикс модели и обычно его называют моделью.
+Пример простой модели:
+export interface PostStateModel {
+  readonly loaded: boolean;
+}
+Для связи модели и сервиса используется аннотация @State.
+@State<PostStateModel>({
+  name: 'posts',
+  defaults: initialPostState,
+})
+export class PostState {}
+name - это ключ feature
+defaults - это начальное состояние
+Модель для хранения списка сущностей можно определить следующим образом:
+export interface PostStateModel {
+  readonly loaded: boolean;
+  readonly ids: string[];
+  readonly entities: Record<string, Post>;
+}
+Селекторы создаются с помощью аннотации @Selector.
+@Selector()
+static loaded(state: PostStateModel): boolean {
+  return state.loaded;
+}
+Селектор представляет собой статическое свойство, которое будет себя вести в дальнейшем как обычный observable.
+Для использования селектора в компоненте необходимо использовать аннотацию @Select.
+export class SimpleComponent {
+  @Select(PostState.loaded)
+  loaded$!: Observable<boolean>;
+
+  constructor(private readonly store: Store) {}
+}
+Для создания параметризированного селектора уже необходимо использовать функцию createSelector:
+static post(uuid: string): (state: PostStateModel) => Post | null {
+  return createSelector([PostState], (state: PostStateModel) => {
+    return state.entities[uuid] ?? null;
+  });
+}
+Соответственно в компоненте селектор можно использовать так:
+export class SimpleComponent implements OnInit {
+  constructor(private readonly store: Store, private readonly route: ActivatedRoute) {}
+
+  ngOnInit() {
+     const { uuid } = this.route.snapshot.params;
+
+     this.store.select(PostState.post(uuid))
+  }
+}
+В ngxs экшены выполняют роль как экшенов так и эффектов. Экшены создаются с помощью аннотации @Action.
+Простой пример синхронного экшена и мутации:
+@Action(PostActions.Load)
+load(ctx: StateContext<PostStateModel>) {
+  ctx.setState({
+    ...state,
+    loaded: true
+  });
+}
+В данном случае изменяется только state.
+Асинхронный экшен создается аналогичным образом:
+@Action(PostActions.Load)
+load(ctx: StateContext<PostStateModel>) {
+  return this.postApiService.get().pipe(
+    map((posts) => {
+      const state = ctx.getState();
+
+      ctx.setState({
+        ...state,
+        ids: posts.map((post) => post.uuid),
+        entities: posts.reduce((acc, current) => ({ ...acc, [current.uuid]: current }), {}),
+      });
+
+      return ctx.dispatch(new PostActions.LoadSuccess(posts));
+    }),
+    catchError((error: unknown) => ctx.dispatch(new PostActions.LoadFailure(error)))
+  );
+}
+В этом случае у нас идет обращение к серверу и после того как был получен ответ, диспатчаться соответствующие экшены. Если данные загружены успешно, то вызывается экшен LoadSuccess, в противном случае вызывается LoadFailure.
+Надо немного рассказать про экшены в ngxs. Реализация экшенов сложнее, чем предполагает redux.
+Экшены в ngxs имеют определенный жизненный цикл.
+Экшен находится в одном из 4 состояний:
+dispatched - экшен был вызван, но еще не завершен;
+errored, canceled и successful - экшен был завершен одним из состояний, как ошибка, отмена и успех.
+Из-за этого цепочка вызовов экшенов в предыдущем примере будет немного странноватой.
+dispatch Load
+dispatch LoadSuccess
+LoadSuccess finished
+Load finished
+То есть синхронные экшены, которые будут порождены внутри асинхронного экшена будут завершены раньше, чем сам экшен, который их породил.
+Для вызова экшенов используется метод dispatch из сервиса store:
+class SimpleComponent {
+  constructor(private readonly store: Store) {}
+
+   onLoad() {
+    this.store.dispatch(new PostActions.Load());
+  }
+}
+В конце можно упомянуть, что в Ngxs есть сервис Actions, который аналогично такому же сервису в Ngrx позволяет подписываться на экшены.
+Для фильтрации экшенов используется операторы onAction, ofActionDispatched и другие операторы связанные с жизненным циклом экшена.
+Пример подписки на экшен:
+loadSuccess$ = this.actions.pipe(
+  ofActionDispatched(PostActions.LoadSuccess),
+  map(({ posts }) => posts)
+);
+Ngxs Labs
+Конечно, не могу упомянуть решения из ngxs labs.
+@ngxs-labs/data - это русские ребята, которые в одно время переводили документацию на русский язык, но это не точно.
+Разработчики, которые уже работали с Ngxs, знают что есть решения для оптимизации процесса разработки. Например, @ngxs-labs/data — он же @angular-ru/ngxs расширение для ngxs, которое пытается уменьшить и упростить количество кода.
+Реализация redux в ngxs с использованием @ngxs-labs/data:
+Решение от @ngxs-labs/data все дальше отдаляется от каноничного redux и предоставляет разработчику свой state management.
+Пример, взятый из документации:
+До использования плагина реализация будет следующей:
+ counter.state.ts:
+import { State, Action, StateContext } from '@ngxs/store';
+
+export class Increment {
+    static readonly type = '[Counter] Increment';
+}
+
+export class Decrement {
+    static readonly type = '[Counter] Decrement';
+}
+
+@State<number>({
+    name: 'counter',
+    defaults: 0
+})
+export class CounterState {
+    @Action(Increment)
+    increment(ctx: StateContext<number>) {
+        ctx.setState(ctx.getState() + 1);
+    }
+
+    @Action(Decrement)
+    decrement(ctx: StateContext<number>) {
+        ctx.setState(ctx.getState() - 1);
+    }
+}
+app.component.ts:
+import { Component } from '@angular/core';
+import { Select, Store } from '@ngxs/store';
+
+import { CounterState, Increment, Decrement } from './counter.state';
+
+@Component({
+    selector: 'app-root',
+    template: `
+        <ng-container *ngIf="counter$ | async as counter">
+            <h1>{{ counter }}</h1>
+        </ng-container>
+
+        <button (click)="increment()">Increment</button>
+        <button (click)="decrement()">Decrement</button>
+    `
+})
+export class AppComponent {
+    @Select(CounterState) counter$: Observable<number>;
+    constructor(private store: Store) {}
+
+    increment() {
+        this.store.dispatch(new Increment());
+    }
+
+    decrement() {
+        this.store.dispatch(new Decrement());
+    }
+}
+После применения плагина:
+import { State } from '@ngxs/store';
+import { DataAction, StateRepository } from '@angular-ru/ngxs/decorators';
+import { NgxsDataRepository } from '@angular-ru/ngxs/repositories';
+
+@StateRepository()
+@State<number>({
+    name: 'counter',
+    defaults: 0
+})
+@Injectable()
+export class CounterState extends NgxsDataRepository<number> {
+    @DataAction() increment() {
+        this.ctx.setState((state) => ++state);
+    }
+
+    @DataAction() decrement() {
+        this.ctx.setState((state) => --state);
+    }
+}
+И компонент:
+import { Component } from '@angular/core';
+
+import { CounterState } from './counter.state';
+
+@Component({
+    selector: 'app-root',
+    template: `
+        <h1>{{ counter.snapshot }}</h1>
+        <button (click)="counter.increment()">Increment</button>
+        <button (click)="counter.decrement()">Decrement</button>
+    `
+})
+export class AppComponent {
+    constructor(counter: CounterState) {}
+}
+Если разобрать пример, то можно увидеть, что плагин добавляет свои декораторы, которые позволяют не создавать экшены.
+Правда возникает вопрос: "Зачем вам создавать экшены, если вы не можете их вызывать?"
+Если копнуть чуть ниже, то можно увидеть что там все меньше и меньше redux. Разработчики добавляют новые абстракции для уменьшения кода, но все дальше отдаляются от канонов.
+Последним примером будет реализация коллекций с помощью плагина:
+import { Injectable } from '@angular/core';
+import { createEntityCollections, EntityCollections } from '@angular-ru/cdk/entity';
+import { DataAction, Payload, StateRepository } from '@angular-ru/ngxs/decorators';
+import { NgxsDataEntityCollectionsRepository } from '@angular-ru/ngxs/repositories';
+import { NgxsOnInit, State } from '@ngxs/store';
+
+import { PostApiService } from '@angular-samples/redux/posts/api';
+import { Post } from '@angular-samples/redux/posts/common';
+
+interface PostStateOptions {
+  loaded: boolean;
+}
+
+export type PostStateModel = EntityCollections<Post, string, PostStateOptions>;
+
+export const initialPostState: PostStateModel = {
+  ...createEntityCollections(),
+  loaded: false,
+};
+
+@StateRepository()
+@State<PostState>({
+  name: 'posts',
+  defaults: initialPostState,
+})
+@Injectable()
+export class PostStateRepository extends NgxsDataEntityCollectionsRepository<Post, string, PostStateOptions> implements NgxsOnInit {
+  constructor(private readonly postApiService: PostApiService) {
+    super();
+  }
+
+  override selectId(entity: Post): string {
+    return entity.uuid;
+  }
+
+  override ngxsOnInit(ctx: StateContext<PostStateModel>): void {
+     // TODO: Need to call ctx.dispatch(new PostActions.Load());
+  }
+}
+Пример добавления данных в state:
+@Component()
+export class AppComponent implements OnInit {
+    constructor(private readonly postStateRepository: PostStateRepository, private readonly postApiService: PostApiService) {}
+
+    public ngOnInit(): void {
+        this.postApiService.get().subscribe((posts: Post[]) => {
+            this.postStateRepository.setAll(posts);
+        });
+    }
+}
+Из-за явного отсутствия экшенов, а также эффектов, асинхронная логика делегируется на уровень выше.
+Конечно, в PostStateRepository можно создать подписку и всю логику инкапсулировать там, но документация не рекомендует так делать.
+Akita в действии
+Одной из последний реализаций, которую с натяжкой, но можно отнести к redux - это Akita. 
+Akita творение одного инфлюенсира (не Angular Team) - Netanel Basal.
+Akita это авторский взгляд на redux с целью упрощения и уменьшения boilerplate code.
+Реализация в akita выглядит следующим образом:
+Отличия akita от redux в более прокаченных селекторах, которые называются query, а также с неким отсутствием экшенов и эффектов, но которые можно добавить при необходимости.
+Установка akita также тривиальна.
+yarn add @datorama/akita
+Немного спойлеров - в akita нет интегрированного решения с эффектами. Поэтому экшены и эффекты являются простым портированием из ngrx, которые устанавливаются отдельным пакетом:
+yarn add @ngneat/effects-ng
+И если Ngrx и Ngxs требуют добавления глобального сервиса, методом подключения модуля в AppModule, то Akita ничего не нужно. 
+За исключением эффектов - модуль эффектов также нужно подключать в AppModule.
+На данный момент в akita нету поддержки devtools на прямую. Можно установить пакеты @ngneat/elf, @ngneat/elf-devtools и тогда akita будет логироваться.
+В базовом варианте, в Akita отсутствуют экшены, эффекты и редьюсер.
+Почему я решил, что это redux только одной вселенной известно.
+В Akita есть cli, но я ими не пользовался и не настраивал их. 
+Говорят если запустить команду akita и указать параметры хранилища, то должно сгенерироваться хранилище следующего вида:
+posts/state
+├── state
+│   ├── post.query.ts
+│   ├── post.service.ts
+│   └── post.store.ts
+└── posts-state.module.ts
+Каждый из файлов содержит конкретные абстракции akita:
+post.query.ts — файл, который содержит все селекторы;
+post.service.ts — сервис доступа к данным;
+post.store.ts — файл, в котором хранится реализация управления сущностями.
+Так как для redux необходимы экшены и эффекты, то необходимо создать еще два файла:
+post.actions.ts — файл, в котором хранятся все экшены;
+post.effects.ts — файл, в котором реализованы эффекты.
+Начну c post.store.ts.
+Сначала описывается интерфейс стейта:
+export interface PostState extends EntityState<Post, string> {
+  readonly loaded: boolean;
+}
+И начальное состояние:
+export const initialPostState: PostState = {
+  loaded: false
+}
+Далее идет конфигурирование сервиса, который будет использоваться для изменения состояния:
+@Injectable()
+@StoreConfig({ name: 'posts', idKey: 'uuid', resettable: true })
+export class PostStore extends EntityStore<PostState> {
+  constructor() {
+    super(initialPostState);
+  }
+}
+К сервису добавляется аннотация @StoreConfig, которая содержит следующие параметры:
+name - имя feature;
+idKey - свойство, которое будет ключом для изменения коллекций сущностей;
+resettable - функция, которая позволяет сбрасывать содержимое хранилища.
+Для того чтобы получить данные из созданного state используются query. Query представляют собой прокаченную версию селекторов.
+Например, если открыть PostQuery:
+@Injectable()
+export class PostQuery extends QueryEntity<PostState> {
+  loaded$ = this.select((state) => state.loaded);
+
+  posts$ = this.selectAll();
+
+  postsPromo$ = this.selectAll({
+    filterBy: [({ promo }) => promo],
+    sortBy: (a, b) => new Date(b.created).getTime() - new Date(a.created).getTime(),
+  });
+
+  constructor(protected override store: PostStore) {
+    super(store);
+  }
+}
+Для создания простого селектора достаточно выбрать значение из store:
+loaded$ = this.select((state) => state.loaded);
+Но вся мощь query вступает тогда, когда необходимо реализовывать сложные выборки из данных:
+postsPromo$ = this.selectAll({
+  filterBy: [({ promo }) => promo],
+  sortBy: (a, b) => new Date(b.created).getTime() - new Date(a.created).getTime(),
+});
+В данном примере выбираются все сущности у которых свойство promo равно true, а результат сортируется по дате создания.
+Для создания параметризированных запросов нужно все-лишь завернуть все в функцию:
+post$ = (uuid: string) => this.selectEntity(uuid).pipe(map((post) => post ?? null));
+Экшены и эффекты почти полностью копируют реализацию из Ngrx.
+Пример создания экшенов:
+import { createAction, props } from '@ngneat/effects';
+import { Post, PostChange, PostCreate } from '@angular-samples/redux/posts/common';
+
+export const load = createAction('[Post] Load');
+export const loadSuccess = createAction('[Post] Load Success', props<{ posts: Post[] }>());
+Пример создания эффекта:
+import { createEffect, ofType } from '@ngneat/effects';
+import { Actions } from '@ngneat/effects-ng';
+
+@Injectable()
+export class PostEffects {
+  load$ = createEffect(() => {
+    return this.actions.pipe(
+      ofType(PostActions.load),
+      switchMap(() =>
+        this.postApiService.get().pipe(
+          tap((posts) => this.postStore.set(posts)),
+          map((posts) => PostActions.loadSuccess({ posts })),
+          catchError((error) => of(PostActions.loadFailure({ error })))
+        )
+      )
+    );
+  });
+
+  constructor(
+    private readonly postApiService: PostApiService,
+    private readonly postStore: PostStore,
+    private readonly actions: Actions
+  ) {}
+}
+Эффект из примера копирует классический эффект из Ngrx. Единственное отличие заключается в том, что из-за отсутствия reducer необходимо самостоятельно обновлять state:
+tap((posts) => this.postStore.set(posts))
+Остается только один вопрос - как вызывать экшены? Экшены вызываются благодаря функции dispatch:
+import { dispatch, ofType } from '@ngneat/effects';
+
+class SimpleComponent {
+  onLoad(): void {
+    dispatch(PostActions.load());
+  }
+}
+Забавно, но мне захотелось проверить - работает ли Akita с экшенами и эффектами из ngrx. Каково было мое удивление, когда все это без проблем запустилось. Даже дев тулзы работали. Рабочий пример есть в репозитории.
+Elf в шапке
+Elf — это дальнейшее развитие akita. 
+Если посмотреть на Akita с экшенами и эффектами, то слишком больших отличий от redux нету. Elf же шагнул в сторону оптимизации гораздо больше.
+Возьму пример из документации:
+import { createStore, withProps, select } from '@ngneat/elf';
+
+interface AuthProps {
+  user: { id: string } | null;
+}
+
+const authStore = createStore(
+  { name: 'auth' },
+  withProps<AuthProps>({ user: null })
+);
+
+export class AuthRepository {
+  user$ = authStore.pipe(select((state) => state.user));
+
+  updateUser(user: AuthProps['user']) {
+    authStore.update((state) => ({
+      ...state,
+      user,
+    }));
+  }
+}
+Если присмотреться, то можно увидеть, что вся логика сводится к одному единому сервису. Для выбора данных из store используются специальные операторы. Для вызова мутаций используются специальные утилиты.
+Elf это state management не только для Angular. Именно поэтому большинство действий выполняется с помощью функций.
+Если вдруг вам надоел Angular, то можете отказаться от ООП:
+import { createStore, withProps, select } from '@ngneat/elf';
+
+interface AuthProps {
+  user: { id: string } | null;
+}
+
+const authStore = createStore(
+  { name: 'auth' },
+  withProps<AuthProps>({ user: null })
+);
+
+export const user$ = authStore.pipe(select((state) => state.user));
+
+export function updateUser(user: AuthProps['user']) {
+  authStore.update((state) => ({
+    ...state,
+    user,
+  }));
+}
+Что же делать с эффектами? Тоже самое, что и в Akita. Чтобы не дублироваться, просто посмотрите код приведенный выше.
+В Elf, как  и в Akita есть решения для управления коллекциями сущностей:
+import { createStore } from '@ngneat/elf';
+import {
+  selectAllEntities,
+  setEntities,
+  withEntities,
+} from '@ngneat/elf-entities';
+
+interface Todo {
+  id: number;
+  label: string;
+}
+
+const todosStore = createStore({ name: 'todos' }, withEntities<Todo>());
+
+todosStore.pipe(selectAllEntities()).subscribe((todos) => {
+  console.log(todos);
+});
+
+todosStore.update(
+  setEntities([
+    { id: 1, label: 'one ' },
+    { id: 2, label: 'two' },
+  ])
+);
+Остальное можно глянуть в документации.
+Redux с помощью нативных сервисов Angular
+Когда я немного потыкал Elf у меня зародилась мысль - А почему бы не сделать все тоже самое, только без использования сторонних библиотек?
+Я отбросил эту мысль сразу, так как мой гараж уже давно забит кучей старых велосипедов.
+Но когда я начал писать статью, то понял, что не рассказать о том, как управлять состоянием предлагает сам Angular, будет оскорблением самого фреймворка.
+В одно время ребята из Nx предложили использовать фасады для ngrx. Под фасадом они подразумевали сервис, который скрывал бы имплементацию redux.
+Идея оказалась совсем не плохой, что в дальнейшем привело к зависимости только от одного сервиса, а не от кучи разных сервисов, функций и констант в ngrx.
+Использование фасадов позволяет вам отказаться от ngrx и сделать простую реализацию с помощью нативных средств, таких как rxjs.
+В качестве примера разберу все тот же пример на получении списка новостей.
+Сначала создается модель данных state:
+export interface PostState {
+  readonly loaded: boolean;
+  readonly ids: string[];
+  readonly entities: Record<string, Post>;
+}
+loaded — загружен ли список новостей;
+ids — список идентификаторов сущностей;
+entities — словарь со списком всех новостей.
+Также определяется начальное состояние:
+export const initialPostState: PostState = {
+  ids: [],
+  entities: {},
+  loaded: false,
+};
+Создам сервис для хранения и предоставления доступа к данным:
+@Injectable()
+export class NativePostFacade implements OnDestroy {
+  private readonly destroy$ = new Subject<void>();
+
+  ngOnDestroy(): void {
+    this.destroy$.next();
+    this.destroy$.complete();
+  }
+}
+destroy$ используется для отписки при разрушении сервиса
+Для хранения данных использую BehaviorSubject, который при создании будет получать initialPostState.
+private readonly state$ = new BehaviorSubject<PostState>(initialPostState);
+Тогда селекторы можно реализовать следующим образом:
+loaded$ = this.state$.pipe(map((state) => state.loaded));
+posts$ = this.state$.pipe(map((state) => Object.values(state.entities)));
+Пример параметризированных селекторов:
+post$ = (uuid: string) => this.state$.pipe(map((state) => state.entities[uuid] ?? null));
+Для эмуляции экшенов, можно использовать обычные Subject:
+loadSuccess$ = new Subject<Post[]>();
+loadFailure$ = new Subject<unknown>();
+Тогда пример эффект будет выглядеть следующим образом:
+load(): void {
+  this.postApiService
+    .get()
+    .pipe(
+      tap((posts) => {
+        const state = this.state$.getValue();
+        this.state$.next({
+          ...state,
+          ids: posts.map((post) => post.uuid),
+          entities: posts.reduce((acc, current) => ({ ...acc, [current.uuid]: current }), {}),
+        });
+        this.loadSuccess$.next(posts);
+      }),
+      catchError((error) => {
+        this.loadFailure$.next(error);
+
+        return throwError(() => error);
+      }),
+      takeUntil(this.destroy$)
+    )
+    .subscribe();
+}
+Сначала запрашиваются данные по API. Если данные успешно получены, то сохраняем их в state и испускаем событие успешной загрузки, а иначе испустить событие ошибки загрузки события.
+Тогда для загрузки списка новостей в компоненте нужно всего лишь вызвать метод load():
+class SimpleComponent implements OnInit {
+  posts$!: Observable<Post[]>;
+ 
+  constructor(private readonly postFacade: PostFacade) {}
+
+  ngOnInit() {
+   this.posts$ = this.postFacade.post$;
+   
+   this.postFacade.load();
+  }
+}
+Ngrx VS Ngxs VS Akita VS Angular Service
+Приведу плюсы и минусы каждой из реализаций.
+Ngrx
+Плюсы:
+Близость реализации к концептам redux. В ngrx есть actions, reducer, selectors, которые выполняют свою роль, следуя концепту redux.
+Эффекты, которые реализуют асинхронные действия
+Наличие решения управления коллекциями сущностей.
+Минусы:
+Boilerplate code. Приходится писать очень много однотипного кода.  
+Плохие генерируемые тесты. Приходится полностью переписывать тесты на каждый созданный feature state.
+Производительность. Модель работы через экшены требует больших ресурсов, что плохо для highload.
+Ngxs
+Плюсы:
+Маленькая структура. По сравнению с ngrx, все выглядит гораздо компактнее.
+Простая кривая обучения. Все просто и тривиально.
+Минусы:
+Плохая поддержка. Библиотека давно не обновлялась.
+Маленькая структура. Чем больше будет логики в стейте, тем более громоздким будет сервис store.
+Неудобный синтаксис экшенов. Экшены создаются в виде классов, что существенно увеличивает кодовую базу. 
+Наличие жизненного цикла у экшенов. Избыточная функциональность, которая субъективно не нужна.
+Akita
+Плюсы:
+Мощные селекторы. Более функциональные селекторы, чем ngrx или ngxs.
+Минимум boilerplate code.
+Минусы:
+Отсутствуют экшены и эффкты из коробки. Для их поддержки необходимо устанавливать сторонние пакеты.
+Из-за отсутствия редьюсера, мутации приходится делать в эффектах.
+Отсутствует хук OnInitEffects в @ngneat/effects.
+Angular Service
+Плюсы:
+Скорость работы из-за отсутствия экшенов, редьюсера и других обработчиков.
+Размер реализации. Так как решение не требует дополнительных библиотек, размер кода будет меньше*.
+Минусы:
+Отсутствие экшенов, которые выполняют роль легковесных событий.
+Перегруженность сервиса, которая появляется в результате отсутствия разделения кода.
+Для минимизации дублирования кода, необходимо реализовывать свое решение.
+Заключение
+В заключении скажу о том как выбирать реализацию redux в Angular, а также приведу советы по организации state.
+Хотя сейчас я бы рекомендовал отказаться от redux и использовать фреймворк Angular и rxjs, которых достаточно для управления данными.
+Какую из реализаций выбрать?
+Каждая реализация redux имеет свои плюсы и минусы. Ngrx следует канонам redux и предоставляет разработчику понятную реализацию redux с отличным решением в виде эффектов. Ngxs дает разработчику близкое к Angular решение для управления состоянием. Akita вскормленная предыдущими реализациями, позволяет разработчику, с минимальными усилиями, добавить state management в проект. 
+Конечно, каждая из реализаций страдает в плане производительности. И если для вашего проекта нужна скорость, тогда есть смысл посмотреть в сторону простых сервисов Angular.
+Если встает выбор в плане выбора конкретной реализации redux, то можно придерживаться следующих правил:
+Если нужно стабильное решение, то используйте Ngrx.
+Если важна простота разработки, то можете использовать Ngxs, Akita или Elf.
+Если хотите писать как можно меньше кода, то используйте Elf.
+Если вам нужна производительность, тогда не используйте redux, а реализуйте собственные Angular сервисы.
+Рекомендации по организации state
+Обычно основные проблемы с redux связаны с неверной организацией state. Я дам несколько советов, которые должны помочь устранить проблемы при использовании redux.
+Храните в state только данные
+Когда вы начинаете использовать, то появляется желание хранить все в state. Помимо данных, в стейт улетают состояния, процессы. Например, для загрузки списка новостей в стейте могут храниться: коллекция новостей, флаг загрузки новостей, состояние "идет ли загрузка" новости, ошибка загрузки новостей. Проблемы начинаются когда в стейт проникают состояния и процессы. Например, если произошла ошибка, значение пишется в стейт. Если могут параллельно идти два процесса, тогда должно храниться две ошибки и так далее. Чтобы этого избежать, не стоит хранить состояния и процессы в стейте, а стоит выносить их в "Компоненты" и "Сервисы". Также не храните ошибки в state. Это позволит упростить процесс обработки ошибок.
+Не используйте redux, если вы не храните полученные данные
+Если вам нужно сделать какие-то асинхронные действия, но которые не будут записывать данные в state, то, не стоит использовать redux для этих действий. Обычных сервисов Angular будет достаточно. В противном случае вы будете использовать redux как event management, а не state management. Это приведет увеличению кодовой базы. Она будет сложнее поддерживать, и будет менее производительной.
+Не изменяйте вложенные объекты в объектах
+Если вы храните сложные объекты, то не изменяйте свойства у вложенных объектов. Это усложняет отслеживание изменений.
+Не вкладывайте state в state.
+Вы можете научиться плохому и решить создавать подстейты в стейте. Сразу скажу, что помимо громоздкого кода, вы еще получите кучу боли.
+Не делайте редиректы в эффектах
+Любые редиректы в эффектах приводят к непредвиденным сайд эффектам. Если хотите повысить предсказуемость кода, то используйте решения навигации от redux или не используйте навигацию совсем.
+Используйте уникальный id в fetch в эффектах
+При использовании Nx и ngrx указывайте id в операторе fetch. Это позволит отменять запросы, а также более оптимально обрабатывать запросы к API. 
+Избегайте использования интервалов (бесконечных генераторов чего либо) в эффектах
+Использование интервалов в эффектах может привести как минимум к трем негативным эффектам:
+Бесконечная генерация события, которые будет остановлено только при закрытии приложения.
+Проблема сборки SSR приложения, которое уйдет в бесконечный цикл.
+Проблема контроля экшенов. Так как эффекты живут отдельно от компонентов, то при конкуренции запросов между компонентом и эффектом, невозможно гарантировать очередность экшенов.
+Мое отношение к redux
+В свое время redux оказал на меня огромное влияние в плане организации и управления данными.
+Со временем, я понял что хорошая структура хранилища – это простая структура, которую можно понять при одном прочтении сверху вниз. Именно тогда я начал оптимизировать state, делая их проще и понятнее.
+Для этого приходилось отказываться от различного ряда вспомогательных функций и утилит, которые только усложняли поддержку.
+В одно время я использовал кастомную функцию payload, которая создавала экшены вида:
+interface ActionPayload<T> { 
+  readonly type: string;
+  readonly payload: T 
+}
+Пример утилиты payload():
+import { props } from '@ngrx/store';
+
+export function payload<P>(): ActionCreatorProps<{ payload: P }> {
+  return props<{ payload: P }>();
+}
+Соответственно использование:
+export const loadSuccess = createAction('[Post] Load Success', payload<Post[]>());
+Единственный плюс такого подхода – проста передачи payload из одного экшена в другой.
+Когда пришло понимание, что не нужно передавать payload'ы между собой и нужно делать экшены проще, за счет отказа хранения состояния в state – потребность в использовании payload отпала.
+Затем все больше понимая rxjs и Angular я начал отказываться от redux в целом. Если соблюдать ряд правил в разработке: не мешать данные в кучу, разделять функциональность, делать простые сервисы, то это позволит также эффективно использовать данные.
+Огромный плюс redux в том, что он позволяет разработчику с достаточно слабой базой, разрабатывать стабильные решения. Однако, со сложностью проекта, это может вызвать обратный эффект. Если у вас будет больше 100 стейтов, которые связаны между собой, то есть большой шанс что все это станет огромным монолитом.
+Конечно, все зависит от навыков команды.
+В итоге я отказался от redux почти везде. Чем проще код, тем проще его поддержка.
+Я не призываю отказаться от redux. Просто state management развивается также как и все фронтенд технологии.
+Сейчас, смотря на очередной релиз Angular, можно проследить тенденции дальнейшего развития. Angular смотрит все больше и больше в сторону веб компонентов и пытается перевести весь фреймворк на эти рельсы.
+Я думаю redux будет развиваться и перерождаться в что-то иное: в что-то более эффективное и производительное.
+Резюме
+В статье были рассмотрены следующие реализации redux и state management:
+Ngrx - первая и самая популярная реализация redux в Angular;
+Ngxs - более легковесная реализация redux, чуть больше приближенная к фреймворку;
+Akita - альтернативный взгляд на redux;
+Elf - другой state management;
+Angular Service - стандартные средства по управлению состоянием.
+Статья проводит читателя через все реализации, демонстрируя плюсы и минусы каждого их решений. В конце статьи приводится рекомендации по выбору конкретной реализации, а также даются советы по организации стейта.
+Готовый проект можно посмотреть на сайте — redux.fafn.ru.
+Демонстрация разных реализаций redux в Angular
+redux.fafn.ru
+Код проекта можно посмотреть в репозитории на гитхабе - angular-samples.
+GitHub - Fafnur/angular-samples: Samples of using different solutions in Angular
+github.com
+Спасибо за внимание!   Пару лет назад из каждого утюга можно было услышать про Redux. Сейчас redux является чем-то обыденным в фронтенд разработке. На пороге 2023 года я хочу поделиться своим опытом использования redux в Angular, поговорить о разных реализациях, и рассказать к каким выводам я пришел за это время. Redux Статья разбита на три блока: Введение, где я описываю процесс написания статьи.
+Все про redux, где я рассматриваю redux и реализации в Angular.
+Заключение, где я обобщаю информацию по разным реализациям redux, а также даю рекомендации по правилам организации state. Введение, где я описываю процесс написания статьи. Введение, где я описываю процесс написания статьи. Все про redux, где я рассматриваю redux и реализации в Angular. Все про redux, где я рассматриваю redux и реализации в Angular. redux Заключение, где я обобщаю информацию по разным реализациям redux, а также даю рекомендации по правилам организации state. Заключение, где я обобщаю информацию по разным реализациям redux, а также даю рекомендации по правилам организации state. redux state В введении много пространных рассказов о том как я писал статью и с какими вопросами столкнулся. Если хотите почитать про redux, то сразу переходите ко второй части. В введении много пространных рассказов о том как я писал статью и с какими вопросами столкнулся. Если хотите почитать про redux, то сразу переходите ко второй части. redux Готовый проект можно посмотреть на сайте — redux.fafn.ru. redux.fafn.ru Демонстрация разных реализаций redux в Angular
+redux.fafn.ru  Демонстрация разных реализаций redux в Angular
+redux.fafn.ru Демонстрация разных реализаций redux в Angular Демонстрация разных реализаций redux в Angular redux.fafn.ru Весь код проекта можно посмотреть в репозитории на гитхабе - angular-samples. angular-samples GitHub - Fafnur/angular-samples: Samples of using different solutions in Angular
+github.com  GitHub - Fafnur/angular-samples: Samples of using different solutions in Angular
+github.com GitHub - Fafnur/angular-samples: Samples of using different solutions in Angular GitHub - Fafnur/angular-samples: Samples of using different solutions in Angular github.com приложения размещены в app/redux. 
+используемые библиотеки в libs/redux. приложения размещены в app/redux.  приложения размещены в app/redux. ]]></text>
+</doc>

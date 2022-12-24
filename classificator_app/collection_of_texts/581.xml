@@ -1,0 +1,464 @@
+<?xml version="1.0" ?>
+<doc>
+	<label auto="true" type="str" verify="true"><![CDATA[Develop]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[redmadrobot]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-11-30, 10:00]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/company/redmadrobot/blog/702466/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Игра в маляра, или Content-based color scheme: как цветовая схема приложения может меняться в зависимости от контента]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Блог компании red_mad_robot]]></item>
+		<item type="str"><![CDATA[Разработка под Android]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[red_mad_robot]]></item>
+		<item type="str"><![CDATA[android]]></item>
+		<item type="str"><![CDATA[android development]]></item>
+		<item type="str"><![CDATA[material you]]></item>
+		<item type="str"><![CDATA[kotlin]]></item>
+		<item type="str"><![CDATA[color scheme]]></item>
+		<item type="str"><![CDATA[material design]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[На Google I/O 2021 продемонстрировали фичу, которая позволяет динамически менять цветовую схему приложения в зависимости от его контента. Но ни в документации, ни в официальных примерах не оказалось использования этого подхода или API, которое делало бы это на уровне отдельного экрана или элемента.
+Ведущего android-разработчика red_mad_robot Рому Чорыева это не устроило, и он для этой цели решил разработать собственное простое решение, — а теперь рассказывает об этом в статье.
+На Google I/O 2021 впервые показали третье поколение Material Design, которая получила название Material You. Первую версию Google представил еще в 2014 году, и за последние годы она сильно изменилась. Самое большое обновление принесло именно третье поколение — изменения коснулись трёх базовых составляющих: цвета, формы и типографики.
+А недавний выход первого стабильного релиза для Jetpack Compose стал ещё одним отличным поводом внимательнее рассмотреть Material You для наших проектов. Обо всех изменениях можно прочитать на основной странице Material You.
+Нас же больше всего привлекло нововведение в Material Color System под названием Dynamic Colors. В описании говорится, что эта фича, начиная с Android 12, позволяет динамически менять цветовую схему приложения на основании доминирующего цвета заставки рабочего стола:
+A user’s wallpaper selection is the basis for the color extraction algorithm to build a color scheme that’s applied across a user’s device and any apps that accept dynamic color.
+Как работает Dynamic Colors
+И это действительно работает — просто и интересно. Конечно, не все захотят перекрашивать компоненты приложения только на основании заставки на рабочем столе, но концепция сама по себе нам показалась интересной.
+Больше всего нас с дизайнерами заинтересовал другой вариант этого подхода, описанный на той же странице, — Content-based color schemes. Подход подразумевает изменение цветовой схемы в зависимости от какого-то контента, например изображения. В примере Google цвет плеера меняется в зависимости от обложки альбома. Но ни в документации, ни в официальных примерах не удалось найти использование этого подхода. Как и API, которое делало бы это на уровне отдельного экрана или элемента.
+Но мы всё равно хотели получить такую функциональность — это и стало причиной разработки своего небольшого решения. Забегая вперед, скажу, что ничего сверхъестественного в нём нет и для реализации используются публично доступные ресурсы.
+Как работает Dynamic Colors
+Чтобы понять, как нам реализовать эту функциональность самостоятельно, давайте для начала поймём, как работает Dynamic Colors с заставкой рабочего стола. Посмотрим на то, как мы его используем при объявлении своей темы.
+@Composable
+fun ApplicationTheme(content: @Composable () -> Unit) {
+    val colorScheme = if (isSystemInDarkTheme()) {
+        dynamicDarkColorScheme(LocalContext.current)
+    } else {
+        dynamicLightColorScheme(LocalContext.current)
+    }
+    MaterialTheme(colorScheme = colorScheme, content = content)
+}
+Если заглянуть в метод dynamicDarkColorScheme или dynamicLightColorScheme, то мы увидим, что внутри создается объект TonalPalette, из которого и собирается нужная нам цветовая схема ColorScheme.
+fun dynamicDarkColorScheme(context: Context): ColorScheme {
+    val tonalPalette = dynamicTonalPalette(context)
+    return darkColorScheme(...)
+}
+Сам метод dynamicTonalPalette нам не подходит — он создаёт палитру, опираясь на статичные android-ресурсы наподобие android.R.color.system_accent1_0. А мы хотим самостоятельно менять палитру. Значит, осталось сгенерировать свою и создать на её базе нашу собственную ColorScheme. Но как это сделать?
+Material Theme Builder
+С выходом Material You Google представил и новый инструмент — Material Theme Builder.
+Он позволяет просто сгенерировать цветовую схему для темы приложения, опираясь только на один базовый (Primary) цвет. Крутая фишка инструмента заключается в том, что он генерирует цветовую схему не только для светлой, но и для тёмной темы приложения. Это особенно удобно для небольших или pet-проектов, под которые нет возможности выделить ресурсы дизайнеров.
+Но вернёмся к нашей теме. Инструмент есть, и похоже, это то, что нам нужно. Но как взять и засунуть эту штуку в наше приложение? Раз есть инструмент, то наверняка должны быть и его исходники. Так и оказалось. Небольшой поиск привёл меня в аккаунт Material Foundation на GitHub, а уже среди его репозиториев быстро нашёлся один с интересным названием — material-color-utilities. Из описания репозитория сразу стало понятно, что это именно то, что нам нужно. Дальше оставалось понять, как же теперь использовать эти исходники.
+Собираем свой генератор
+Всё оказалось просто. Среди корневых папок была одна под названием java — ощущение, что мы на верном пути. Скомпилировать её исходники не составило никакого труда. Для этого нужно создать пустой java-проект. Для меня быстрым вариантом было сделать это через команду
+gradle init
+в заранее подготовленной директории. Далее выбираем нужные нам параметры проекта. Я выбрал library в качестве типа проекта и Kotlin в качестве build script DSL.
+Рекомендую сразу позаботиться о наименовании пакета для библиотеки, чтобы потом всё не переделывать. Я выбрал material.color.util. После инициализации проекта удаляем ненужные нам тесты и сгенерированные классы. Клонируем репозиторий material-color-utilities и переносим содержимое его java-директории в наш проект.
+Пришлось пробежаться по классам и поправить импорты, но это оказалось единственной болью, с которой я столкнулся. Тем более что классов не так много. После всех манипуляций запускаем:
+./gradlew build
+— и скомпилированная библиотека готова! Найти её можно в папке lib/build/libs.
+Для удобства я сразу переименовал получившийся файл в material-color-util.jar.
+Добавление библиотеки в проект
+Берём получившийся .jar файл и переносим к себе в проект. Для этого добавляем директорию libs в app модуле целевого приложения и переносим туда наш скомпилированный файл.
+Далее подключаем нашу библиотеку в build.gradle.kts файле app модуля.
+dependencies {
+    implementation(files("libs/material-color-util.jar"))
+}
+Вот и всё. Теперь мы можем использовать классы утилиты в нашем приложении.
+Создание своей динамической темы
+Из описания классов мы можем понять, что для генерации цветовой схемы нам нужен класс Scheme из нашей библиотеки. И названия его полей удивительным образом совпадают с названиями полей класса ColorScheme из material3. Справедливости ради, нужно отметить, что одного цвета в схеме не оказалось. Это был surfaceTint, и вместо него я использовал surfaceVariant.
+Используем методы lightContent и darkContent для генерации светлой и тёмной палитры и мапим получившиеся модели в material3.ColorSheme.
+val color = Color.Blue.toArgb() // Цвет на который хотим переключиться
+
+val colorScheme = if (isSystemInDarkTheme()) {
+    Scheme.darkContent(color).toDarkThemeColorScheme()
+} else {
+    Scheme.lightContent(color).toLightThemeColorScheme()
+}
+
+fun Scheme.toDarkThemeColorScheme(): ColorScheme {
+    return darkColorScheme(
+        primary = Color(primary),
+        onPrimary = Color(onPrimary),
+        // ... etc
+    )
+}
+
+fun Scheme.toLightThemeColorScheme(): ColorScheme {
+    return lightColorScheme(
+        primary = Color(primary),
+        onPrimary = Color(onPrimary),
+        // ... etc
+    )
+}
+Теперь нам нужно заставить тему динамически меняться. И тут нам очень поможет Jetpack Compose со своим механизмом рекомпозиции и возможностью удобно оборачивать экраны и элементы в отдельные темы. Создадим класс DynamicThemeState, через который мы и будем управлять изменениями в нашей теме.
+@Stable
+class DynamicThemeState(initialPrimaryColor: Color) {
+    var primaryColor: Color by mutableStateOf(initialPrimaryColor)
+}
+
+@Composable
+fun rememberDynamicThemeState(
+    initialPrimaryColor: Color = MaterialTheme.colorScheme.primary
+): DynamicThemeState {
+    return remember { DynamicThemeState(initialPrimaryColor) }
+}
+Далее добавим код, который, используя нашу библиотеку, позволит генерировать цветовую схему из одного главного цвета, — и соединим всё это воедино в нашей теме.
+@Composable
+fun DynamicTheme(
+    state: DynamicThemeState,
+    content: @Composable () -> Unit,
+) {
+    val scheme = rememberColorSchemeByColor(state.primaryColor)
+    MaterialTheme(
+        colorScheme = scheme,
+        content = content
+    )
+}
+
+@Composable
+private fun rememberColorSchemeByColor(color: Color): ColorScheme {
+    val isDarkTheme = isSystemInDarkTheme()
+    val colorArgb = color.toArgb()
+    return remember(color) {
+        if (isDarkTheme) {
+            Scheme.darkContent(colorArgb).toDarkThemeColorScheme()
+        } else {
+            Scheme.lightContent(colorArgb).toLightThemeColorScheme()
+        }
+    }
+}
+Дальше нам нужно протестировать, как это всё работает. Для этого сделаем простой экран со списком разноцветных карточек:
+@Composable
+fun CardListScreen(onCardSelect: (Int) -> Unit) {
+   val cardColors = remember {
+       listOf(Color.Green, Color.Blue, Color.Magenta, Color.Red, Color.Yellow, Color.Black)
+   }
+   LazyColumn(
+       modifier = Modifier.padding(top = 24.dp),
+       verticalArrangement = Arrangement.spacedBy(16.dp)
+   ) {
+       items(cardColors) { color ->
+           Surface(
+               modifier = Modifier
+                   .fillMaxWidth()
+                   .height(80.dp)
+                   .padding(horizontal = 16.dp)
+                   .clickable { onCardSelect(color.toArgb()) },
+               shape = MaterialTheme.shapes.medium,
+               color = color
+           ) {}
+       }
+   }
+}
+Клик на каждую из них будет открывать экран со списком основных UI-элементов Android. Для наглядности добавим кастомный компонент, который будет визуализировать нашу текущую палитру. Назовем всё это ComponentsLayout.
+Далее мы оборачиваем весь контент экрана в нашу тему и передаём в него цвет карточки, на которую мы кликнули. Мы ожидаем, что все компоненты на нашем экране будут перекрашиваться в соответствии с цветом выбранной карточки.
+Весь код экрана будет выглядеть так:
+@Composable
+fun ComponentsScreen(color: Int) {
+   val themeState = rememberDynamicThemeState(Color(color))
+   DynamicTheme(state = themeState) {
+       // Компонент с демо элементами
+       ComponentsLayout(
+           modifier = Modifier
+               .fillMaxSize()
+               .padding(top = 24.dp)
+       )
+   }
+}
+Далее собираем проект и видим, что всё работает так, как мы и ожидали.
+Но изначально мы говорили о генерации цветовой схемы на базе контента, а не конкретного цвета, который нам известен. Нужно заставить это решение работать с произвольными изображениями!
+Для этого положим несколько картинок в ресурсы и будем генерировать из них цветовые схемы. Для извлечения доминантного цвета из картинки используем библиотеку Palette, которая является частью AndroidX.
+Добавляем в наш проект метод для извлечения доминантного цвета из картинки при помощи Palette.
+fun exportDominantRgb(context: Context, imageRes: Int): Int? {
+    val bitmap = BitmapFactory.decodeResource(context.resources, imageRes)
+    val palette = Palette.from(bitmap).generate()
+    return palette.dominantSwatch?.rgb
+}
+Чтобы всё это было нагляднее и интерактивнее, соберём всё на одном экране. Это позволит нам кликать на картинку и сразу видеть изменения.
+@Composable
+fun ImageListScreen() {
+   val context = LocalContext.current
+   val themeState = rememberDynamicThemeState()
+   DynamicTheme(themeState) {
+       Column(
+           modifier = Modifier
+               .fillMaxSize()
+               .padding(start = 16.dp, end = 16.dp, top = 32.dp)
+       ) {
+           // Компонент со списком изображений из ресурсов
+           ImageList(
+               onImageSelect = { resId ->
+                   // Извлекаем доминантный цвет из картинки
+                   val domainColorRgb = exportDominantRgb(context, resId)
+                   // Устанавливаем его как основной
+                   domainColorRgb?.let { themeState.primaryColor = Color(it) }
+               }
+           )
+           // Компонент с демо элементами
+           ComponentsLayout(Modifier.padding(top = 16.dp))
+       }
+   }
+}
+Так как процесс извлечения цвета из картинки и генерации цветовой схемы занимает какое-то время, лучше вынести куда-то этот кусок кода и обернуть в корутину.
+Собираем наш проект и видим, как при клике на картинку перекрашиваются все компоненты и палитра.
+Вот, собственно, и всё. Мы смогли добиться той самой динамической цветовой схемы на базе контента, о которой нам говорил Google. Причём своими руками.
+Неожиданный плюс, который мы получили от нашей реализации, — она работает и на версиях младше Android 12 — в отличие от Dynamic Сolors на основании wallpapers. А это открывает ещё больше возможностей для его использования. Проверено на Pixel 4 с Android 10.
+Полные исходники примера можно посмотреть тут.   На Google I/O 2021 продемонстрировали фичу, которая позволяет динамически менять цветовую схему приложения в зависимости от его контента. Но ни в документации, ни в официальных примерах не оказалось использования этого подхода или API, которое делало бы это на уровне отдельного экрана или элемента. Ведущего android-разработчика red_mad_robot Рому Чорыева это не устроило, и он для этой цели решил разработать собственное простое решение, — а теперь рассказывает об этом в статье. Рому Чорыева  На Google I/O 2021 впервые показали третье поколение Material Design, которая получила название Material You. Первую версию Google представил еще в 2014 году, и за последние годы она сильно изменилась. Самое большое обновление принесло именно третье поколение — изменения коснулись трёх базовых составляющих: цвета, формы и типографики. показали А недавний выход первого стабильного релиза для Jetpack Compose стал ещё одним отличным поводом внимательнее рассмотреть Material You для наших проектов. Обо всех изменениях можно прочитать на основной странице Material You. релиза Material You Нас же больше всего привлекло нововведение в Material Color System под названием Dynamic Colors. В описании говорится, что эта фича, начиная с Android 12, позволяет динамически менять цветовую схему приложения на основании доминирующего цвета заставки рабочего стола: говорится A user’s wallpaper selection is the basis for the color extraction algorithm to build a color scheme that’s applied across a user’s device and any apps that accept dynamic color. A user’s wallpaper selection is the basis for the color extraction algorithm to build a color scheme that’s applied across a user’s device and any apps that accept dynamic color. A user’s wallpaper selection is the basis for the color extraction algorithm to build a color scheme that’s applied across a user’s device and any apps that accept dynamic color.  Как работает Dynamic Colors И это действительно работает — просто и интересно. Конечно, не все захотят перекрашивать компоненты приложения только на основании заставки на рабочем столе, но концепция сама по себе нам показалась интересной. Больше всего нас с дизайнерами заинтересовал другой вариант этого подхода, описанный на той же странице, — Content-based color schemes. Подход подразумевает изменение цветовой схемы в зависимости от какого-то контента, например изображения. В примере Google цвет плеера меняется в зависимости от обложки альбома. Но ни в документации, ни в официальных примерах не удалось найти использование этого подхода. Как и API, которое делало бы это на уровне отдельного экрана или элемента. Content-based color schemes Но мы всё равно хотели получить такую функциональность — это и стало причиной разработки своего небольшого решения. Забегая вперед, скажу, что ничего сверхъестественного в нём нет и для реализации используются публично доступные ресурсы. Как работает Dynamic Colors Чтобы понять, как нам реализовать эту функциональность самостоятельно, давайте для начала поймём, как работает Dynamic Colors с заставкой рабочего стола. Посмотрим на то, как мы его используем при объявлении своей темы. @Composable
+fun ApplicationTheme(content: @Composable () -> Unit) {
+    val colorScheme = if (isSystemInDarkTheme()) {
+        dynamicDarkColorScheme(LocalContext.current)
+    } else {
+        dynamicLightColorScheme(LocalContext.current)
+    }
+    MaterialTheme(colorScheme = colorScheme, content = content)
+} @Composable
+fun ApplicationTheme(content: @Composable () -> Unit) {
+    val colorScheme = if (isSystemInDarkTheme()) {
+        dynamicDarkColorScheme(LocalContext.current)
+    } else {
+        dynamicLightColorScheme(LocalContext.current)
+    }
+    MaterialTheme(colorScheme = colorScheme, content = content)
+} Если заглянуть в метод dynamicDarkColorScheme или dynamicLightColorScheme, то мы увидим, что внутри создается объект TonalPalette, из которого и собирается нужная нам цветовая схема ColorScheme. dynamicDarkColorScheme dynamicLightColorScheme TonalPalette ColorScheme fun dynamicDarkColorScheme(context: Context): ColorScheme {
+    val tonalPalette = dynamicTonalPalette(context)
+    return darkColorScheme(...)
+} fun dynamicDarkColorScheme(context: Context): ColorScheme {
+    val tonalPalette = dynamicTonalPalette(context)
+    return darkColorScheme(...)
+} Сам метод dynamicTonalPalette нам не подходит — он создаёт палитру, опираясь на статичные android-ресурсы наподобие android.R.color.system_accent1_0. А мы хотим самостоятельно менять палитру. Значит, осталось сгенерировать свою и создать на её базе нашу собственную ColorScheme. Но как это сделать? dynamicTonalPalette android.R.color.system_accent1_0. ColorScheme Material Theme Builder С выходом Material You Google представил и новый инструмент — Material Theme Builder. Material Theme Builder   Он позволяет просто сгенерировать цветовую схему для темы приложения, опираясь только на один базовый (Primary) цвет. Крутая фишка инструмента заключается в том, что он генерирует цветовую схему не только для светлой, но и для тёмной темы приложения. Это особенно удобно для небольших или pet-проектов, под которые нет возможности выделить ресурсы дизайнеров. Но вернёмся к нашей теме. Инструмент есть, и похоже, это то, что нам нужно. Но как взять и засунуть эту штуку в наше приложение? Раз есть инструмент, то наверняка должны быть и его исходники. Так и оказалось. Небольшой поиск привёл меня в аккаунт Material Foundation на GitHub, а уже среди его репозиториев быстро нашёлся один с интересным названием — material-color-utilities. Из описания репозитория сразу стало понятно, что это именно то, что нам нужно. Дальше оставалось понять, как же теперь использовать эти исходники. Material Foundation material-color-utilities material-color-utilities Собираем свой генератор Всё оказалось просто. Среди корневых папок была одна под названием java — ощущение, что мы на верном пути. Скомпилировать её исходники не составило никакого труда. Для этого нужно создать пустой java-проект. Для меня быстрым вариантом было сделать это через команду gradle init gradle init в заранее подготовленной директории. Далее выбираем нужные нам параметры проекта. Я выбрал library в качестве типа проекта и Kotlin в качестве build script DSL. Рекомендую сразу позаботиться о наименовании пакета для библиотеки, чтобы потом всё не переделывать. Я выбрал material.color.util. После инициализации проекта удаляем ненужные нам тесты и сгенерированные классы. Клонируем репозиторий material-color-utilities и переносим содержимое его java-директории в наш проект. material.color.util material-color-utilities Пришлось пробежаться по классам и поправить импорты, но это оказалось единственной болью, с которой я столкнулся. Тем более что классов не так много. После всех манипуляций запускаем: ./gradlew build ./gradlew build — и скомпилированная библиотека готова! Найти её можно в папке lib/build/libs. lib/build/libs   Для удобства я сразу переименовал получившийся файл в material-color-util.jar. material-color-util.jar Добавление библиотеки в проект Берём получившийся .jar файл и переносим к себе в проект. Для этого добавляем директорию libs в app модуле целевого приложения и переносим туда наш скомпилированный файл. libs app   Далее подключаем нашу библиотеку в build.gradle.kts файле app модуля. build.gradle.kts app dependencies {
+    implementation(files("libs/material-color-util.jar"))
+} dependencies {
+    implementation(files("libs/material-color-util.jar"))
+} Вот и всё. Теперь мы можем использовать классы утилиты в нашем приложении. Создание своей динамической темы Из описания классов мы можем понять, что для генерации цветовой схемы нам нужен класс Scheme из нашей библиотеки. И названия его полей удивительным образом совпадают с названиями полей класса ColorScheme из material3. Справедливости ради, нужно отметить, что одного цвета в схеме не оказалось. Это был surfaceTint, и вместо него я использовал surfaceVariant. Scheme ColorScheme surfaceTint surfaceVariant Используем методы lightContent и darkContent для генерации светлой и тёмной палитры и мапим получившиеся модели в material3.ColorSheme. lightContent darkContent material3.ColorSheme val color = Color.Blue.toArgb() // Цвет на который хотим переключиться
+
+val colorScheme = if (isSystemInDarkTheme()) {
+    Scheme.darkContent(color).toDarkThemeColorScheme()
+} else {
+    Scheme.lightContent(color).toLightThemeColorScheme()
+}
+
+fun Scheme.toDarkThemeColorScheme(): ColorScheme {
+    return darkColorScheme(
+        primary = Color(primary),
+        onPrimary = Color(onPrimary),
+        // ... etc
+    )
+}
+
+fun Scheme.toLightThemeColorScheme(): ColorScheme {
+    return lightColorScheme(
+        primary = Color(primary),
+        onPrimary = Color(onPrimary),
+        // ... etc
+    )
+} val color = Color.Blue.toArgb() // Цвет на который хотим переключиться
+
+val colorScheme = if (isSystemInDarkTheme()) {
+    Scheme.darkContent(color).toDarkThemeColorScheme()
+} else {
+    Scheme.lightContent(color).toLightThemeColorScheme()
+}
+
+fun Scheme.toDarkThemeColorScheme(): ColorScheme {
+    return darkColorScheme(
+        primary = Color(primary),
+        onPrimary = Color(onPrimary),
+        // ... etc
+    )
+}
+
+fun Scheme.toLightThemeColorScheme(): ColorScheme {
+    return lightColorScheme(
+        primary = Color(primary),
+        onPrimary = Color(onPrimary),
+        // ... etc
+    )
+} Теперь нам нужно заставить тему динамически меняться. И тут нам очень поможет Jetpack Compose со своим механизмом рекомпозиции и возможностью удобно оборачивать экраны и элементы в отдельные темы. Создадим класс DynamicThemeState, через который мы и будем управлять изменениями в нашей теме. DynamicThemeState @Stable
+class DynamicThemeState(initialPrimaryColor: Color) {
+    var primaryColor: Color by mutableStateOf(initialPrimaryColor)
+}
+
+@Composable
+fun rememberDynamicThemeState(
+    initialPrimaryColor: Color = MaterialTheme.colorScheme.primary
+): DynamicThemeState {
+    return remember { DynamicThemeState(initialPrimaryColor) }
+} @Stable
+class DynamicThemeState(initialPrimaryColor: Color) {
+    var primaryColor: Color by mutableStateOf(initialPrimaryColor)
+}
+
+@Composable
+fun rememberDynamicThemeState(
+    initialPrimaryColor: Color = MaterialTheme.colorScheme.primary
+): DynamicThemeState {
+    return remember { DynamicThemeState(initialPrimaryColor) }
+} Далее добавим код, который, используя нашу библиотеку, позволит генерировать цветовую схему из одного главного цвета, — и соединим всё это воедино в нашей теме. @Composable
+fun DynamicTheme(
+    state: DynamicThemeState,
+    content: @Composable () -> Unit,
+) {
+    val scheme = rememberColorSchemeByColor(state.primaryColor)
+    MaterialTheme(
+        colorScheme = scheme,
+        content = content
+    )
+}
+
+@Composable
+private fun rememberColorSchemeByColor(color: Color): ColorScheme {
+    val isDarkTheme = isSystemInDarkTheme()
+    val colorArgb = color.toArgb()
+    return remember(color) {
+        if (isDarkTheme) {
+            Scheme.darkContent(colorArgb).toDarkThemeColorScheme()
+        } else {
+            Scheme.lightContent(colorArgb).toLightThemeColorScheme()
+        }
+    }
+} @Composable
+fun DynamicTheme(
+    state: DynamicThemeState,
+    content: @Composable () -> Unit,
+) {
+    val scheme = rememberColorSchemeByColor(state.primaryColor)
+    MaterialTheme(
+        colorScheme = scheme,
+        content = content
+    )
+}
+
+@Composable
+private fun rememberColorSchemeByColor(color: Color): ColorScheme {
+    val isDarkTheme = isSystemInDarkTheme()
+    val colorArgb = color.toArgb()
+    return remember(color) {
+        if (isDarkTheme) {
+            Scheme.darkContent(colorArgb).toDarkThemeColorScheme()
+        } else {
+            Scheme.lightContent(colorArgb).toLightThemeColorScheme()
+        }
+    }
+} Дальше нам нужно протестировать, как это всё работает. Для этого сделаем простой экран со списком разноцветных карточек:   @Composable
+fun CardListScreen(onCardSelect: (Int) -> Unit) {
+   val cardColors = remember {
+       listOf(Color.Green, Color.Blue, Color.Magenta, Color.Red, Color.Yellow, Color.Black)
+   }
+   LazyColumn(
+       modifier = Modifier.padding(top = 24.dp),
+       verticalArrangement = Arrangement.spacedBy(16.dp)
+   ) {
+       items(cardColors) { color ->
+           Surface(
+               modifier = Modifier
+                   .fillMaxWidth()
+                   .height(80.dp)
+                   .padding(horizontal = 16.dp)
+                   .clickable { onCardSelect(color.toArgb()) },
+               shape = MaterialTheme.shapes.medium,
+               color = color
+           ) {}
+       }
+   }
+} @Composable
+fun CardListScreen(onCardSelect: (Int) -> Unit) {
+   val cardColors = remember {
+       listOf(Color.Green, Color.Blue, Color.Magenta, Color.Red, Color.Yellow, Color.Black)
+   }
+   LazyColumn(
+       modifier = Modifier.padding(top = 24.dp),
+       verticalArrangement = Arrangement.spacedBy(16.dp)
+   ) {
+       items(cardColors) { color ->
+           Surface(
+               modifier = Modifier
+                   .fillMaxWidth()
+                   .height(80.dp)
+                   .padding(horizontal = 16.dp)
+                   .clickable { onCardSelect(color.toArgb()) },
+               shape = MaterialTheme.shapes.medium,
+               color = color
+           ) {}
+       }
+   }
+} Клик на каждую из них будет открывать экран со списком основных UI-элементов Android. Для наглядности добавим кастомный компонент, который будет визуализировать нашу текущую палитру. Назовем всё это ComponentsLayout. ComponentsLayout   Далее мы оборачиваем весь контент экрана в нашу тему и передаём в него цвет карточки, на которую мы кликнули. Мы ожидаем, что все компоненты на нашем экране будут перекрашиваться в соответствии с цветом выбранной карточки. Весь код экрана будет выглядеть так: @Composable
+fun ComponentsScreen(color: Int) {
+   val themeState = rememberDynamicThemeState(Color(color))
+   DynamicTheme(state = themeState) {
+       // Компонент с демо элементами
+       ComponentsLayout(
+           modifier = Modifier
+               .fillMaxSize()
+               .padding(top = 24.dp)
+       )
+   }
+} @Composable
+fun ComponentsScreen(color: Int) {
+   val themeState = rememberDynamicThemeState(Color(color))
+   DynamicTheme(state = themeState) {
+       // Компонент с демо элементами
+       ComponentsLayout(
+           modifier = Modifier
+               .fillMaxSize()
+               .padding(top = 24.dp)
+       )
+   }
+} Далее собираем проект и видим, что всё работает так, как мы и ожидали.   Но изначально мы говорили о генерации цветовой схемы на базе контента, а не конкретного цвета, который нам известен. Нужно заставить это решение работать с произвольными изображениями! Для этого положим несколько картинок в ресурсы и будем генерировать из них цветовые схемы. Для извлечения доминантного цвета из картинки используем библиотеку Palette, которая является частью AndroidX. Palette Добавляем в наш проект метод для извлечения доминантного цвета из картинки при помощи Palette. Palette fun exportDominantRgb(context: Context, imageRes: Int): Int? {
+    val bitmap = BitmapFactory.decodeResource(context.resources, imageRes)
+    val palette = Palette.from(bitmap).generate()
+    return palette.dominantSwatch?.rgb
+} fun exportDominantRgb(context: Context, imageRes: Int): Int? {
+    val bitmap = BitmapFactory.decodeResource(context.resources, imageRes)
+    val palette = Palette.from(bitmap).generate()
+    return palette.dominantSwatch?.rgb
+} Чтобы всё это было нагляднее и интерактивнее, соберём всё на одном экране. Это позволит нам кликать на картинку и сразу видеть изменения. @Composable
+fun ImageListScreen() {
+   val context = LocalContext.current
+   val themeState = rememberDynamicThemeState()
+   DynamicTheme(themeState) {
+       Column(
+           modifier = Modifier
+               .fillMaxSize()
+               .padding(start = 16.dp, end = 16.dp, top = 32.dp)
+       ) {
+           // Компонент со списком изображений из ресурсов
+           ImageList(
+               onImageSelect = { resId ->
+                   // Извлекаем доминантный цвет из картинки
+                   val domainColorRgb = exportDominantRgb(context, resId)
+                   // Устанавливаем его как основной
+                   domainColorRgb?.let { themeState.primaryColor = Color(it) }
+               }
+           )
+           // Компонент с демо элементами
+           ComponentsLayout(Modifier.padding(top = 16.dp))
+       }
+   }
+} @Composable
+fun ImageListScreen() {
+   val context = LocalContext.current
+   val themeState = rememberDynamicThemeState()
+   DynamicTheme(themeState) {
+       Column(
+           modifier = Modifier
+               .fillMaxSize()
+               .padding(start = 16.dp, end = 16.dp, top = 32.dp)
+       ) {
+           // Компонент со списком изображений из ресурсов
+           ImageList(
+               onImageSelect = { resId ->
+                   // Извлекаем доминантный цвет из картинки
+                   val domainColorRgb = exportDominantRgb(context, resId)
+                   // Устанавливаем его как основной
+                   domainColorRgb?.let { themeState.primaryColor = Color(it) }
+               }
+           )
+           // Компонент с демо элементами
+           ComponentsLayout(Modifier.padding(top = 16.dp))
+       }
+   }
+} Так как процесс извлечения цвета из картинки и генерации цветовой схемы занимает какое-то время, лучше вынести куда-то этот кусок кода и обернуть в корутину. Так как процесс извлечения цвета из картинки и генерации цветовой схемы занимает какое-то время, лучше вынести куда-то этот кусок кода и обернуть в корутину. Так как процесс извлечения цвета из картинки и генерации цветовой схемы занимает какое-то время, лучше вынести куда-то этот кусок кода и обернуть в корутину. Собираем наш проект и видим, как при клике на картинку перекрашиваются все компоненты и палитра.   Вот, собственно, и всё. Мы смогли добиться той самой динамической цветовой схемы на базе контента, о которой нам говорил Google. Причём своими руками. Неожиданный плюс, который мы получили от нашей реализации, — она работает и на версиях младше Android 12 — в отличие от Dynamic Сolors на основании wallpapers. А это открывает ещё больше возможностей для его использования. Проверено на Pixel 4 с Android 10. Полные исходники примера можно посмотреть тут. тут ]]></text>
+</doc>

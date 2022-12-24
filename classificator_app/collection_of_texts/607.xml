@@ -1,0 +1,321 @@
+<?xml version="1.0" ?>
+<doc>
+	<label auto="true" type="str" verify="true"><![CDATA[Develop]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[DyadichenkoGA]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-11-29, 14:27]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/post/702274/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Фильтрация шума в дополненной реальности]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Unity]]></item>
+		<item type="str"><![CDATA[Разработка под AR и VR]]></item>
+		<item type="str"><![CDATA[AR и VR]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[unity]]></item>
+		<item type="str"><![CDATA[ar]]></item>
+		<item type="str"><![CDATA[трекинг]]></item>
+		<item type="str"><![CDATA[шум]]></item>
+		<item type="str"><![CDATA[сигнал]]></item>
+		<item type="str"><![CDATA[фильтрация шума]]></item>
+		<item type="str"><![CDATA[лоупасс фильтр]]></item>
+		<item type="str"><![CDATA[lowpass filter]]></item>
+		<item type="str"><![CDATA[one euro filter]]></item>
+		<item type="str"><![CDATA[one euro фильтр]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[Всем привет! Меня зовут Гриша Дядиченко, и я технический продюсер. Сегодня хочется поговорить про шум, про его фильтрацию и зачем нужно про это знать при работе с технологиями дополненной реальности. Если вы интересуетесь или работаете с AR добро пожаловать под кат!
+Трекингом и технологиями связанными с дополненной и виртуальной реальности я работаю с 2016. Во те времена с деревянными игрушками с первым появлением Easy AR, ещё сырой Vuforia и т.п. трекинг оставлял желать лучшего по сравнению с текущим. В те времена была популярна технология маркерного трекинга как единственная доступная и более менее стабильная, инстаграм маски тогда ещё не обрели такую популярность и т.п. Плюс в те годы мне повезло поработать с такими системами, как Vicon и Optitrack и там тоже встречалась типовая проблема. Весь AR дрожал. То есть данные о позиции объекта в пространстве было довольно шумные. Сейчас ситуация получше, но иногда в плохих условиях освещения, с плохим маркером, в технологиях веб AR это проблема так же встречается. Хочется поговорить о шуме в AR и о том, как с ним можно бороться. А так же разберём несколько простых фильтров. Лоупасс, One Euro и медианный.
+Что такое шум?
+Чтобы объяснить что такое шум сначала наверное стоит объяснить что такое сигнал. Для нас подойдёт определение сигнала, как изменение некоторой физической величины. Сигналы бывают:
+Одномерные — которые зависят от времени. Например, звук.
+Двумерные — заданные на плоскости. Например, изображение.
+Многомерный — заданные большим числом независимых переменных. Например, матрица TRS описывающая объект в пространстве с течением времени.
+В трекинге мы работаем с трёхмерными сигналами. Но дело в том, что часто получая любые данные они получаются с шумом. Даже в тех же камерах телефонов его можно увидеть в тёмных помещениях. А в случае трекинга через тряску позиции и ориентации отслеживаемого объекта. В данном случае под шумом понимается беспорядочное колебания величины от её идеального значения. На бытовом уровне это значит, что ваша великолепная графика дрожит. Шумы в свою очередь делятся на много разных типов. Но для нас важными являются два стационарный и нестационарный шум. Но скорее для понимания, чем для решения чего-либо.
+В случае трекинга стационарным шумом можно считать ошибку возникающую из-за датчиков. Если вы не очень быстро перемещаетесь, то вряд ли у вас будут проблемы связанные с тем, что в тех же телефонах стоит электронный акселерометр, и там будет проблема, что из-за изменении структуры электронного шума вокруг будут проблемы. Хотя это конечно тоже возможно. Но в среднем качество изображения камеры с телефона, показания IMU датчиков и т.п. дают стационарный шум.
+А вот нестационарным шумом в реальных условиях работы чаще всего является освещение. Когда-то очень сильно всё ломало люминесцентное освещение, но в условиях скажем выставок или ТЦ там очень много видео-панелей, различных источников света, которые так же будут влиять на качество работы технологий трекинга.
+Для того, чтобы бороться со всем этим великолепием и получать плавные данные человечество придумало фильтровать данные. Существуют много разных алгоритмов фильтрации шума. Фильтром же в свою очередь называют алгоритм, который отфильтровывает (отбрасывает) Поговорим о них и об опыте работы с ними в AR.
+Low-Pass Filter
+Лоу-пасс фильтр или фильтр нижних частот — это группа различных фильтров не пропускающая высокие частоты. Чтобы понять, что это такое, надо определить что такое частота сигнала. По сути это величина изменения сигнала. То есть фильтры нижних частот по-русски — это фильтры которые не допускают большие изменения величин. То есть если у вас объект был скажем перед вами, а потом резко оказался в 10 метрах по данным от телефона, то отфильтрованное значение сместится только на то, какое допустимое окно вы зададите в вашем фильтре. Допустим если вы считаете, что между двумя кадрами объект не может сместится больше, чем на 10 сантиметров, то соответственно отфильтрованные данные будут смещены только на 10 сантиметров. Одна из самых простых реализаций lowpass фильтра выглядит вот так:
+Где data — это наши последние отфильтрованные данные, а K — сила фильтра, которая принимает значения [0;1) По сути практически линейная интерполяция.
+Так как в случае трёхмерной позиции "частота сигнала" — это тоже самое, что дистанция или угол поворота данный фильтр хорошо подходит при медленном движении отслеживаемого или отслеживающего объекта. Либо когда он вообще не движется, так как в противном случае при значениях K близких к 1 он будет давать задержку.
+Одной из основных проблем фильтрации в трекинге является то, что сильное сглаживание в зависимости от характера данных может выглядеть как задержка трекинга. Визуально объект будет двигаться с задержкой за отслеживаемой меткой или отслеживаемой отметкой.
+Реализация простого low-pass фильтра Vector3 для Unity:
+using UnityEngine;
+
+public class LowpassFilterVector
+{
+    private Vector3? _prevValue;
+    public Vector3 Filter(Vector3 value, float K)
+    {
+        if (_prevValue == null)
+        {
+            _prevValue = value;
+            return value;
+        }
+        else
+        {
+            return _prevValue.Value * K + value * (1 - K);
+        }
+    }
+}
+One Euro Filter
+Один из интересных видов Low-pass фильтра — это one Euro filter. Этот фильтр "адаптируется" под в зависимости от "скорости изменения частоты". Подробнее о нём можно прочитать в этой работе. Для задач трекинга он не особо полезен и плохо применим из-за принципа своей работы. Но в целом фильтр полезный, такой же быстрый и о нём стоит знать.
+Реализация one Euro filter для Unity:
+public class OneEuroFilter
+{
+    private float _frequency;
+    private float _prevTime = 0;
+    private Vector3 _prevValue;
+    private Vector3 _prevDerivativeValue;
+    private float _minCutoff;
+    private float _beta;
+    private float _dCutoff;
+    private float SmoothingFactor(float delta, float cutoff)
+    {
+        var r = 2 * Mathf.PI * cutoff * delta;
+        return r / (r + 1);
+    }
+
+    private Vector3 LowpassF(Vector3 value, Vector3 prevValue, float K)
+    {
+        return value * K + prevValue * (1 - K);
+    }
+    public Vector3 Filter(Vector3 value, float time)
+    {
+        float deltaTime = time - _prevTime;
+
+        float alphaDerivative = SmoothingFactor(deltaTime, _dCutoff);
+        var derivativeValue = (value - _prevValue) / deltaTime;
+        var derValueFiltered = LowpassF(derivativeValue, _prevDerivativeValue, alphaDerivative);
+
+        var cutoff = _minCutoff + _beta * derValueFiltered.magnitude;
+
+        var alpha = SmoothingFactor(deltaTime, cutoff);
+        var valueFiltered = LowpassF(value, _prevValue, alpha);
+
+        _prevValue = valueFiltered;
+        _prevDerivativeValue = derValueFiltered;
+        _prevTime = time;
+        
+        return valueFiltered;
+    }
+
+    public OneEuroFilter(Vector3 prevValue, float minCutoff = 1, float beta = 0, float dCutoff = 1)
+    {
+        _prevValue = prevValue;
+        _minCutoff = minCutoff;
+        _beta = beta;
+        _dCutoff = dCutoff;
+    }
+}
+Медианный фильтр
+Источник: https://ru.bmstu.wiki/%D0%9C%D0%B5%D0%B4%D0%B8%D0%B0%D0%BD%D0%BD%D0%B0%D1%8F_%D1%84%D0%B8%D0%BB%D1%8C%D1%82%D1%80%D0%B0%D1%86%D0%B8%D1%8F
+Медианная фильтрация — этот вид фильтрации работает достаточно просто. Задаётся окно в котором мы рассматриваем наши значения (в случае позиций окно времени) и в этом окне времени мы берём медиану среди всех значений. Медиана — это число из набора которое находится посередине. Например у вас стоит ваша метка на высоте 1 метр. Вы берёте окно в 5 кадров. А трекинг возвращает значения [1; 1.1; 0.85; 0.9; 0.87], то есть в данном случае медиана будет равна 0.9. Медианная фильтрация популярный и эффективный способ фильтрации использующийся во много каких случаях. Даже для процессинга изображений и закрытия проблем шума с характером, как выше.
+В отличии от взятия среднего значения в окне медианная фильтрация не подвержена так называемым выбросам. Выброс — это когда если бы в ряду выше у нас было весьма подозрительное число. Со слишком большим отклонением от среднего. Скажем [1; 1.1; 0.85; 0.9; 120]. Число 120 — это явный выброс. И поэтому хорошо подходит для фильтрации углов. Так как скажем при плохой метке или условиях у вас вряд ли далеко улетит позиция, а вот угол запросто. Собственно в этом виде фильтрации величина окна влияет на задержку трекинга, если объекты быстро движутся.
+Пример медианного фильтра для Vector3 для Unity:
+using System.Collections.Generic;
+using System.Linq;
+using UnityEngine;
+
+public class MedianFilterVector3
+{
+    private readonly Queue<Vector3> _window;
+
+    private Vector3 _centerValue;
+    public Vector3 Filter(Vector3 value, int windowSize = 5)
+    {
+        _window.Enqueue(value);
+        if (_window.Count > windowSize)
+        {
+            _window.Dequeue();
+        }
+        var sorted = _window.OrderBy(v => Vector3.Distance(_centerValue, v));
+        _centerValue = sorted.ElementAt(_window.Count / 2);
+        return _centerValue;
+    }
+    public MedianFilterVector3()
+    {
+        _window = new Queue<Vector3>();
+    }
+}
+Медианный фильтр плохо работает на случайных данных. Но обычно ошибки трекинга имеют колебательный характер вокруг идеала. Так что комбинация Lowpass + медианный фильтр может работать достаточно неплохо при определённых параметрах. Всё зависит от контента. Если контент это левитирующий воздушный шар около метки. То высокая задержка будет смотреться скорее как фича, а не как баг.
+В заключении
+На этом тема фильтров и фильтрации конечно не заканчивается. Если кому-то будет интересно напишу вторую часть про фильтр Калмана, Маджевика и другие, и применение их в технологиях трекинга. Сама по себе фильтрация просто инструмент позволяющий разными способами и подбором параметров улучшать качество вашего трекинга. Так сказать как один из способов уточнения данных. Конкретная фильтрация подбирается исходя из условий задачи и системы на которой делается трекинг. Спасибо за внимание! Всем привет! Меня зовут Гриша Дядиченко, и я технический продюсер. Сегодня хочется поговорить про шум, про его фильтрацию и зачем нужно про это знать при работе с технологиями дополненной реальности. Если вы интересуетесь или работаете с AR добро пожаловать под кат!   Трекингом и технологиями связанными с дополненной и виртуальной реальности я работаю с 2016. Во те времена с деревянными игрушками с первым появлением Easy AR, ещё сырой Vuforia и т.п. трекинг оставлял желать лучшего по сравнению с текущим. В те времена была популярна технология маркерного трекинга как единственная доступная и более менее стабильная, инстаграм маски тогда ещё не обрели такую популярность и т.п. Плюс в те годы мне повезло поработать с такими системами, как Vicon и Optitrack и там тоже встречалась типовая проблема. Весь AR дрожал. То есть данные о позиции объекта в пространстве было довольно шумные. Сейчас ситуация получше, но иногда в плохих условиях освещения, с плохим маркером, в технологиях веб AR это проблема так же встречается. Хочется поговорить о шуме в AR и о том, как с ним можно бороться. А так же разберём несколько простых фильтров. Лоупасс, One Euro и медианный. с деревянными игрушками маркерного трекинга Что такое шум?  Чтобы объяснить что такое шум сначала наверное стоит объяснить что такое сигнал. Для нас подойдёт определение сигнала, как изменение некоторой физической величины. Сигналы бывают: шум сигнал сигнала Сигналы Одномерные — которые зависят от времени. Например, звук.
+Двумерные — заданные на плоскости. Например, изображение.
+Многомерный — заданные большим числом независимых переменных. Например, матрица TRS описывающая объект в пространстве с течением времени. Одномерные — которые зависят от времени. Например, звук. Одномерные — которые зависят от времени. Например, звук. Одномерные Двумерные — заданные на плоскости. Например, изображение. Двумерные — заданные на плоскости. Например, изображение. Двумерные Многомерный — заданные большим числом независимых переменных. Например, матрица TRS описывающая объект в пространстве с течением времени. Многомерный — заданные большим числом независимых переменных. Например, матрица TRS описывающая объект в пространстве с течением времени. Многомерный В трекинге мы работаем с трёхмерными сигналами. Но дело в том, что часто получая любые данные они получаются с шумом. Даже в тех же камерах телефонов его можно увидеть в тёмных помещениях. А в случае трекинга через тряску позиции и ориентации отслеживаемого объекта. В данном случае под шумом понимается беспорядочное колебания величины от её идеального значения. На бытовом уровне это значит, что ваша великолепная графика дрожит. Шумы в свою очередь делятся на много разных типов. Но для нас важными являются два стационарный и нестационарный шум. Но скорее для понимания, чем для решения чего-либо. шумом стационарный нестационарный В случае трекинга стационарным шумом можно считать ошибку возникающую из-за датчиков. Если вы не очень быстро перемещаетесь, то вряд ли у вас будут проблемы связанные с тем, что в тех же телефонах стоит электронный акселерометр, и там будет проблема, что из-за изменении структуры электронного шума вокруг будут проблемы. Хотя это конечно тоже возможно. Но в среднем качество изображения камеры с телефона, показания IMU датчиков и т.п. дают стационарный шум. стационарным шумом А вот нестационарным шумом в реальных условиях работы чаще всего является освещение. Когда-то очень сильно всё ломало люминесцентное освещение, но в условиях скажем выставок или ТЦ там очень много видео-панелей, различных источников света, которые так же будут влиять на качество работы технологий трекинга. нестационарным шумом Для того, чтобы бороться со всем этим великолепием и получать плавные данные человечество придумало фильтровать данные. Существуют много разных алгоритмов фильтрации шума. Фильтром же в свою очередь называют алгоритм, который отфильтровывает (отбрасывает) Поговорим о них и об опыте работы с ними в AR. Low-Pass Filter  Лоу-пасс фильтр или фильтр нижних частот — это группа различных фильтров не пропускающая высокие частоты. Чтобы понять, что это такое, надо определить что такое частота сигнала. По сути это величина изменения сигнала. То есть фильтры нижних частот по-русски — это фильтры которые не допускают большие изменения величин. То есть если у вас объект был скажем перед вами, а потом резко оказался в 10 метрах по данным от телефона, то отфильтрованное значение сместится только на то, какое допустимое окно вы зададите в вашем фильтре. Допустим если вы считаете, что между двумя кадрами объект не может сместится больше, чем на 10 сантиметров, то соответственно отфильтрованные данные будут смещены только на 10 сантиметров. Одна из самых простых реализаций lowpass фильтра выглядит вот так: Лоу-пасс фильтр фильтр нижних частот частота сигнала lowpass фильтра  Где data — это наши последние отфильтрованные данные, а K — сила фильтра, которая принимает значения [0;1) По сути практически линейная интерполяция. data K Так как в случае трёхмерной позиции "частота сигнала" — это тоже самое, что дистанция или угол поворота данный фильтр хорошо подходит при медленном движении отслеживаемого или отслеживающего объекта. Либо когда он вообще не движется, так как в противном случае при значениях K близких к 1 он будет давать задержку. задержку Одной из основных проблем фильтрации в трекинге является то, что сильное сглаживание в зависимости от характера данных может выглядеть как задержка трекинга. Визуально объект будет двигаться с задержкой за отслеживаемой меткой или отслеживаемой отметкой. задержка трекинга. задержкой Реализация простого low-pass фильтра Vector3 для Unity: low-pass фильтра Vector3 using UnityEngine;
+
+public class LowpassFilterVector
+{
+    private Vector3? _prevValue;
+    public Vector3 Filter(Vector3 value, float K)
+    {
+        if (_prevValue == null)
+        {
+            _prevValue = value;
+            return value;
+        }
+        else
+        {
+            return _prevValue.Value * K + value * (1 - K);
+        }
+    }
+} using UnityEngine;
+
+public class LowpassFilterVector
+{
+    private Vector3? _prevValue;
+    public Vector3 Filter(Vector3 value, float K)
+    {
+        if (_prevValue == null)
+        {
+            _prevValue = value;
+            return value;
+        }
+        else
+        {
+            return _prevValue.Value * K + value * (1 - K);
+        }
+    }
+} using public class LowpassFilterVector private public Vector3 Filter(Vector3 value, float K) public Filter Vector3 value, float K value float if null value return value else return value 1 One Euro Filter Один из интересных видов Low-pass фильтра — это one Euro filter. Этот фильтр "адаптируется" под в зависимости от "скорости изменения частоты". Подробнее о нём можно прочитать в этой работе. Для задач трекинга он не особо полезен и плохо применим из-за принципа своей работы. Но в целом фильтр полезный, такой же быстрый и о нём стоит знать. one Euro filter. в этой работе Реализация one Euro filter для Unity: one Euro filter public class OneEuroFilter
+{
+    private float _frequency;
+    private float _prevTime = 0;
+    private Vector3 _prevValue;
+    private Vector3 _prevDerivativeValue;
+    private float _minCutoff;
+    private float _beta;
+    private float _dCutoff;
+    private float SmoothingFactor(float delta, float cutoff)
+    {
+        var r = 2 * Mathf.PI * cutoff * delta;
+        return r / (r + 1);
+    }
+
+    private Vector3 LowpassF(Vector3 value, Vector3 prevValue, float K)
+    {
+        return value * K + prevValue * (1 - K);
+    }
+    public Vector3 Filter(Vector3 value, float time)
+    {
+        float deltaTime = time - _prevTime;
+
+        float alphaDerivative = SmoothingFactor(deltaTime, _dCutoff);
+        var derivativeValue = (value - _prevValue) / deltaTime;
+        var derValueFiltered = LowpassF(derivativeValue, _prevDerivativeValue, alphaDerivative);
+
+        var cutoff = _minCutoff + _beta * derValueFiltered.magnitude;
+
+        var alpha = SmoothingFactor(deltaTime, cutoff);
+        var valueFiltered = LowpassF(value, _prevValue, alpha);
+
+        _prevValue = valueFiltered;
+        _prevDerivativeValue = derValueFiltered;
+        _prevTime = time;
+        
+        return valueFiltered;
+    }
+
+    public OneEuroFilter(Vector3 prevValue, float minCutoff = 1, float beta = 0, float dCutoff = 1)
+    {
+        _prevValue = prevValue;
+        _minCutoff = minCutoff;
+        _beta = beta;
+        _dCutoff = dCutoff;
+    }
+} public class OneEuroFilter
+{
+    private float _frequency;
+    private float _prevTime = 0;
+    private Vector3 _prevValue;
+    private Vector3 _prevDerivativeValue;
+    private float _minCutoff;
+    private float _beta;
+    private float _dCutoff;
+    private float SmoothingFactor(float delta, float cutoff)
+    {
+        var r = 2 * Mathf.PI * cutoff * delta;
+        return r / (r + 1);
+    }
+
+    private Vector3 LowpassF(Vector3 value, Vector3 prevValue, float K)
+    {
+        return value * K + prevValue * (1 - K);
+    }
+    public Vector3 Filter(Vector3 value, float time)
+    {
+        float deltaTime = time - _prevTime;
+
+        float alphaDerivative = SmoothingFactor(deltaTime, _dCutoff);
+        var derivativeValue = (value - _prevValue) / deltaTime;
+        var derValueFiltered = LowpassF(derivativeValue, _prevDerivativeValue, alphaDerivative);
+
+        var cutoff = _minCutoff + _beta * derValueFiltered.magnitude;
+
+        var alpha = SmoothingFactor(deltaTime, cutoff);
+        var valueFiltered = LowpassF(value, _prevValue, alpha);
+
+        _prevValue = valueFiltered;
+        _prevDerivativeValue = derValueFiltered;
+        _prevTime = time;
+        
+        return valueFiltered;
+    }
+
+    public OneEuroFilter(Vector3 prevValue, float minCutoff = 1, float beta = 0, float dCutoff = 1)
+    {
+        _prevValue = prevValue;
+        _minCutoff = minCutoff;
+        _beta = beta;
+        _dCutoff = dCutoff;
+    }
+} public class OneEuroFilter private float private float 0 private private private float private float private float private float SmoothingFactor(float delta, float cutoff) private float SmoothingFactor float delta, float cutoff float float var 2 return 1 private Vector3 LowpassF(Vector3 value, Vector3 prevValue, float K) private LowpassF Vector3 value, Vector3 prevValue, float K value float return value 1 public Vector3 Filter(Vector3 value, float time) public Filter Vector3 value, float time value float float float var value var var var var value return public OneEuroFilter(Vector3 prevValue, float minCutoff = 1, float beta = 0, float dCutoff = 1) public OneEuroFilter Vector3 prevValue, float minCutoff = 1, float beta = 0, float dCutoff = 1 float 1 float 0 float 1 Медианный фильтр  Источник: https://ru.bmstu.wiki/%D0%9C%D0%B5%D0%B4%D0%B8%D0%B0%D0%BD%D0%BD%D0%B0%D1%8F_%D1%84%D0%B8%D0%BB%D1%8C%D1%82%D1%80%D0%B0%D1%86%D0%B8%D1%8F Медианная фильтрация — этот вид фильтрации работает достаточно просто. Задаётся окно в котором мы рассматриваем наши значения (в случае позиций окно времени) и в этом окне времени мы берём медиану среди всех значений. Медиана — это число из набора которое находится посередине. Например у вас стоит ваша метка на высоте 1 метр. Вы берёте окно в 5 кадров. А трекинг возвращает значения [1; 1.1; 0.85; 0.9; 0.87], то есть в данном случае медиана будет равна 0.9. Медианная фильтрация популярный и эффективный способ фильтрации использующийся во много каких случаях. Даже для процессинга изображений и закрытия проблем шума с характером, как выше. Медианная фильтрация медиану Медиана медиана В отличии от взятия среднего значения в окне медианная фильтрация не подвержена так называемым выбросам. Выброс — это когда если бы в ряду выше у нас было весьма подозрительное число. Со слишком большим отклонением от среднего. Скажем [1; 1.1; 0.85; 0.9; 120]. Число 120 — это явный выброс. И поэтому хорошо подходит для фильтрации углов. Так как скажем при плохой метке или условиях у вас вряд ли далеко улетит позиция, а вот угол запросто. Собственно в этом виде фильтрации величина окна влияет на задержку трекинга, если объекты быстро движутся. выбросам Пример медианного фильтра для Vector3 для Unity: медианного фильтра Vector3 using System.Collections.Generic;
+using System.Linq;
+using UnityEngine;
+
+public class MedianFilterVector3
+{
+    private readonly Queue<Vector3> _window;
+
+    private Vector3 _centerValue;
+    public Vector3 Filter(Vector3 value, int windowSize = 5)
+    {
+        _window.Enqueue(value);
+        if (_window.Count > windowSize)
+        {
+            _window.Dequeue();
+        }
+        var sorted = _window.OrderBy(v => Vector3.Distance(_centerValue, v));
+        _centerValue = sorted.ElementAt(_window.Count / 2);
+        return _centerValue;
+    }
+    public MedianFilterVector3()
+    {
+        _window = new Queue<Vector3>();
+    }
+} using System.Collections.Generic;
+using System.Linq;
+using UnityEngine;
+
+public class MedianFilterVector3
+{
+    private readonly Queue<Vector3> _window;
+
+    private Vector3 _centerValue;
+    public Vector3 Filter(Vector3 value, int windowSize = 5)
+    {
+        _window.Enqueue(value);
+        if (_window.Count > windowSize)
+        {
+            _window.Dequeue();
+        }
+        var sorted = _window.OrderBy(v => Vector3.Distance(_centerValue, v));
+        _centerValue = sorted.ElementAt(_window.Count / 2);
+        return _centerValue;
+    }
+    public MedianFilterVector3()
+    {
+        _window = new Queue<Vector3>();
+    }
+} using using using public class MedianFilterVector3 private readonly private public Vector3 Filter(Vector3 value, int windowSize = 5) public Filter Vector3 value, int windowSize = 5 value int 5 value if var 2 return public MedianFilterVector3() public MedianFilterVector3  new Медианный фильтр плохо работает на случайных данных. Но обычно ошибки трекинга имеют колебательный характер вокруг идеала. Так что комбинация Lowpass + медианный фильтр может работать достаточно неплохо при определённых параметрах. Всё зависит от контента. Если контент это левитирующий воздушный шар около метки. То высокая задержка будет смотреться скорее как фича, а не как баг. Медианный фильтр Lowpass медианный фильтр В заключении На этом тема фильтров и фильтрации конечно не заканчивается. Если кому-то будет интересно напишу вторую часть про фильтр Калмана, Маджевика и другие, и применение их в технологиях трекинга. Сама по себе фильтрация просто инструмент позволяющий разными способами и подбором параметров улучшать качество вашего трекинга. Так сказать как один из способов уточнения данных. Конкретная фильтрация подбирается исходя из условий задачи и системы на которой делается трекинг. Спасибо за внимание! ]]></text>
+</doc>

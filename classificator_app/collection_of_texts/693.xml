@@ -1,0 +1,118 @@
+<?xml version="1.0" ?>
+<doc>
+	<label auto="true" type="str" verify="true"><![CDATA[Develop]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[cybran24]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-11-26, 23:15]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/post/701800/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Настройка Visual Studio Code для Django]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Python]]></item>
+		<item type="str"><![CDATA[Django]]></item>
+		<item type="str"><![CDATA[Visual Studio]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[django]]></item>
+		<item type="str"><![CDATA[django framework]]></item>
+		<item type="str"><![CDATA[python]]></item>
+		<item type="str"><![CDATA[visual studio code]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[TL;DR
+Настройка Visual Studio Code для работы над проектами Django немного отличается от типичного сетапа для pure Python проектов. Например, в Django мало пользы от mypy, так как он не поддерживает типы Django. Также обстоят дела и с линтерами, которые, без предварительной настройки, работают с кодом Django неправильно.
+Эти проблемы можно решить файлами конфигураций соответствующих инструментов, но я использую готовые плагины для mypy и pylint.
+Что подключим
+black – пакет для автоматического форматирования кода
+pylint – статический анализатор кода
+isort – пакет для сортировки объявлений import
+mypy – пакет для проверки статических типов
+Плагины
+django-pylint – плагин pylint, улучшающий анализ кода Django.
+django-stubs – плагин mypy, предоставляющий более точные статические типы для Django.
+Установка Django и зависимостей
+Я предпочитаю разрабатывать новые проекты в контейнерах Docker с помощью расширения Visual Studio Code Remote Development. Также можно использовать виртуальное окружение, активировать его и выполнить команду:
+pip install django black isort pylint pylint-django mypy django-stubs
+Новый проект Django
+Для сетапа достаточно стартового проекта Django, который можно получить следующей командой:
+django-admin startproject core .
+Получаем структуру директорий:
+.
+├── core
+│   ├── asgi.py
+│   ├── __init__.py
+│   ├── settings.py
+│   ├── urls.py
+│   └── wsgi.py
+├── manage.py
+Я не буду создавать новое приложение Django. Вместо этого я продолжу интеграцию инструментов в этот проект, а вы позднее добавите свое приложение в уже готовую, удобную среду разработки.
+Настройка Visual Studio Code
+Настройки, которые мы хотим применить к проекту Django, неработоспособны без расширения Python для Visual Studio Code.
+От проекта к проекту конфигурация инструментов и сами инструменты могут меняться. Поэтому Visual Studio Code разделяет настройки проектов на пользовательские (глобальные) и настройки рабочих пространств. Настройки рабочих пространств привязаны к конкретному проекту. Их можно изменять предварительно создав в корне проекта директорию .vscode с файлом settings.json внутри. В этом файле определяются настройки для рабочего пространства:
+{
+    "editor.formatOnSave": true,
+    "python.formatting.provider": "black",
+    "python.formatting.blackArgs": [
+        "--line-length=120"
+    ],
+    "python.linting.pylintEnabled": true,
+    "python.linting.enabled": true,
+    "python.linting.lintOnSave": true,
+    "python.linting.pylintArgs": [
+        "--load-plugins",
+        "pylint_django",
+        "--django-settings-module=core.settings",
+        "--max-line-length=120"
+    ],
+    
+    "editor.codeActionsOnSave": {
+        "source.organizeImports": true
+    },
+    "python.linting.mypyEnabled": true
+}
+Включаем black
+Форматировать код во время сохранения файла (⌘+S):
+"editor.formatOnSave": true,
+Установить провайдер форматирования black:
+"python.formatting.provider": "black",
+Black использует длину строки по-умолчанию в 88 символов. Нужно перезаписать это значение согласно принятому для Django соглашению:
+"python.formatting.blackArgs": [
+        "--line-length=120"
+    ],
+Включаем pylint
+"python.linting.pylintEnabled": true,
+Включаем возможности линтинга:
+"python.linting.enabled": true,
+Включаем линтинг во время сохранения файла (⌘+S):
+"python.linting.lintOnSave": true,
+Интегрируем плагин django-pylint и меням длину строки:
+"python.linting.pylintArgs": [
+        "--load-plugins",
+        "pylint_django",
+        "--django-settings-module=core.settings",
+        "--max-line-length=120"
+    ],
+Включаем isort
+"editor.codeActionsOnSave": {
+        "source.organizeImports": true
+    },
+Совместимость с black
+black имеет встроенную сортировку импортов, отличную от isort. Чтобы два инструмента не конфликтовали, настроим isort на использование сортировки black. Для этого пишем в файл .isort.cfg в корне проекта:
+[settings]
+profile=black
+Включаем mypy
+"python.linting.mypyEnabled": true
+Пишем в файл .mypy.ini в корне проекта:
+[mypy]
+plugins =
+    mypy_django_plugin.main
+
+[mypy.plugins.django-stubs]
+django_settings_module = "core.settings"
+Готово!
+Попробуйте начать писать новое приложение с моим сетапом, надеюсь вам понравится!
+Понравилась статья? TL;DR TL;DR              Настройка Visual Studio Code для работы над проектами Django немного отличается от типичного сетапа для pure Python проектов. Например, в Django мало пользы от mypy, так как он не поддерживает типы Django. Также обстоят дела и с линтерами, которые, без предварительной настройки, работают с кодом Django неправильно. Эти проблемы можно решить файлами конфигураций соответствующих инструментов, но я использую готовые плагины для mypy и pylint. Что подключим black – пакет для автоматического форматирования кода
+pylint – статический анализатор кода
+isort – пакет для сортировки объявлений import
+mypy – пакет для проверки статических типов black – пакет для автоматического форматирования кода black – пакет для автоматического форматирования кода black pylint – статический анализатор кода pylint – статический анализатор кода pylint isort – пакет для сортировки объявлений import isort – пакет для сортировки объявлений import isort import mypy – пакет для проверки статических типов mypy – пакет для проверки статических типов mypy Плагины django-pylint – плагин pylint, улучшающий анализ кода Django.
+django-stubs – плагин mypy, предоставляющий более точные статические типы для Django. django-pylint – плагин pylint, улучшающий анализ кода Django. django-pylint – плагин pylint, улучшающий анализ кода Django. django-pylint django-stubs – плагин mypy, предоставляющий более точные статические типы для Django. django-stubs – плагин mypy, предоставляющий более точные статические типы для Django. django-stubs Установка Django и зависимостей Я предпочитаю разрабатывать новые проекты в контейнерах Docker с помощью расширения Visual Studio Code Remote Development. Также можно использовать виртуальное окружение, активировать его и выполнить команду: Docker Remote Development виртуальное окружение pip install django black isort pylint pylint-django mypy django-stubs pip install django black isort pylint pylint-django mypy django-stubs]]></text>
+</doc>

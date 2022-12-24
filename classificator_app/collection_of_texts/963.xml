@@ -1,0 +1,713 @@
+<?xml version="1.0" ?>
+<doc>
+	<label auto="true" type="str" verify="true"><![CDATA[Other]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[666granik]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-09-26, 12:20]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/post/690126/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Control flow with try/catch and Promises]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Разработка веб-сайтов]]></item>
+		<item type="str"><![CDATA[JavaScript]]></item>
+		<item type="str"><![CDATA[Интерфейсы]]></item>
+		<item type="str"><![CDATA[ReactJS]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[reactjs]]></item>
+		<item type="str"><![CDATA[javascript]]></item>
+		<item type="str"><![CDATA[promise]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[Я не люблю магию, магией мы часто объясняем какое то поведение части приложения, библиотеки или фреймворка, которое не понимаем, а когда наконец прочитав документацию понимаем, как тот или иной функционал реализован на самом деле, ловим себя на мысли, что никакой магии нет, только грани нашего познания и что на самом деле все просто, когда разберешься.
+
+
+Так вот как то раз смотря документацию Relay я наткнулся на мысль, что не понимаю, как работает связка Relay.useLazyLoad и React.Suspense.
+
+В частности не понятно, как именно React.Suspense понимает, что вот прямо сейчас происходит асинхронный запрос и самое время отрисовывать fallback?
+
+Сначала давайте разберемся что же такое этот ваш Relay, если вы с ним уже знакомы то следующие пару абзацев можно смело пропустить.Как написано на официально сайте, это GraphQL клиент который масштабируется вместе с нами, чтобы это не значило.
+
+Я тут конечно сразу вспомнил знаменитый видосик Web Scale если по каким то причинам вы его еще не видели, то к просмотру обязательно.
+
+В итоге Relay это библиотека для React приложений, которая позволяет удобно работать с GraphQL, берет на себя вопрос с хранением, обновлением и кэшированием сущностей на клиентской стороне, а так же умеет в хитрые оптимизации для реализации паттерна render as you fetch, data-masking и data-colocation.
+
+Немного про Relay.useLazyLoad — это хук, как следует из названия, передаем ему GraphQL query, параметры и получаем данные в ответ.
+
+Вроде все понятно, но чего то не хватает, самые внимательные наверняка уже заметили, что перед вызовом Relay.useLazyLoad в примере нету ключевого слова await, так это что синхронный запрос? На самом деле конечно нет, это асинхронный запрос, но обрабатывается он весьма интересным способом.
+
+Если мы посмотрим документацию или прикладной код в примерах не углубляюсь внутрь React и Relay на уровне приложения, мы увидим что явно, напрямую друг с другом мы не передаем информацию о состоянии запрос. Нету никакого return с Promise, или EventEmmiter-а или какой либо еще абстракции, которую мы бы использовали для передачи состояния запрос.
+
+Но мы знаем что как то это да работает, магия? Конечно нет, если этого не делаем мы напрямую, значит кто то делает это за нас, а как именно, давайте разбираться.
+
+Давайте наконец познакомимся с React.Suspense API, прошу не путать с <React.Suspense />, не знаю почему разработчики не придумали какое-нибудь отдельное название для API, возможно потому что фича еще в experimental статусе, но обещает быть в стандартном наборе инструментов в React 18.
+
+Вместо того чтобы читать инструкцию и документацию, давайте сделаем то что мы с вами любим больше всего, посмотрим на код! Код это ведь и есть набор инструкций!
+
+Давайте создадим небольшой пример приложения с использованием React.Suspense API.
+
+import React from 'react'
+
+import UserWelcome from './UserWelcome'
+import Todos from './Todos'
+
+const App = () => (
+    <div className="app">
+      <h2>Simple Todo</h2>
+      <React.Suspense fallback={<p>Loading user details...</p>}>
+        <UserWelcome />
+      </React.Suspense>
+      <React.Suspense fallback={<p>Loading Todos...</p>}>
+        <Todos />
+      </React.Suspense>
+    </div>
+)
+
+export default App
+
+App.js входная точка приложения
+
+import React from 'react'
+import fetchData from '../api/fetchData'
+
+const resource = fetchData(
+  'https://run.mocky.io/v3/d6ac91ac-6dab-4ff0-a08e-9348d7deed51'
+)
+
+const UserWelcome = () => {
+  const userDetails = resource.read()
+
+  return (
+    <div>
+      <p>
+        Welcome <span className="user-name">{userDetails.name}</span>, here are
+        your Todos for today
+      </p>
+      <small>Completed todos have a line through them</small>
+    </div>
+  )
+}
+
+export default UserWelcome
+
+Компонент UserWelcome.js
+
+import wrapPromise from './wrapPromise'
+
+function fetchData(url) {
+  const promise = window.fetch(url)
+    .then((res) => res.json())
+    .then((res) => res.data)
+
+  return wrapPromise(promise)
+}
+
+export default fetchData
+
+Реализация функции fetchData
+
+function wrapPromise(promise) {
+    let status = 'pending'
+    let response
+
+    const suspender = primise.then(
+        (res) => {
+            status = 'success'
+            response = res
+        },
+        (err) => {
+            status = 'error'
+            response = err
+        },
+    )
+
+    const read = () => {
+        switch (status) {
+            case 'pending':
+                throw suspender
+            case 'error':
+                throw response
+            default:
+                return response
+        }
+    }
+
+    return { read }
+}
+
+export default wrapPromise
+
+Реализация функции wrapPromise в которой происходит вся магия. Оставлю ссылку на статью где я взял этот пример, спасибо автору
+
+Давайте разбираться что мы тут понаписали. App.js типичная входная точка приложения, ничего особенного интересного в нем нет, разве что стоит заметить, что компонент UserWelcome и Todos отрисовываются внутри React.Suspense, это будет важно дальше.
+
+Компонент UserWelcome отрисовывает данные пользователя и для этого делает асинхронный запрос чтобы их получить с помощью API клиента fetchData, который возвращает переменную resource с методом read(), который возвращает данные.
+
+fetchData — простая функция утилита которая получает на вход URL запроса, использую нативный window.fetch инициирует запрос данных с сервера, получает в ответ объект Promise, не дожидаясь его выполнения передает в функцию wrapPromise и возвращает результат ее выполнения.
+
+wrapPromise — по сути в себе и содержит всю магию Suspense API. Самое интересное в реализации метода read(). В зависимости от текущего статуса promise, который синхронизирован с локальной переменной, мы либо используем throw чтобы выбросить ошибку promise в переменной response, либо throw самого promise, либо возвращаем данные с помощью конструкции return.
+
+Давайте по порядку, throw ошибки выглядит логично, разрываем call stack и какой-нибудь <ErrorBoundary /> компонент отрисует состояние ошибки, ничего нового, мы так всегда лелали.
+
+А вот throw promise, это что то новенькое, обычно мы используем ключевое слово await и ожидаем возвращение данных, здесь же мы снова ломаем call stack и выбрасываем его "вверх". А кто собственно будет ловить? Ну я думаю вы уже догадались, что внутри компонента React.Suspense реализована логика по типу этой.
+
+import React from 'react'
+
+const Suspense = ({ children, fallback }) => {
+  const userDetails = resource.read()
+
+  try {
+      return children
+  } catch (potentialPromise) {
+      if (Promise.isPromise(potentialPromise)) {
+        potentialPromise.then(() => React.useForceComponentReload())
+
+        return fallback
+      }
+
+      throw potentialPromise
+  }
+}
+
+export default Suspense
+
+Естественно это супер упрощенная реализация просто для понимания и представления, в реальности реализация гораздо более сложная и нужно позаботится о сотни edge кейсов
+
+Это намеренно упрощенный пример использования и реализации Relay.useLazyLoad
+
+Ну в общем то на этом месте статью можно было бы и заканчивать, тайна раскрыта? Но лично меня Suspense API и использование try/catch не только для пробросать исключений заставило задуматься, в javascript мире весьма редко кто то использует try/catch в таком ключе.
+
+Интересное API получается, не очень понятно правда пока зачем? Почему бы не воспользоваться уже существующим функционалом в React, создать state/contex, прокинуть callback. А давайте попробуем реализовать эту логику без Suspense API.
+
+Давайте попробуем
+
+import React from 'react'
+
+import UserWelcome from './UserWelcome'
+import Todos from './Todos'
+import {
+  OurCustomSuspenseProvider,
+  OurCustomSuspense
+} from "./OurCustomSuspenseContext";
+
+const USER_COMPONENT_HASH = "djfdjfd33";
+
+const App = () => (
+    <div className="app">
+      <h2>Simple Todo</h2>
+      <OurCustomSuspenseProvider>
+        <OurCustomSuspense
+          fallback={<div>loading...</div>}
+          hash={USER_COMPONENT_HASH}
+        >
+          <UserWelcome hash={USER_COMPONENT_HASH} />
+        </OurCustomSuspense>
+      </OurCustomSuspenseProvider>
+      <React.Suspense fallback={<p>Loading Todos...</p>}>
+        <Todos />
+      </React.Suspense>
+    </div>
+)
+
+export default App
+
+Обновим немного наш App.js
+
+import React from "react";
+
+export const SuspenseContext = React.createContext({});
+
+export const OurCustomSuspenseProvider = ({ children }) => {
+  const [data, setData] = React.useState(null);
+
+  const requestData = React.useCallback(
+    (hash) => {
+      if (data && data[hash]) {
+        return 
+      }
+
+      window.setTimeout(
+        () => setData({ ...data, [hash]: { userDetails: { name: "test" } } }),
+        1000
+      );
+    },
+    [data]
+  );
+
+  const value = React.useMemo(() => ({ data, requestData }), [
+    data,
+    requestData
+  ]);
+
+  return (
+    <SuspenseContext.Provider value={value}>
+      {children}
+    </SuspenseContext.Provider>
+  );
+};
+
+export const OurCustomSuspense = ({ children, fallback, hash }) => {
+  const [isInitialLoad, setIsInitialLoad] = React.useState(true);
+  const { data } = React.useContext(SuspenseContext);
+
+  const dataItem = data && data[hash];
+
+  React.useEffect(() => {
+    setIsInitialLoad(Boolean(dataItem));
+  }, [dataItem]);
+
+  if (!dataItem && !isInitialLoad) {
+    return fallback;
+  }
+
+  return children;
+};
+
+Реализация файла OurCustomSuspenseContext.js
+
+import React from "react";
+
+import { SuspenseContext } from "./OurCustomSuspenseContext";
+
+const UserWelcome = ({ hash }) => {
+  const { requestData, data } = React.useContext(SuspenseContext);
+  const dataItem = data && data[hash];
+
+  if (!dataItem) {
+    requestData(hash);
+
+    return null;
+  }
+
+  const { userDetails } = dataItem;
+
+  return (
+    <div>
+      <p>
+        Welcome <span className="user-name">{userDetails.name}</span>, here are
+        your Todos for today
+      </p>
+      <small>Completed todos have a line through them</small>
+    </div>
+  );
+};
+
+export default UserWelcome;
+
+Обновленный UserWelcome, cсылка на codesandbox, чтобы посмотреть как это чудо работает
+
+И так что мы имеем, в App.js добавился новый компонент OurCustomSuspenseProvider, который реализует логику работы с хранением данных, содержит в себе callback с асинхронной логикой и проталкивает дальше контекст.
+
+OurCustomSuspense — наша реализация React.Suspense, который слушает данные из контекста и решает пытаться отрисовать children или fallback. Он содержит в себе локальный state, потому что нам нужно вызвать дерево в первый раз чтобы инициировать асинхронный запрос с помощью callback requestData.
+
+UserWelcome получает данные и callback через контекст, при отсутствии данных вызывает callback.
+
+В целом render-as-you-fetch работает, естественно это достаточно примитивный концепт, в котором поддерживается не все, на что способен Suspense API. Нам нужна явная привязка OurSuspense и вызывающего компонента по hash, это конечно можно масштабировать, но будет не красивое и не очень удобное API. Так же Suspense API не имеет привязки к lifecycle события React компонента, что на сколько я понимаю достаточно важное решение для команды React и позволяет гибче манипулировать деревом состояний.
+
+Давайте подитожим и разберем плюсы Suspense API.
+
+Реализация на чистом js, без использования высокоуровневых API.
+Платформонезависимость и кроссбраузерность, без разницы где вы будете использовать Web/NodeJS/Native поведение будет одинаковое.
+Передача состояние сквозь глубокое дерево функций/компонентов от n-ребенков к родителю.
+Ну и конечно минималистичное, developer friendly API, просто швырни мне Promise и я сам разберусь, win!.
+
+Спасибо большое что прочитали статью, поделитесь вашим мнением, как вам идея использования try/catch as control flow, пробовали ли вы Relay, может кто то уже написал свою классную библиотеку для работы с асинхронной логикой с использованием Suspense API? Я не люблю магию, магией мы часто объясняем какое то поведение части приложения, библиотеки или фреймворка, которое не понимаем, а когда наконец прочитав документацию понимаем, как тот или иной функционал реализован на самом деле, ловим себя на мысли, что никакой магии нет, только грани нашего познания и что на самом деле все просто, когда разберешься.     Так вот как то раз смотря документацию Relay я наткнулся на мысль, что не понимаю, как работает связка Relay.useLazyLoad и React.Suspense.  В частности не понятно, как именно React.Suspense понимает, что вот прямо сейчас происходит асинхронный запрос и самое время отрисовывать fallback?   Сначала давайте разберемся что же такое этот ваш Relay, если вы с ним уже знакомы то следующие пару абзацев можно смело пропустить.Как написано на официально сайте, это GraphQL клиент который масштабируется вместе с нами, чтобы это не значило.  Я тут конечно сразу вспомнил знаменитый видосик Web Scale если по каким то причинам вы его еще не видели, то к просмотру обязательно.  В итоге Relay это библиотека для React приложений, которая позволяет удобно работать с GraphQL, берет на себя вопрос с хранением, обновлением и кэшированием сущностей на клиентской стороне, а так же умеет в хитрые оптимизации для реализации паттерна render as you fetch, data-masking и data-colocation.  Немного про Relay.useLazyLoad — это хук, как следует из названия, передаем ему GraphQL query, параметры и получаем данные в ответ.  Вроде все понятно, но чего то не хватает, самые внимательные наверняка уже заметили, что перед вызовом Relay.useLazyLoad в примере нету ключевого слова await, так это что синхронный запрос? На самом деле конечно нет, это асинхронный запрос, но обрабатывается он весьма интересным способом.  Если мы посмотрим документацию или прикладной код в примерах не углубляюсь внутрь React и Relay на уровне приложения, мы увидим что явно, напрямую друг с другом мы не передаем информацию о состоянии запрос. Нету никакого return с Promise, или EventEmmiter-а или какой либо еще абстракции, которую мы бы использовали для передачи состояния запрос.  Но мы знаем что как то это да работает, магия? Конечно нет, если этого не делаем мы напрямую, значит кто то делает это за нас, а как именно, давайте разбираться.  Давайте наконец познакомимся с React.Suspense API, прошу не путать с <React.Suspense />, не знаю почему разработчики не придумали какое-нибудь отдельное название для API, возможно потому что фича еще в experimental статусе, но обещает быть в стандартном наборе инструментов в React 18.  Вместо того чтобы читать инструкцию и документацию, давайте сделаем то что мы с вами любим больше всего, посмотрим на код! Код это ведь и есть набор инструкций!  Давайте создадим небольшой пример приложения с использованием React.Suspense API.  import React from 'react'
+
+import UserWelcome from './UserWelcome'
+import Todos from './Todos'
+
+const App = () => (
+    <div className="app">
+      <h2>Simple Todo</h2>
+      <React.Suspense fallback={<p>Loading user details...</p>}>
+        <UserWelcome />
+      </React.Suspense>
+      <React.Suspense fallback={<p>Loading Todos...</p>}>
+        <Todos />
+      </React.Suspense>
+    </div>
+)
+
+export default App import React from 'react'
+
+import UserWelcome from './UserWelcome'
+import Todos from './Todos'
+
+const App = () => (
+    <div className="app">
+      <h2>Simple Todo</h2>
+      <React.Suspense fallback={<p>Loading user details...</p>}>
+        <UserWelcome />
+      </React.Suspense>
+      <React.Suspense fallback={<p>Loading Todos...</p>}>
+        <Todos />
+      </React.Suspense>
+    </div>
+)
+
+export default App  App.js входная точка приложения App.js входная точка приложения  import React from 'react'
+import fetchData from '../api/fetchData'
+
+const resource = fetchData(
+  'https://run.mocky.io/v3/d6ac91ac-6dab-4ff0-a08e-9348d7deed51'
+)
+
+const UserWelcome = () => {
+  const userDetails = resource.read()
+
+  return (
+    <div>
+      <p>
+        Welcome <span className="user-name">{userDetails.name}</span>, here are
+        your Todos for today
+      </p>
+      <small>Completed todos have a line through them</small>
+    </div>
+  )
+}
+
+export default UserWelcome import React from 'react'
+import fetchData from '../api/fetchData'
+
+const resource = fetchData(
+  'https://run.mocky.io/v3/d6ac91ac-6dab-4ff0-a08e-9348d7deed51'
+)
+
+const UserWelcome = () => {
+  const userDetails = resource.read()
+
+  return (
+    <div>
+      <p>
+        Welcome <span className="user-name">{userDetails.name}</span>, here are
+        your Todos for today
+      </p>
+      <small>Completed todos have a line through them</small>
+    </div>
+  )
+}
+
+export default UserWelcome  Компонент UserWelcome.js Компонент UserWelcome.js  import wrapPromise from './wrapPromise'
+
+function fetchData(url) {
+  const promise = window.fetch(url)
+    .then((res) => res.json())
+    .then((res) => res.data)
+
+  return wrapPromise(promise)
+}
+
+export default fetchData import wrapPromise from './wrapPromise'
+
+function fetchData(url) {
+  const promise = window.fetch(url)
+    .then((res) => res.json())
+    .then((res) => res.data)
+
+  return wrapPromise(promise)
+}
+
+export default fetchData  Реализация функции fetchData Реализация функции fetchData  function wrapPromise(promise) {
+    let status = 'pending'
+    let response
+
+    const suspender = primise.then(
+        (res) => {
+            status = 'success'
+            response = res
+        },
+        (err) => {
+            status = 'error'
+            response = err
+        },
+    )
+
+    const read = () => {
+        switch (status) {
+            case 'pending':
+                throw suspender
+            case 'error':
+                throw response
+            default:
+                return response
+        }
+    }
+
+    return { read }
+}
+
+export default wrapPromise function wrapPromise(promise) {
+    let status = 'pending'
+    let response
+
+    const suspender = primise.then(
+        (res) => {
+            status = 'success'
+            response = res
+        },
+        (err) => {
+            status = 'error'
+            response = err
+        },
+    )
+
+    const read = () => {
+        switch (status) {
+            case 'pending':
+                throw suspender
+            case 'error':
+                throw response
+            default:
+                return response
+        }
+    }
+
+    return { read }
+}
+
+export default wrapPromise  Реализация функции wrapPromise в которой происходит вся магия. Оставлю ссылку на статью где я взял этот пример, спасибо автору Реализация функции wrapPromise в которой происходит вся магия. Оставлю ссылку на статью где я взял этот пример, спасибо автору статью  Давайте разбираться что мы тут понаписали. App.js типичная входная точка приложения, ничего особенного интересного в нем нет, разве что стоит заметить, что компонент UserWelcome и Todos отрисовываются внутри React.Suspense, это будет важно дальше.  Компонент UserWelcome отрисовывает данные пользователя и для этого делает асинхронный запрос чтобы их получить с помощью API клиента fetchData, который возвращает переменную resource с методом read(), который возвращает данные.  fetchData — простая функция утилита которая получает на вход URL запроса, использую нативный window.fetch инициирует запрос данных с сервера, получает в ответ объект Promise, не дожидаясь его выполнения передает в функцию wrapPromise и возвращает результат ее выполнения.  wrapPromise — по сути в себе и содержит всю магию Suspense API. Самое интересное в реализации метода read(). В зависимости от текущего статуса promise, который синхронизирован с локальной переменной, мы либо используем throw чтобы выбросить ошибку promise в переменной response, либо throw самого promise, либо возвращаем данные с помощью конструкции return.  Давайте по порядку, throw ошибки выглядит логично, разрываем call stack и какой-нибудь <ErrorBoundary /> компонент отрисует состояние ошибки, ничего нового, мы так всегда лелали.  А вот throw promise, это что то новенькое, обычно мы используем ключевое слово await и ожидаем возвращение данных, здесь же мы снова ломаем call stack и выбрасываем его "вверх". А кто собственно будет ловить? Ну я думаю вы уже догадались, что внутри компонента React.Suspense реализована логика по типу этой.  import React from 'react'
+
+const Suspense = ({ children, fallback }) => {
+  const userDetails = resource.read()
+
+  try {
+      return children
+  } catch (potentialPromise) {
+      if (Promise.isPromise(potentialPromise)) {
+        potentialPromise.then(() => React.useForceComponentReload())
+
+        return fallback
+      }
+
+      throw potentialPromise
+  }
+}
+
+export default Suspense import React from 'react'
+
+const Suspense = ({ children, fallback }) => {
+  const userDetails = resource.read()
+
+  try {
+      return children
+  } catch (potentialPromise) {
+      if (Promise.isPromise(potentialPromise)) {
+        potentialPromise.then(() => React.useForceComponentReload())
+
+        return fallback
+      }
+
+      throw potentialPromise
+  }
+}
+
+export default Suspense  Естественно это супер упрощенная реализация просто для понимания и представления, в реальности реализация гораздо более сложная и нужно позаботится о сотни edge кейсов Естественно это супер упрощенная реализация просто для понимания и представления, в реальности реализация гораздо более сложная и нужно позаботится о сотни edge кейсов  Это намеренно упрощенный пример использования и реализации Relay.useLazyLoad  Ну в общем то на этом месте статью можно было бы и заканчивать, тайна раскрыта? Но лично меня Suspense API и использование try/catch не только для пробросать исключений заставило задуматься, в javascript мире весьма редко кто то использует try/catch в таком ключе.  Интересное API получается, не очень понятно правда пока зачем? Почему бы не воспользоваться уже существующим функционалом в React, создать state/contex, прокинуть callback. А давайте попробуем реализовать эту логику без Suspense API.  Давайте попробуем  import React from 'react'
+
+import UserWelcome from './UserWelcome'
+import Todos from './Todos'
+import {
+  OurCustomSuspenseProvider,
+  OurCustomSuspense
+} from "./OurCustomSuspenseContext";
+
+const USER_COMPONENT_HASH = "djfdjfd33";
+
+const App = () => (
+    <div className="app">
+      <h2>Simple Todo</h2>
+      <OurCustomSuspenseProvider>
+        <OurCustomSuspense
+          fallback={<div>loading...</div>}
+          hash={USER_COMPONENT_HASH}
+        >
+          <UserWelcome hash={USER_COMPONENT_HASH} />
+        </OurCustomSuspense>
+      </OurCustomSuspenseProvider>
+      <React.Suspense fallback={<p>Loading Todos...</p>}>
+        <Todos />
+      </React.Suspense>
+    </div>
+)
+
+export default App import React from 'react'
+
+import UserWelcome from './UserWelcome'
+import Todos from './Todos'
+import {
+  OurCustomSuspenseProvider,
+  OurCustomSuspense
+} from "./OurCustomSuspenseContext";
+
+const USER_COMPONENT_HASH = "djfdjfd33";
+
+const App = () => (
+    <div className="app">
+      <h2>Simple Todo</h2>
+      <OurCustomSuspenseProvider>
+        <OurCustomSuspense
+          fallback={<div>loading...</div>}
+          hash={USER_COMPONENT_HASH}
+        >
+          <UserWelcome hash={USER_COMPONENT_HASH} />
+        </OurCustomSuspense>
+      </OurCustomSuspenseProvider>
+      <React.Suspense fallback={<p>Loading Todos...</p>}>
+        <Todos />
+      </React.Suspense>
+    </div>
+)
+
+export default App  Обновим немного наш App.js Обновим немного наш App.js  import React from "react";
+
+export const SuspenseContext = React.createContext({});
+
+export const OurCustomSuspenseProvider = ({ children }) => {
+  const [data, setData] = React.useState(null);
+
+  const requestData = React.useCallback(
+    (hash) => {
+      if (data && data[hash]) {
+        return 
+      }
+
+      window.setTimeout(
+        () => setData({ ...data, [hash]: { userDetails: { name: "test" } } }),
+        1000
+      );
+    },
+    [data]
+  );
+
+  const value = React.useMemo(() => ({ data, requestData }), [
+    data,
+    requestData
+  ]);
+
+  return (
+    <SuspenseContext.Provider value={value}>
+      {children}
+    </SuspenseContext.Provider>
+  );
+};
+
+export const OurCustomSuspense = ({ children, fallback, hash }) => {
+  const [isInitialLoad, setIsInitialLoad] = React.useState(true);
+  const { data } = React.useContext(SuspenseContext);
+
+  const dataItem = data && data[hash];
+
+  React.useEffect(() => {
+    setIsInitialLoad(Boolean(dataItem));
+  }, [dataItem]);
+
+  if (!dataItem && !isInitialLoad) {
+    return fallback;
+  }
+
+  return children;
+}; import React from "react";
+
+export const SuspenseContext = React.createContext({});
+
+export const OurCustomSuspenseProvider = ({ children }) => {
+  const [data, setData] = React.useState(null);
+
+  const requestData = React.useCallback(
+    (hash) => {
+      if (data && data[hash]) {
+        return 
+      }
+
+      window.setTimeout(
+        () => setData({ ...data, [hash]: { userDetails: { name: "test" } } }),
+        1000
+      );
+    },
+    [data]
+  );
+
+  const value = React.useMemo(() => ({ data, requestData }), [
+    data,
+    requestData
+  ]);
+
+  return (
+    <SuspenseContext.Provider value={value}>
+      {children}
+    </SuspenseContext.Provider>
+  );
+};
+
+export const OurCustomSuspense = ({ children, fallback, hash }) => {
+  const [isInitialLoad, setIsInitialLoad] = React.useState(true);
+  const { data } = React.useContext(SuspenseContext);
+
+  const dataItem = data && data[hash];
+
+  React.useEffect(() => {
+    setIsInitialLoad(Boolean(dataItem));
+  }, [dataItem]);
+
+  if (!dataItem && !isInitialLoad) {
+    return fallback;
+  }
+
+  return children;
+};  Реализация файла OurCustomSuspenseContext.js Реализация файла OurCustomSuspenseContext.js  import React from "react";
+
+import { SuspenseContext } from "./OurCustomSuspenseContext";
+
+const UserWelcome = ({ hash }) => {
+  const { requestData, data } = React.useContext(SuspenseContext);
+  const dataItem = data && data[hash];
+
+  if (!dataItem) {
+    requestData(hash);
+
+    return null;
+  }
+
+  const { userDetails } = dataItem;
+
+  return (
+    <div>
+      <p>
+        Welcome <span className="user-name">{userDetails.name}</span>, here are
+        your Todos for today
+      </p>
+      <small>Completed todos have a line through them</small>
+    </div>
+  );
+};
+
+export default UserWelcome; import React from "react";
+
+import { SuspenseContext } from "./OurCustomSuspenseContext";
+
+const UserWelcome = ({ hash }) => {
+  const { requestData, data } = React.useContext(SuspenseContext);
+  const dataItem = data && data[hash];
+
+  if (!dataItem) {
+    requestData(hash);
+
+    return null;
+  }
+
+  const { userDetails } = dataItem;
+
+  return (
+    <div>
+      <p>
+        Welcome <span className="user-name">{userDetails.name}</span>, here are
+        your Todos for today
+      </p>
+      <small>Completed todos have a line through them</small>
+    </div>
+  );
+};
+
+export default UserWelcome;  Обновленный UserWelcome, cсылка на codesandbox, чтобы посмотреть как это чудо работает Обновленный UserWelcome, cсылка на codesandbox, чтобы посмотреть как это чудо работает codesandbox  И так что мы имеем, в App.js добавился новый компонент OurCustomSuspenseProvider, который реализует логику работы с хранением данных, содержит в себе callback с асинхронной логикой и проталкивает дальше контекст.  OurCustomSuspense — наша реализация React.Suspense, который слушает данные из контекста и решает пытаться отрисовать children или fallback. Он содержит в себе локальный state, потому что нам нужно вызвать дерево в первый раз чтобы инициировать асинхронный запрос с помощью callback requestData.  UserWelcome получает данные и callback через контекст, при отсутствии данных вызывает callback.  В целом render-as-you-fetch работает, естественно это достаточно примитивный концепт, в котором поддерживается не все, на что способен Suspense API. Нам нужна явная привязка OurSuspense и вызывающего компонента по hash, это конечно можно масштабировать, но будет не красивое и не очень удобное API. Так же Suspense API не имеет привязки к lifecycle события React компонента, что на сколько я понимаю достаточно важное решение для команды React и позволяет гибче манипулировать деревом состояний.  Давайте подитожим и разберем плюсы Suspense API.  Реализация на чистом js, без использования высокоуровневых API.
+Платформонезависимость и кроссбраузерность, без разницы где вы будете использовать Web/NodeJS/Native поведение будет одинаковое.
+Передача состояние сквозь глубокое дерево функций/компонентов от n-ребенков к родителю.
+Ну и конечно минималистичное, developer friendly API, просто швырни мне Promise и я сам разберусь, win!. Реализация на чистом js, без использования высокоуровневых API. Платформонезависимость и кроссбраузерность, без разницы где вы будете использовать Web/NodeJS/Native поведение будет одинаковое. Передача состояние сквозь глубокое дерево функций/компонентов от n-ребенков к родителю. Ну и конечно минималистичное, developer friendly API, просто швырни мне Promise и я сам разберусь, win!.  Спасибо большое что прочитали статью, поделитесь вашим мнением, как вам идея использования try/catch as control flow, пробовали ли вы Relay, может кто то уже написал свою классную библиотеку для работы с асинхронной логикой с использованием Suspense API?]]></text>
+</doc>

@@ -1,0 +1,207 @@
+<?xml version="1.0" ?>
+<doc>
+	<label auto="true" type="str" verify="true"><![CDATA[Develop]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[kirill3333]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-11-28, 20:21]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/post/701780/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Разбираемся с оптимизацией FlatList и миграцией на FlashList в React Native]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[JavaScript]]></item>
+		<item type="str"><![CDATA[Разработка мобильных приложений]]></item>
+		<item type="str"><![CDATA[ReactJS]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[react-native]]></item>
+		<item type="str"><![CDATA[flatlist]]></item>
+		<item type="str"><![CDATA[flashlist]]></item>
+		<item type="str"><![CDATA[оптимизация]]></item>
+		<item type="str"><![CDATA[производительность]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[Отвечая на вопросы в треде по React Native на StackOverflow, я заметил что в той или иной форме люди очень часто интересуются производительностью компонентов списков и в частности FlatList. В этом гайде рассмотрим способы оптимизации производительности на примере приложения для отображения списка вопросов с StackOverflow, а во второй половине статья расскажу о новом компоненте ⚡️FlashList который драматически ускорит работу списков.
+Тестовое приложение
+В качестве экспериментального создадим приложение которое загружает, и выводит список из 20 вопросов со StackOverflow по нажатию на кнопку. Я умышлено допущу несколько очень популярных ошибок и на графике Flamegraph покажу к каким проблемам во время рендеринга они приводя и как их исправить.
+Главный экран App.js
+Карточка вопроса QuestionCard.js
+Нажав на кнопку update 2 раза и записав Flamegraph получим следующую картину:
+Несмотря на то, что наш список содержит keyExtractor при получении массива таких же данный он полностью перерисовывает список.
+keyExtractor и анонимные функции
+Первое, что мы исправим это вынесем наши renderItem и keyExtractor из метода рендеринга, а так же перепишем keyExtractor на использование идентификатора вопроса. Анонимные функции вызывают re-render каждый раз даже если значения возвращаемые keyExtractor одинаковые.
+const keyExtractor = item => item?.question_id;
+const renderItem = ({ item }) => <QuestionCard item={item} />;
+
+const App = () => {
+  //.....
+  return (
+    <SafeAreaView style={styles.container}>
+      <Button title="update" onPress={getQuestions} />
+      {isLoading && <ActivityIndicator />}
+      <FlatList
+        data={data}
+        keyExtractor={keyExtractor}
+        renderItem={renderItem}
+      />
+    </SafeAreaView>
+  );
+}
+Ситуация улучшилась но все еще видим повторный render элементов при том что данные не изменились.
+Memoization
+Компонент, который используется в renderItem должен быть легковесным и поддерживать мемоизацию для сложных объектов. В нашем случаем данные это сложный объект поэтому добавляем функцию мемоизации которая проверяет, что наш объект не поменялся на основании id вопроса.
+export default memo(QuestionCard, (prevProps, nextProps) => {
+  return prevProps.question_id === nextProps.question_id;
+});
+повторный рендеринг с теми же данными стал значительно быстрее
+Легковестные копмопненты в renderItem
+Для оптимизации скорости рендеринга элемента списка нужно делать компоненты в renderItem как можно проще и избегать тяжелых операций и преобразований внутри них. В нашем примере можем вынести преобразование HTML символов с помощью decode из компонента в код где получаем данные.
+//...
+const response = await fetch(API_URL);
+  const json = await response.json();
+  const result = json.items.map(item => {
+    item.title = decode(item.title);
+    return item;
+  });
+  setData(result);
+//...
+Так же можно оптимизировать работу с изображениями, заменив стандартный Image на более производительный fast-image поддерживающий кэширование.
+Свойства initialNumToRender и maxToRenderPerBatch
+В зависимости от поставленных задач можно настроить поведение списка. В нашем примере на первом экране появляется от 3 до 5 вопросов и поэтому если хотим чтобы пользователь быстрее увидел эту информацию можем изменить свойство initialNumToRender с его значения по умолчанию в 10 например на 5. Это ускорит появления первых элементов списка в 2 раза.
+10 элементов при значении по умолчанию
+отрисовка 5 элементов
+Как видим скорость отрисовки списка осталась одинаковой однако пользователь увидит данные быстрее. Это полезно когда элементы списка представляют собой сложные компоненты.
+Из диаграммы выше можно заметить что элементы отрисовываются не сразу, а в несколько итераций. Это сделано для того чтобы разгрузить JS поток и давать выполняться другим задачам. По умолчанию, за одну итерацию, отрисовывается максимум 10 элементов, однако можно поменять это значение с помощью параметра maxToRenderPerBatch. Увеличивая количество, уменьшается вероятность появления пустых областей при прокрути списка однако если рендеринг элемента списка занимает много времени то можно заблокировать JS поток. Для того чтобы разблокировать поток между итерациями рендеринга существует свойство updateCellsBatchingPeriod задаваемое в миллисекундах. По умолчанию это 50 миллисекунд, но если мы знаем что нам нужно больше времени на какие то задачи, можно увеличить это время.
+рендеринг 30 элементов при значении maxToRenderPerBatch = 20 и initialNumToRender = 5
+windowSize
+По умолчанию список рендерит 10 экранов вверх и 10 вверх. С помощью свойства windowSize можно изменять эти параметры. Значение по умолчанию 21 может быть уменьшено для сокращения потребления памяти или наоборот увеличено если список состоит из простых компонент и есть кейс, где пользователь быстро его прокручивает.
+getItemLayout
+Отдельно стоит упомянуть про возможность указать размеры элемента списка если вы уверены, что они одинаковые. Это сильно упрощает расчеты так как ненужно асинхронно пересчитывать размер списка.
+getItemLayout={(data, index) => (
+  {length: ITEM_HEIGHT, offset: ITEM_HEIGHT * index, index}
+)}
+Переход на FlashList
+Если хотите добиться производительности близкой к нативной забудьте что было выше и переходите на https://shopify.github.io/flash-list/
+Этот компонент имеет такое же API, как и FlatList, но использует другой подход к отрисовке. Вместо уничтожения компоненты после того как он уходит за пределы viewport, FlashList перерисовывает его с другими свойствами.
+Для того чтобы мигрировать наше приложение на FlashList, нужно выполнить несколько простых, но важных условий.
+Удалить все свойства key из иерархии компонентов которые используются внутри renderItem. Если где то используется map, то использовать в качестве key индекс.
+Для свойства estimatedItemSize указать средний размер высоты или ширины если список вертикальный. Эти данные можно получить например с помощью Flipper плагина Layout
+Если внутри компонентов из renderItem используется useState, то можно получить состояние от предыдущего компонента. Чтобы избежать этого, нужно сбросить состояние useState или в идеале не использовать useState
+const MyItem = ({ item }) => {
+  const lastItemId = useRef(item.someId);
+  const [liked, setLiked] = useState(item.liked);
+  if (item.someId !== lastItemId.current) {
+    lastItemId.current = item.someId;
+    setLiked(item.liked);
+  }
+
+  return (
+    <Pressable onPress={() => setLiked(true)}>
+      <Text>{liked}</Text>
+    </Pressable>
+  );
+};
+Давайте обновим наш компонент и посмотрим как будет выглядеть график.
+<FlashList
+  data={data}
+  keyExtractor={keyExtractor}
+  renderItem={renderItem}
+  estimatedItemSize={250}
+/>
+Такие свойства как initialNumToRender, maxToRenderPerBatch, getItemLayout и тд не изменят ничего в поведении FlashList.
+На графике видно как изменилось поведение списка. Однако это не совсем правильный способ измерять его производительность. Вместе с FlashList поставляется несколько функций, которые помогают собрать реальные метрики. Подробнее об их использовании можно почитать https://shopify.github.io/flash-list/docs/metrics
+Итого
+Если у вас есть приложение использующее списки и по каким-то причинам вы не можете перейти на FlashList попробуйте воспользоваться советами и поиграть с параметрами отрисовки. Моя рекомендация как можно скорее мигрировать на этот компонент ну или хотя бы попробовать его чтобы как говориться почувствовать разницу. Отвечая на вопросы в треде по React Native на StackOverflow, я заметил что в той или иной форме люди очень часто интересуются производительностью компонентов списков и в частности FlatList. В этом гайде рассмотрим способы оптимизации производительности на примере приложения для отображения списка вопросов с StackOverflow, а во второй половине статья расскажу о новом компоненте ⚡️FlashList который драматически ускорит работу списков. Тестовое приложение В качестве экспериментального создадим приложение которое загружает, и выводит список из 20 вопросов со StackOverflow по нажатию на кнопку. Я умышлено допущу несколько очень популярных ошибок и на графике Flamegraph покажу к каким проблемам во время рендеринга они приводя и как их исправить.    Главный экран App.js Главный экран App.js     Карточка вопроса QuestionCard.js Карточка вопроса QuestionCard.js     Нажав на кнопку update 2 раза и записав Flamegraph получим следующую картину:   Несмотря на то, что наш список содержит keyExtractor при получении массива таких же данный он полностью перерисовывает список. keyExtractor keyExtractor и анонимные функции Первое, что мы исправим это вынесем наши renderItem и keyExtractor из метода рендеринга, а так же перепишем keyExtractor на использование идентификатора вопроса. Анонимные функции вызывают re-render каждый раз даже если значения возвращаемые keyExtractor одинаковые. renderItem keyExtractor keyExtractor keyExtractor const keyExtractor = item => item?.question_id;
+const renderItem = ({ item }) => <QuestionCard item={item} />;
+
+const App = () => {
+  //.....
+  return (
+    <SafeAreaView style={styles.container}>
+      <Button title="update" onPress={getQuestions} />
+      {isLoading && <ActivityIndicator />}
+      <FlatList
+        data={data}
+        keyExtractor={keyExtractor}
+        renderItem={renderItem}
+      />
+    </SafeAreaView>
+  );
+} const keyExtractor = item => item?.question_id;
+const renderItem = ({ item }) => <QuestionCard item={item} />;
+
+const App = () => {
+  //.....
+  return (
+    <SafeAreaView style={styles.container}>
+      <Button title="update" onPress={getQuestions} />
+      {isLoading && <ActivityIndicator />}
+      <FlatList
+        data={data}
+        keyExtractor={keyExtractor}
+        renderItem={renderItem}
+      />
+    </SafeAreaView>
+  );
+} Ситуация улучшилась но все еще видим повторный render элементов при том что данные не изменились.   Memoization Компонент, который используется в renderItem должен быть легковесным и поддерживать мемоизацию для сложных объектов. В нашем случаем данные это сложный объект поэтому добавляем функцию мемоизации которая проверяет, что наш объект не поменялся на основании id вопроса. renderItem export default memo(QuestionCard, (prevProps, nextProps) => {
+  return prevProps.question_id === nextProps.question_id;
+}); export default memo(QuestionCard, (prevProps, nextProps) => {
+  return prevProps.question_id === nextProps.question_id;
+}); повторный рендеринг с теми же данными стал значительно быстрее   Легковестные копмопненты в renderItem Для оптимизации скорости рендеринга элемента списка нужно делать компоненты в renderItem как можно проще и избегать тяжелых операций и преобразований внутри них. В нашем примере можем вынести преобразование HTML символов с помощью decode из компонента в код где получаем данные. renderItem decode //...
+const response = await fetch(API_URL);
+  const json = await response.json();
+  const result = json.items.map(item => {
+    item.title = decode(item.title);
+    return item;
+  });
+  setData(result);
+//... //...
+const response = await fetch(API_URL);
+  const json = await response.json();
+  const result = json.items.map(item => {
+    item.title = decode(item.title);
+    return item;
+  });
+  setData(result);
+//... Так же можно оптимизировать работу с изображениями, заменив стандартный Image на более производительный fast-image поддерживающий кэширование. fast-image Свойства initialNumToRender и maxToRenderPerBatch В зависимости от поставленных задач можно настроить поведение списка. В нашем примере на первом экране появляется от 3 до 5 вопросов и поэтому если хотим чтобы пользователь быстрее увидел эту информацию можем изменить свойство initialNumToRender с его значения по умолчанию в 10 например на 5. Это ускорит появления первых элементов списка в 2 раза. initialNumToRender  10 элементов при значении по умолчанию  отрисовка 5 элементов Как видим скорость отрисовки списка осталась одинаковой однако пользователь увидит данные быстрее. Это полезно когда элементы списка представляют собой сложные компоненты. Из диаграммы выше можно заметить что элементы отрисовываются не сразу, а в несколько итераций. Это сделано для того чтобы разгрузить JS поток и давать выполняться другим задачам. По умолчанию, за одну итерацию, отрисовывается максимум 10 элементов, однако можно поменять это значение с помощью параметра maxToRenderPerBatch. Увеличивая количество, уменьшается вероятность появления пустых областей при прокрути списка однако если рендеринг элемента списка занимает много времени то можно заблокировать JS поток. Для того чтобы разблокировать поток между итерациями рендеринга существует свойство updateCellsBatchingPeriod задаваемое в миллисекундах. По умолчанию это 50 миллисекунд, но если мы знаем что нам нужно больше времени на какие то задачи, можно увеличить это время. maxToRenderPerBatch updateCellsBatchingPeriod  рендеринг 30 элементов при значении maxToRenderPerBatch = 20 и initialNumToRender = 5 windowSize По умолчанию список рендерит 10 экранов вверх и 10 вверх. С помощью свойства windowSize можно изменять эти параметры. Значение по умолчанию 21 может быть уменьшено для сокращения потребления памяти или наоборот увеличено если список состоит из простых компонент и есть кейс, где пользователь быстро его прокручивает. windowSize getItemLayout Отдельно стоит упомянуть про возможность указать размеры элемента списка если вы уверены, что они одинаковые. Это сильно упрощает расчеты так как ненужно асинхронно пересчитывать размер списка. getItemLayout={(data, index) => (
+  {length: ITEM_HEIGHT, offset: ITEM_HEIGHT * index, index}
+)} getItemLayout={(data, index) => (
+  {length: ITEM_HEIGHT, offset: ITEM_HEIGHT * index, index}
+)} Переход на FlashList Если хотите добиться производительности близкой к нативной забудьте что было выше и переходите на https://shopify.github.io/flash-list/ https://shopify.github.io/flash-list/   Этот компонент имеет такое же API, как и FlatList, но использует другой подход к отрисовке. Вместо уничтожения компоненты после того как он уходит за пределы viewport, FlashList перерисовывает его с другими свойствами. Для того чтобы мигрировать наше приложение на FlashList, нужно выполнить несколько простых, но важных условий. Удалить все свойства key из иерархии компонентов которые используются внутри renderItem. Если где то используется map, то использовать в качестве key индекс.
+Для свойства estimatedItemSize указать средний размер высоты или ширины если список вертикальный. Эти данные можно получить например с помощью Flipper плагина Layout
+Если внутри компонентов из renderItem используется useState, то можно получить состояние от предыдущего компонента. Чтобы избежать этого, нужно сбросить состояние useState или в идеале не использовать useState Удалить все свойства key из иерархии компонентов которые используются внутри renderItem. Если где то используется map, то использовать в качестве key индекс. Удалить все свойства key из иерархии компонентов которые используются внутри renderItem. Если где то используется map, то использовать в качестве key индекс. key map key Для свойства estimatedItemSize указать средний размер высоты или ширины если список вертикальный. Эти данные можно получить например с помощью Flipper плагина Layout Для свойства estimatedItemSize указать средний размер высоты или ширины если список вертикальный. Эти данные можно получить например с помощью Flipper плагина Layout estimatedItemSize    Если внутри компонентов из renderItem используется useState, то можно получить состояние от предыдущего компонента. Чтобы избежать этого, нужно сбросить состояние useState или в идеале не использовать useState Если внутри компонентов из renderItem используется useState, то можно получить состояние от предыдущего компонента. Чтобы избежать этого, нужно сбросить состояние useState или в идеале не использовать useState renderItem useState useState useState const MyItem = ({ item }) => {
+  const lastItemId = useRef(item.someId);
+  const [liked, setLiked] = useState(item.liked);
+  if (item.someId !== lastItemId.current) {
+    lastItemId.current = item.someId;
+    setLiked(item.liked);
+  }
+
+  return (
+    <Pressable onPress={() => setLiked(true)}>
+      <Text>{liked}</Text>
+    </Pressable>
+  );
+}; const MyItem = ({ item }) => {
+  const lastItemId = useRef(item.someId);
+  const [liked, setLiked] = useState(item.liked);
+  if (item.someId !== lastItemId.current) {
+    lastItemId.current = item.someId;
+    setLiked(item.liked);
+  }
+
+  return (
+    <Pressable onPress={() => setLiked(true)}>
+      <Text>{liked}</Text>
+    </Pressable>
+  );
+}; Давайте обновим наш компонент и посмотрим как будет выглядеть график. <FlashList
+  data={data}
+  keyExtractor={keyExtractor}
+  renderItem={renderItem}
+  estimatedItemSize={250}
+/> <FlashList
+  data={data}
+  keyExtractor={keyExtractor}
+  renderItem={renderItem}
+  estimatedItemSize={250}
+/> Такие свойства как initialNumToRender, maxToRenderPerBatch, getItemLayout и тд не изменят ничего в поведении FlashList. initialNumToRender maxToRenderPerBatch getItemLayout   На графике видно как изменилось поведение списка. Однако это не совсем правильный способ измерять его производительность. Вместе с FlashList поставляется несколько функций, которые помогают собрать реальные метрики. Подробнее об их использовании можно почитать https://shopify.github.io/flash-list/docs/metrics https://shopify.github.io/flash-list/docs/metrics Итого Если у вас есть приложение использующее списки и по каким-то причинам вы не можете перейти на FlashList попробуйте воспользоваться советами и поиграть с параметрами отрисовки. Моя рекомендация как можно скорее мигрировать на этот компонент ну или хотя бы попробовать его чтобы как говориться почувствовать разницу. ]]></text>
+</doc>

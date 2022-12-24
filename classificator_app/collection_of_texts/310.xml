@@ -1,0 +1,52 @@
+<?xml version="1.0" ?>
+<doc>
+	<label auto="true" type="str" verify="true"><![CDATA[Develop]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Dmitry27]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-12-08, 14:32]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/post/704306/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Модернизация FreePBX на Raspberry PI]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Asterisk]]></item>
+		<item type="str"><![CDATA[Разработка на Raspberry Pi]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[asterisk]]></item>
+		<item type="str"><![CDATA[pjsip]]></item>
+		<item type="str"><![CDATA[telegrambot]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[Продолжение экспериментов над установленной и рабочей системы из статьи: "Raspberry Pi + FreeBPX(asterisk) + Mikrotik = АТС мини с переходом на PJSIP (sipnet, zadarma, multifon)", подключение telegram бота.
+Обновление
+apt update && apt upgrade
+Стандартная процедура, но учитывая что система работает на стареньком Debian Buster, то актуальные репозитории уходят в архивы и могут возникать некоторые ошибки, как например:
+Пример ошибки связанный с репозиторием sury.org
+И по ходу обновления соглашаться с заменой путей к репозиториям.
+Установка дополнительных программ для телеграм бота:
+apt install python3-pip
+pip3 install pyTelegramBotAPI
+Переход на PJSIP
+Поддался современным веяниям в отказе от протокола SIP в пользу PJSIP.
+Во время манипуляций не забываем сохранять изменения кнопкой Submit.
+Заходим на веб своего freepbx -> setting -> advansed setting -> sip channel driver:
+отключение sip
+PJSIP общие настройки:
+setting -> sip setting -> pjsip
+настройки
+Настройка транков провайдеров
+SIPNET
+Zadarma ( Novofon)
+Мультифон (multifon)
+Создание extension (номера для абонентов) ничем не отличается от обычного sip -> задаете логин (номер) и пароль, для приема сообщений прописать в Messages Context - messages (как написано в файле /etc/asterisk/extensions_custom.conf ).
+Подключение Telegram
+Для чего? Т.к. у меня подключены модемы и иногда приходят смс нужные. И заметил такую особенность, что если отправитель смс какой-то мутный сервис, который любит сложности в своем названии (использовать буквы и символы, без номера) и особенно с символом @ на конце, то стандартная схема сообщения в sip теряет его на этапе пересылки в экстеншен, хотя в файл записывает нормально. Телеграм пересылает все сообщения без потерь и еще удобно показывает с какого донгла пришло. Так же этот скрипт работает, как дополнительный журнал звонков и помогает в работе уведомлений ( типа сервера пуш уведомлений).
+Скрипт телегам бота
+/usr/local/bin/sms2tg.py (Не забываем заменить API:KEY и CHATID на свои)
+Переходим в консоль сервера к файлу: /etc/asterisk/extensions_custom.conf
+/etc/asterisk/extensions_custom.conf
+Очистка памяти сим-карт и модемов от СМС
+
+Команды для применения изменений, выполнять в консоли астериска CLI Продолжение экспериментов над установленной и рабочей системы из статьи: "Raspberry Pi + FreeBPX(asterisk) + Mikrotik = АТС мини с переходом на PJSIP (sipnet, zadarma, multifon)", подключение telegram бота. "Raspberry Pi + FreeBPX(asterisk) + Mikrotik = АТС мини "Raspberry Pi + FreeBPX(asterisk) + Mikrotik = АТС мини , Обновление apt update && apt upgrade apt update && apt upgrade Стандартная процедура, но учитывая что система работает на стареньком Debian Buster, то актуальные репозитории уходят в архивы и могут возникать некоторые ошибки, как например: Пример ошибки связанный с репозиторием sury.org Пример ошибки связанный с репозиторием sury.org       И по ходу обновления соглашаться с заменой путей к репозиториям. Установка дополнительных программ для телеграм бота: apt install python3-pip
+pip3 install pyTelegramBotAPI apt install python3-pip
+pip3 install pyTelegramBotAPI Переход на PJSIP Поддался современным веяниям в отказе от протокола SIP в пользу PJSIP. Во время манипуляций не забываем сохранять изменения кнопкой Submit. Заходим на веб своего freepbx -> setting -> advansed setting -> sip channel driver: отключение sip отключение sip     PJSIP общие настройки: setting -> sip setting -> pjsip настройки настройки     Настройка транков провайдеров SIPNET SIPNET      ]]></text>
+</doc>

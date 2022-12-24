@@ -1,0 +1,258 @@
+<?xml version="1.0" ?>
+<doc>
+	<label auto="true" type="str" verify="true"><![CDATA[Develop]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[AshBlade]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-12-12, 09:00]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/post/704618/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Архитектура PostgreSQL. Часть 1. Цикл сервера]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Open source]]></item>
+		<item type="str"><![CDATA[PostgreSQL]]></item>
+		<item type="str"><![CDATA[Анализ и проектирование систем]]></item>
+		<item type="str"><![CDATA[C]]></item>
+		<item type="str"><![CDATA[Реверс-инжиниринг]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[postgres]]></item>
+		<item type="str"><![CDATA[postgresql]]></item>
+		<item type="str"><![CDATA[архитектура приложений]]></item>
+		<item type="str"><![CDATA[open source]]></item>
+		<item type="str"><![CDATA[базы данных]]></item>
+		<item type="str"><![CDATA[анализ программ]]></item>
+		<item type="str"><![CDATA[reverse engineering]]></item>
+		<item type="str"><![CDATA[исходный код]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[Приветствую.
+Продолжаем серию постов о работе PostgreSQL на уровне кода. Сегодня, познакомимся с главным циклом сервера. Цикл расположен в src/backend/postmaster/postmaster.c
+Предыдущий пост
+Инициализация
+В начале цикла инициализируем переменные времени для проверок локфайлов текущим временем:
+last_lockfile_recheck_time - время последней проверки postmaster.pid;
+last_touch_time - время последней проверки сокет-файлов.
+Далее инициализируем прослушиваемые порты. 
+Для прослушивания используется мультиплексирование, используя select(). Инициализируем множество прослушиваемых портов и одновременно находим значение числа наибольшего дескриптора.
+select()
+Теперь можем войти в бесконечный цикл для обслуживания клиентов.
+* Цикл создан через for(;;), а не while (1).
+Бесконечный цикл
+Каждую итерацию цикла можно разбить на несколько логических секций.
+Начальная часть определяется текущим состоянием:
+PM_WAIT_DEAD_END - Спим
+Остальное - Обрабатываем входящие подключения
+Спим
+Если Postmaster в состоянии PM_WAIT_DEAD_END , то ждем пока dead_end бэкэнды завершатся. Для этого просто засыпаем на 100 мс.
+Почему на 100 мс, объяснений нет:
+pg_usleep(100000L); /* 100 msec seems reasonable */
+Обработка входящих подключений
+Первым делом копируем переменную дескриптора портов в локальную, чтобы не затирать порты между обработкой клиентов в select().
+После вычисляется таймаут ожидания подключения. Он нужен, так как помимо клиентов необходимо следить за воркерами и окружением.
+Как расчитывается таймаут:
+Нормальное состояние: 60 секунд;
+Принят SIGKILL: время ожидания = 5 - (ТЕКУЩЕЕ ВРЕМЯ - ВРЕМЯ ПОЛУЧЕНИЯ SIGKILL);
+Запрошен старт воркера: ждем 0 секунд;
+Тогда select() сделает возврат немедленно, а значит процесс старта воркера запустится как можно скорее;
+Воркер упал: таймаут - наибольшее время необходимое для восстановление воркера, но не более 1 минуты.
+Теперь начинаем принимать подключения:
+selres = select(nSockets, &rmask, NULL, NULL, &timeout);
+Как только функция вернулась проверяем результат.
+Если select() вернул ошибку (-1), то падаем.
+Если select() вернул не 0, то на какой-то порт пришел запрос. Проходимся по всем портам, и для каждого, на который постучались:
+Создаем соединение
+Соединение создается через сокеты:
+Принимается сокетное соединение на порту - accept()
+Сохраняется адрес - getsockname()
+Если TCP - настраиваем
+TCP_NODELAY
+TCP_KEEPALIVE
+Оптимизация буфера для Windows
+TCP_NODELAY
+TCP_KEEPALIVE
+Оптимизация буфера под Windows
+Старт бэкэнда
+Создаем структуру Бэкэнда:
+typedef struct bkend
+{
+ pid_t  pid;   /* process id of backend */
+ int32  cancel_key;  /* cancel key for cancels for this backend */
+ int   child_slot;  /* PMChildSlot for this backend, if any */
+ int   bkend_type;  /* child process flavor, see above */
+ bool  dead_end;  /* is it going to send an error and quit? */
+ bool  bgworker_notify; /* gets bgworker start/stop notifications */
+ dlist_node elem;   /* list link in BackendList */
+} Backend;
+И инициализируем его:
+Выделяем память
+Создаем CancelKey
+Определяем может ли бэкэнд принимать соединения (он может стартовать сразу в DEAD_END)
+Запускаем его - форкаемся. Бэкэнд уходит в свой процесс и работает там до конца, не возвращается.
+Дальше проверяем, что запуск произошел успешно и добавляем его в список работающих. Дальше будем проверять его состояние в перерывах. Для этого, в частности, установили лимит на таймаут ожидания подключения.
+Когда обрабатываем сигналы?
+Проверка вспомогательных процессов
+Postgres - многопроцессное приложение. Если какой-то процесс упадет, то система продолжит работать.
+Как узнаем, что дочерний процесс упал? Делать регулярные проверки. Postmaster хранит PID'ы основных процессов:
+/* PIDs of special child processes; 0 when not running */
+static pid_t StartupPID = 0,
+   BgWriterPID = 0,
+   CheckpointerPID = 0,
+   WalWriterPID = 0,
+   WalReceiverPID = 0,
+   AutoVacPID = 0,
+   PgArchPID = 0,
+   PgStatPID = 0,
+   SysLoggerPID = 0;
+После обработки пришедшего сигнала, смотрим упал ли какой-нибудь воркер, и поднимаем при необходимости. Для многих процессов есть свои условия для запуска. Например:
+/*
+ * If no background writer process is running, and we are not in a
+ * state that prevents it, start one.  It doesn't matter if this
+ * fails, we'll just try again later.  Likewise for the checkpointer.
+ */
+if (pmState == PM_RUN || pmState == PM_RECOVERY ||
+    pmState == PM_HOT_STANDBY)
+{
+    if (CheckpointerPID == 0)
+        CheckpointerPID = StartCheckpointer();
+    if (BgWriterPID == 0)
+        BgWriterPID = StartBackgroundWriter();
+}
+Проверке подвергаются также и бэкэнды: проходимся по всем и проверяем их статус.
+Проверка локфайлов
+При запуске, был создан локфайл postmaster.pid. В нем хранится рабочая информация.
+В частности, первая строка хранит PID запущенного Postmaster. Может ли получиться так, что 2 процесса запущено одновременно? Да, например, на различных портах. Лучше, чтобы такого не происходило, иначе могут одновременно измениться несколько файлов. Ничего хорошего это не принесет.
+Раз в минуту проверяем файл. Если его нет или хранящийся в нем PID не равен нашему, то значит новый процесс БД запустился. В таком случае, экстренно закрываемся - отправляем SIGQUIT самому себе.
+now = time(NULL);
+
+if (now - last_lockfile_recheck_time >= 1 * SECS_PER_MINUTE)
+{
+    if (!RecheckDataDirLockFile())
+    {
+        ereport(LOG,
+                (errmsg("performing immediate shutdown because data directory lock file is invalid")));
+        kill(MyProcPid, SIGQUIT);
+    }
+    last_lockfile_recheck_time = now;
+}
+Не забываем про UNIX сокеты.
+Они сохраняются в директории, указанной в настройке unix_socket_directories в postgresql.conf. По умолчанию, равен /tmp. В нем хранятся временные файлы. Чтобы их не скопилось слишком много, часто запущены процессы очищающие директорию. Чтобы они случайно не удалили сокет-файл, будем обновлять время последнего изменения файла - вызывать touch().
+if (now - last_touch_time >= 58 * SECS_PER_MINUTE)
+{
+    TouchSocketFiles();
+    TouchSocketLockFiles();
+    last_touch_time = now;
+}
+Кто удаляет сокет файлы?
+Конец итерации
+На этом итерация заканчивается и заходим на новый круг. Приветствую. Продолжаем серию постов о работе PostgreSQL на уровне кода. Сегодня, познакомимся с главным циклом сервера. Цикл расположен в src/backend/postmaster/postmaster.c src/backend/postmaster/postmaster.c Предыдущий пост Предыдущий пост Инициализация В начале цикла инициализируем переменные времени для проверок локфайлов текущим временем: last_lockfile_recheck_time - время последней проверки postmaster.pid;
+last_touch_time - время последней проверки сокет-файлов. last_lockfile_recheck_time - время последней проверки postmaster.pid; last_lockfile_recheck_time - время последней проверки postmaster.pid; last_lockfile_recheck_time postmaster.pid; last_touch_time - время последней проверки сокет-файлов. last_touch_time - время последней проверки сокет-файлов. last_touch_time Далее инициализируем прослушиваемые порты.  Для прослушивания используется мультиплексирование, используя select(). Инициализируем множество прослушиваемых портов и одновременно находим значение числа наибольшего дескриптора. select() select() select()                                            Теперь можем войти в бесконечный цикл для обслуживания клиентов. * Цикл создан через for(;;), а не while (1). for(;;) while (1) Бесконечный цикл Каждую итерацию цикла можно разбить на несколько логических секций. Начальная часть определяется текущим состоянием: PM_WAIT_DEAD_END - Спим
+Остальное - Обрабатываем входящие подключения PM_WAIT_DEAD_END - Спим PM_WAIT_DEAD_END - Спим PM_WAIT_DEAD_END Остальное - Обрабатываем входящие подключения Остальное - Обрабатываем входящие подключения Спим Если Postmaster в состоянии PM_WAIT_DEAD_END , то ждем пока dead_end бэкэнды завершатся. Для этого просто засыпаем на 100 мс. PM_WAIT_DEAD_END Почему на 100 мс, объяснений нет: pg_usleep(100000L); /* 100 msec seems reasonable */ pg_usleep(100000L); /* 100 msec seems reasonable */ Обработка входящих подключений Первым делом копируем переменную дескриптора портов в локальную, чтобы не затирать порты между обработкой клиентов в select(). select() После вычисляется таймаут ожидания подключения. Он нужен, так как помимо клиентов необходимо следить за воркерами и окружением. Как расчитывается таймаут: Нормальное состояние: 60 секунд;
+Принят SIGKILL: время ожидания = 5 - (ТЕКУЩЕЕ ВРЕМЯ - ВРЕМЯ ПОЛУЧЕНИЯ SIGKILL);
+Запрошен старт воркера: ждем 0 секунд;
+Тогда select() сделает возврат немедленно, а значит процесс старта воркера запустится как можно скорее;
+Воркер упал: таймаут - наибольшее время необходимое для восстановление воркера, но не более 1 минуты. Нормальное состояние: 60 секунд; Нормальное состояние: 60 секунд; Принят SIGKILL: время ожидания = 5 - (ТЕКУЩЕЕ ВРЕМЯ - ВРЕМЯ ПОЛУЧЕНИЯ SIGKILL); Принят SIGKILL: время ожидания = 5 - (ТЕКУЩЕЕ ВРЕМЯ - ВРЕМЯ ПОЛУЧЕНИЯ SIGKILL); Запрошен старт воркера: ждем 0 секунд;
+Тогда select() сделает возврат немедленно, а значит процесс старта воркера запустится как можно скорее; Запрошен старт воркера: ждем 0 секунд; Тогда select() сделает возврат немедленно, а значит процесс старта воркера запустится как можно скорее; select() Воркер упал: таймаут - наибольшее время необходимое для восстановление воркера, но не более 1 минуты. Воркер упал: таймаут - наибольшее время необходимое для восстановление воркера, но не более 1 минуты. Теперь начинаем принимать подключения: selres = select(nSockets, &rmask, NULL, NULL, &timeout); selres = select(nSockets, &rmask, NULL, NULL, &timeout); Как только функция вернулась проверяем результат. Если select() вернул ошибку (-1), то падаем. select() Если select() вернул не 0, то на какой-то порт пришел запрос. Проходимся по всем портам, и для каждого, на который постучались: select() Создаем соединение Создаем соединение Создаем соединение Соединение создается через сокеты: Принимается сокетное соединение на порту - accept()
+Сохраняется адрес - getsockname()
+Если TCP - настраиваем
+TCP_NODELAY
+TCP_KEEPALIVE
+Оптимизация буфера для Windows Принимается сокетное соединение на порту - accept() Принимается сокетное соединение на порту - accept() accept() Сохраняется адрес - getsockname() Сохраняется адрес - getsockname() getsockname() Если TCP - настраиваем
+TCP_NODELAY
+TCP_KEEPALIVE
+Оптимизация буфера для Windows Если TCP - настраиваем TCP_NODELAY
+TCP_KEEPALIVE
+Оптимизация буфера для Windows TCP_NODELAY TCP_NODELAY TCP_KEEPALIVE TCP_KEEPALIVE Оптимизация буфера для Windows Оптимизация буфера для Windows TCP_NODELAY TCP_NODELAY     TCP_KEEPALIVE TCP_KEEPALIVE                               Оптимизация буфера под Windows Оптимизация буфера под Windows       Старт бэкэнда Старт бэкэнда Старт бэкэнда Создаем структуру Бэкэнда: typedef struct bkend
+{
+ pid_t  pid;   /* process id of backend */
+ int32  cancel_key;  /* cancel key for cancels for this backend */
+ int   child_slot;  /* PMChildSlot for this backend, if any */
+ int   bkend_type;  /* child process flavor, see above */
+ bool  dead_end;  /* is it going to send an error and quit? */
+ bool  bgworker_notify; /* gets bgworker start/stop notifications */
+ dlist_node elem;   /* list link in BackendList */
+} Backend; typedef struct bkend
+{
+ pid_t  pid;   /* process id of backend */
+ int32  cancel_key;  /* cancel key for cancels for this backend */
+ int   child_slot;  /* PMChildSlot for this backend, if any */
+ int   bkend_type;  /* child process flavor, see above */
+ bool  dead_end;  /* is it going to send an error and quit? */
+ bool  bgworker_notify; /* gets bgworker start/stop notifications */
+ dlist_node elem;   /* list link in BackendList */
+} Backend; И инициализируем его: Выделяем память
+Создаем CancelKey
+Определяем может ли бэкэнд принимать соединения (он может стартовать сразу в DEAD_END) Выделяем память Выделяем память Создаем CancelKey Создаем CancelKey CancelKey Определяем может ли бэкэнд принимать соединения (он может стартовать сразу в DEAD_END) Определяем может ли бэкэнд принимать соединения (он может стартовать сразу в DEAD_END) DEAD_END Запускаем его - форкаемся. Бэкэнд уходит в свой процесс и работает там до конца, не возвращается. Дальше проверяем, что запуск произошел успешно и добавляем его в список работающих. Дальше будем проверять его состояние в перерывах. Для этого, в частности, установили лимит на таймаут ожидания подключения. Когда обрабатываем сигналы? Когда обрабатываем сигналы?                      Проверка вспомогательных процессов Postgres - многопроцессное приложение. Если какой-то процесс упадет, то система продолжит работать. Как узнаем, что дочерний процесс упал? Делать регулярные проверки. Postmaster хранит PID'ы основных процессов: /* PIDs of special child processes; 0 when not running */
+static pid_t StartupPID = 0,
+   BgWriterPID = 0,
+   CheckpointerPID = 0,
+   WalWriterPID = 0,
+   WalReceiverPID = 0,
+   AutoVacPID = 0,
+   PgArchPID = 0,
+   PgStatPID = 0,
+   SysLoggerPID = 0; /* PIDs of special child processes; 0 when not running */
+static pid_t StartupPID = 0,
+   BgWriterPID = 0,
+   CheckpointerPID = 0,
+   WalWriterPID = 0,
+   WalReceiverPID = 0,
+   AutoVacPID = 0,
+   PgArchPID = 0,
+   PgStatPID = 0,
+   SysLoggerPID = 0; После обработки пришедшего сигнала, смотрим упал ли какой-нибудь воркер, и поднимаем при необходимости. Для многих процессов есть свои условия для запуска. Например: /*
+ * If no background writer process is running, and we are not in a
+ * state that prevents it, start one.  It doesn't matter if this
+ * fails, we'll just try again later.  Likewise for the checkpointer.
+ */
+if (pmState == PM_RUN || pmState == PM_RECOVERY ||
+    pmState == PM_HOT_STANDBY)
+{
+    if (CheckpointerPID == 0)
+        CheckpointerPID = StartCheckpointer();
+    if (BgWriterPID == 0)
+        BgWriterPID = StartBackgroundWriter();
+} /*
+ * If no background writer process is running, and we are not in a
+ * state that prevents it, start one.  It doesn't matter if this
+ * fails, we'll just try again later.  Likewise for the checkpointer.
+ */
+if (pmState == PM_RUN || pmState == PM_RECOVERY ||
+    pmState == PM_HOT_STANDBY)
+{
+    if (CheckpointerPID == 0)
+        CheckpointerPID = StartCheckpointer();
+    if (BgWriterPID == 0)
+        BgWriterPID = StartBackgroundWriter();
+} Проверке подвергаются также и бэкэнды: проходимся по всем и проверяем их статус. Проверка локфайлов При запуске, был создан локфайл postmaster.pid. В нем хранится рабочая информация. postmaster.pid В частности, первая строка хранит PID запущенного Postmaster. Может ли получиться так, что 2 процесса запущено одновременно? Да, например, на различных портах. Лучше, чтобы такого не происходило, иначе могут одновременно измениться несколько файлов. Ничего хорошего это не принесет. Раз в минуту проверяем файл. Если его нет или хранящийся в нем PID не равен нашему, то значит новый процесс БД запустился. В таком случае, экстренно закрываемся - отправляем SIGQUIT самому себе. SIGQUIT now = time(NULL);
+
+if (now - last_lockfile_recheck_time >= 1 * SECS_PER_MINUTE)
+{
+    if (!RecheckDataDirLockFile())
+    {
+        ereport(LOG,
+                (errmsg("performing immediate shutdown because data directory lock file is invalid")));
+        kill(MyProcPid, SIGQUIT);
+    }
+    last_lockfile_recheck_time = now;
+} now = time(NULL);
+
+if (now - last_lockfile_recheck_time >= 1 * SECS_PER_MINUTE)
+{
+    if (!RecheckDataDirLockFile())
+    {
+        ereport(LOG,
+                (errmsg("performing immediate shutdown because data directory lock file is invalid")));
+        kill(MyProcPid, SIGQUIT);
+    }
+    last_lockfile_recheck_time = now;
+} Не забываем про UNIX сокеты. Они сохраняются в директории, указанной в настройке unix_socket_directories в postgresql.conf. По умолчанию, равен /tmp. В нем хранятся временные файлы. Чтобы их не скопилось слишком много, часто запущены процессы очищающие директорию. Чтобы они случайно не удалили сокет-файл, будем обновлять время последнего изменения файла - вызывать touch(). unix_socket_directories postgresql.conf /tmp touch() if (now - last_touch_time >= 58 * SECS_PER_MINUTE)
+{
+    TouchSocketFiles();
+    TouchSocketLockFiles();
+    last_touch_time = now;
+} if (now - last_touch_time >= 58 * SECS_PER_MINUTE)
+{
+    TouchSocketFiles();
+    TouchSocketLockFiles();
+    last_touch_time = now;
+} Кто удаляет сокет файлы? Кто удаляет сокет файлы?                    Конец итерации На этом итерация заканчивается и заходим на новый круг. ]]></text>
+</doc>

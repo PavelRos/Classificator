@@ -1,0 +1,387 @@
+<?xml version="1.0" ?>
+<doc>
+	<original_author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Avin Buricha]]></item>
+	</original_author>
+	<label auto="true" type="str" verify="true"><![CDATA[Develop]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[kmoseenk]]></item>
+		<item type="str"><![CDATA[dlinyj]]></item>
+		<item type="str"><![CDATA[iiiytn1k]]></item>
+		<item type="str"><![CDATA[Elektron1]]></item>
+		<item type="str"><![CDATA[averkij]]></item>
+		<item type="str"><![CDATA[Erwinmal]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-12-09, 13:13]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/company/otus/blog/704488/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Запросы к MongoDB из Java с помощью билдера фильтров]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Блог компании OTUS]]></item>
+		<item type="str"><![CDATA[Программирование]]></item>
+		<item type="str"><![CDATA[Java]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[java]]></item>
+		<item type="str"><![CDATA[mongodb]]></item>
+		<item type="str"><![CDATA[билдер фильтров]]></item>
+		<item type="str"><![CDATA[Spring]]></item>
+		<item type="str"><![CDATA[микросервисы]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[1. Обзор
+В этой статье разберемся, как использовать класс Filters для запросов к MongoDB.
+Класс Filters представляет собой билдер для удобного написания фильтров запросов. Фильтры — это некоторые условные операции, которые MongoDB использует для ограничения результатов.
+2. Типы билдеров
+Драйвер MongoDB для Java предоставляет несколько типов билдеров, упрощающих создание BSON-документов и предоставляющих удобный API для выполнения различных CRUD-операций и агрегации.
+Доступны следующие билдеры:
+Filters — фильтры запросов;
+Projections — проекции (какие поля включить, а какие исключить из результата);
+Sorts — критерии сортировки;
+Updates — операции обновления;
+Aggregates — пайплайны агрегации (aggregation pipeline);
+Indexes — создание индексов.
+Далее рассмотрим использование Filters.
+3. Инициализация базы данных
+Начнем с создания базы данных и коллекции user, на примере которой и будем рассматривать различные операции фильтрации.
+use baeldung;
+db.createCollection("user");
+Заполним коллекцию user несколькими документами:
+db.user.insertMany([
+{
+    "userId":"123",
+    "userName":"Jack",
+    "age":23,
+    "role":"Admin"
+},
+{
+    "userId":"456",
+    "userName":"Lisa",
+    "age":27,
+    "role":"Admin",
+    "type":"Web"
+},
+{
+    "userId":"789",
+    "userName":"Tim",
+    "age":31,
+    "role":"Analyst"
+}]);
+При выполнении успешной вставки получим следующий ответ:
+{
+    "acknowledged" : true,
+    "insertedIds" : [
+        ObjectId("6357c4736c9084bcac72eced"),
+        ObjectId("6357c4736c9084bcac72ecee"),
+        ObjectId("6357c4736c9084bcac72ecef")
+    ]
+}
+4. Использование класса Filters
+В классе Filters содержатся статические фабричные методы, выполняющие различные операции фильтрации в MongoDB. Каждый из этих методов возвращает экземпляры интерфейса BSON, который можно передать любому методу, ожидающему фильтр запроса.
+Класс Filters — это замена QueryBuilder устаревшего API.
+Методы в Filters классифицируются по типу выполняемых операций: условные, логические, работа с массивами, проверка существования поля и его типа, побитовые и геопространственные.
+Рассмотрим некоторые часто используемые методы Filters.
+4.1. Метод eq()
+Метод Filters.eq() создает фильтр для получения документов, в которых значение поля равно указанному значению.
+Для начала выполним запрос в MongoDB Shell для поиска в коллекции user документов с полем userName равным "Jack":
+db.getCollection('user').find({"userName":"Jack"})
+Приведенный выше запрос возвращает один документ:
+{
+    "_id" : ObjectId("6357c4736c9084bcac72eced"),
+    "userId" : "123",
+    "userName" : "Jack",
+    "age" : 23.0,
+    "role" : "Admin"
+}
+Далее напишем аналогичный запрос с использованием Filters:
+Bson filter = Filters.eq("userName", "Jack");
+FindIterable<Document> documents = collection.find(filter);
+
+MongoCursor<Document> cursor = documents.iterator();
+while (cursor.hasNext()) {
+    System.out.println(cursor.next());
+}
+Можно заметить, что метод Filters.eq() возвращает тип BSON, который затем передается в метод find() в качестве фильтра.
+Также есть метод Filters.ne(), который прямо противоположен методу Filters.eq() — выбираются все документы со значением поля не равным указанному значению:
+Bson filter = Filters.ne("userName", "Jack");
+FindIterable<Document> documents = collection.find(filter);
+
+MongoCursor<Document> cursor = documents.iterator();
+while (cursor.hasNext()) {
+    System.out.println(cursor.next());
+}
+4.2. Метод gt()
+Метод Filters.gt() создает фильтр для получения документов, в которых значение поля больше заданного значения.
+Рассмотрим следующий пример:
+Bson filter = Filters.gt("age", 25);
+FindIterable<Document> documents = collection.find(filter);
+
+MongoCursor<Document> cursor = documents.iterator();
+while (cursor.hasNext()) {
+    System.out.println(cursor.next());
+}
+В приведенном примере извлекаются документы, в которых возраст (age) превышает 25 лет. 
+Аналогично методу Filters.gt(), есть метод Filters.lt(), который соответствует документам, имеющим значение поля меньше указанного:
+Bson filter = Filters.lt("age", 25);
+FindIterable<Document> documents = collection.find(filter);
+
+MongoCursor<Document> cursor = documents.iterator();
+while (cursor.hasNext()) {
+    System.out.println(cursor.next());
+}
+Существуют еще методы Filters.gte() и Filters.lte(), которые соответствуют значениям "больше или равно" и "меньше или равно" соответственно.
+4.3. Метод in()
+Метод Filters.in() создаёт фильтр для получения документов, в которых значение поля равно одному из значений в списке.
+Давайте посмотрим на пример:
+Bson filter = Filters.in("userName", "Jack", "Lisa");
+FindIterable<Document> documents = collection.find(filter);
+
+MongoCursor<Document> cursor = documents.iterator();
+while (cursor.hasNext()) {
+    System.out.println(cursor.next());
+}
+Здесь мы получаем документы, в которых userName равно "Jack" или "Lisa".
+Подобно методу Filters.in() есть метод Filters.nin(), который выбирает документы со значением поля не равным ни одному из значений списка:
+Bson filter = Filters.nin("userName", "Jack", "Lisa");
+FindIterable<Document> documents = collection.find(filter);
+
+MongoCursor<Document> cursor = documents.iterator();
+while (cursor.hasNext()) {
+    System.out.println(cursor.next());
+}
+4.4. Метод and()
+Метод Filters.and() создает фильтр, выполняющий логическую операцию "И" для переданного списка фильтров.
+Давайте найдем пользователей с возрастом (age) больше 25 лет и ролью (role) "Admin":
+Bson filter = Filters.and(Filters.gt("age", 25), Filters.eq("role", "Admin"));
+FindIterable<Document> documents = collection.find(filter);
+
+MongoCursor<Document> cursor = documents.iterator();
+while (cursor.hasNext()) {
+    System.out.println(cursor.next());
+}
+4.5. Метод or()
+Как и следовало ожидать, метод Filters.or() выполняет логическую операцию "ИЛИ".
+Давайте напишем пример, который возвращает пользователей с возрастом (age) больше 30 или ролью (role) "Admin":
+Bson filter = Filters.or(Filters.gt("age", 30), Filters.eq("role", "Admin"));
+FindIterable<Document> documents = collection.find(filter);
+
+MongoCursor<Document> cursor = documents.iterator();
+while (cursor.hasNext()) {
+    System.out.println(cursor.next());
+}
+4.6. Метод exists()
+Метод Filters.exists() ищет документы, в которых присутствует указанное поле.
+Bson filter = Filters.exists("type");
+FindIterable<Document> documents = collection.find(filter);
+
+MongoCursor<Document> cursor = documents.iterator();
+while (cursor.hasNext()) {
+    System.out.println(cursor.next());
+}
+Приведенный выше код возвращает документы коллекции user, в которых есть поле type.
+4.7. Метод regex()
+Наконец, метод Filters.regex() проверяет поле документа на соответствие заданному регулярному выражению.
+Bson filter = Filters.regex("userName", "a");
+FindIterable<Document> documents = collection.find(filter);
+
+MongoCursor<Document> cursor = documents.iterator();
+while (cursor.hasNext()) {
+    System.out.println(cursor.next());
+}
+Здесь мы извлекаем все документы, в которых userName соответствует регулярному выражению "a".
+Мы рассмотрели некоторые из наиболее часто используемых операторов фильтрации. В качестве фильтра в методе find() можно использовать любую комбинацию операторов фильтрации.
+Более того, фильтры могут использоваться и в других местах, например, в пайплайне агрегации, в методах deleteOne() и updateOne() и др.
+5. Заключение
+В этой статье мы обсудили, как использовать билдер Filters для выполнения операций фильтрации коллекций MongoDB. 
+Полный код всех примеров доступен на GitHub.
+На пути от монолита к микросервисам нас ожидают множество мелких неприятностей, которые могут стать серьезной проблемой по мере развития проекта. Скоро пройдет открытый урок, на котором мы рассмотрим, как легко и изящно можно их преодолеть с помощью инструментов от Spring Cloud. Регистрируйтесь по ссылке. 1. Обзор В этой статье разберемся, как использовать класс Filters для запросов к MongoDB. Filters Filters MongoDB MongoDB Класс Filters представляет собой билдер для удобного написания фильтров запросов. Фильтры — это некоторые условные операции, которые MongoDB использует для ограничения результатов. 2. Типы билдеров Драйвер MongoDB для Java предоставляет несколько типов билдеров, упрощающих создание BSON-документов и предоставляющих удобный API для выполнения различных CRUD-операций и агрегации. билдеров билдеров BSON BSON Доступны следующие билдеры: Filters — фильтры запросов;
+Projections — проекции (какие поля включить, а какие исключить из результата);
+Sorts — критерии сортировки;
+Updates — операции обновления;
+Aggregates — пайплайны агрегации (aggregation pipeline);
+Indexes — создание индексов. Filters — фильтры запросов; Filters — фильтры запросов; Projections — проекции (какие поля включить, а какие исключить из результата); Projections — проекции (какие поля включить, а какие исключить из результата); Sorts — критерии сортировки; Sorts — критерии сортировки; Updates — операции обновления; Updates — операции обновления; Aggregates — пайплайны агрегации (aggregation pipeline); Aggregates — пайплайны агрегации (aggregation pipeline); Indexes — создание индексов. Indexes — создание индексов. Далее рассмотрим использование Filters. 3. Инициализация базы данных Начнем с создания базы данных и коллекции user, на примере которой и будем рассматривать различные операции фильтрации. use baeldung;
+db.createCollection("user"); use baeldung;
+db.createCollection("user"); "user" Заполним коллекцию user несколькими документами: db.user.insertMany([
+{
+    "userId":"123",
+    "userName":"Jack",
+    "age":23,
+    "role":"Admin"
+},
+{
+    "userId":"456",
+    "userName":"Lisa",
+    "age":27,
+    "role":"Admin",
+    "type":"Web"
+},
+{
+    "userId":"789",
+    "userName":"Tim",
+    "age":31,
+    "role":"Analyst"
+}]); db.user.insertMany([
+{
+    "userId":"123",
+    "userName":"Jack",
+    "age":23,
+    "role":"Admin"
+},
+{
+    "userId":"456",
+    "userName":"Lisa",
+    "age":27,
+    "role":"Admin",
+    "type":"Web"
+},
+{
+    "userId":"789",
+    "userName":"Tim",
+    "age":31,
+    "role":"Analyst"
+}]); "userId" "123" "userName" "Jack" "age" 23 "role" "Admin" "userId" "456" "userName" "Lisa" "age" 27 "role" "Admin" "type" "Web" "userId" "789" "userName" "Tim" "age" 31 "role" "Analyst" При выполнении успешной вставки получим следующий ответ: {
+    "acknowledged" : true,
+    "insertedIds" : [
+        ObjectId("6357c4736c9084bcac72eced"),
+        ObjectId("6357c4736c9084bcac72ecee"),
+        ObjectId("6357c4736c9084bcac72ecef")
+    ]
+} {
+    "acknowledged" : true,
+    "insertedIds" : [
+        ObjectId("6357c4736c9084bcac72eced"),
+        ObjectId("6357c4736c9084bcac72ecee"),
+        ObjectId("6357c4736c9084bcac72ecef")
+    ]
+} "acknowledged" true "insertedIds" "6357c4736c9084bcac72eced" "6357c4736c9084bcac72ecee" "6357c4736c9084bcac72ecef" 4. Использование класса Filters В классе Filters содержатся статические фабричные методы, выполняющие различные операции фильтрации в MongoDB. Каждый из этих методов возвращает экземпляры интерфейса BSON, который можно передать любому методу, ожидающему фильтр запроса. Класс Filters — это замена QueryBuilder устаревшего API. Класс Filters — это замена QueryBuilder QueryBuilder QueryBuilder устаревшего API. Методы в Filters классифицируются по типу выполняемых операций: условные, логические, работа с массивами, проверка существования поля и его типа, побитовые и геопространственные. Filters Рассмотрим некоторые часто используемые методы Filters. Filters 4.1. Метод eq() Метод Filters.eq() создает фильтр для получения документов, в которых значение поля равно указанному значению. Filters.eq() равно указанному значению Для начала выполним запрос в MongoDB Shell для поиска в коллекции user документов с полем userName равным "Jack": userName "Jack" db.getCollection('user').find({"userName":"Jack"}) db.getCollection('user').find({"userName":"Jack"}) 'user' "userName" "Jack" Приведенный выше запрос возвращает один документ: {
+    "_id" : ObjectId("6357c4736c9084bcac72eced"),
+    "userId" : "123",
+    "userName" : "Jack",
+    "age" : 23.0,
+    "role" : "Admin"
+} {
+    "_id" : ObjectId("6357c4736c9084bcac72eced"),
+    "userId" : "123",
+    "userName" : "Jack",
+    "age" : 23.0,
+    "role" : "Admin"
+} "_id" "6357c4736c9084bcac72eced" "userId" "123" "userName" "Jack" "age" 23.0 "role" "Admin" Далее напишем аналогичный запрос с использованием Filters: Filters Bson filter = Filters.eq("userName", "Jack");
+FindIterable<Document> documents = collection.find(filter);
+
+MongoCursor<Document> cursor = documents.iterator();
+while (cursor.hasNext()) {
+    System.out.println(cursor.next());
+} Bson filter = Filters.eq("userName", "Jack");
+FindIterable<Document> documents = collection.find(filter);
+
+MongoCursor<Document> cursor = documents.iterator();
+while (cursor.hasNext()) {
+    System.out.println(cursor.next());
+} "userName" "Jack" while Можно заметить, что метод Filters.eq() возвращает тип BSON, который затем передается в метод find() в качестве фильтра. Filters.eq() find() find() Также есть метод Filters.ne(), который прямо противоположен методу Filters.eq() — выбираются все документы со значением поля не равным указанному значению: Filters.ne() Filters.eq() Bson filter = Filters.ne("userName", "Jack");
+FindIterable<Document> documents = collection.find(filter);
+
+MongoCursor<Document> cursor = documents.iterator();
+while (cursor.hasNext()) {
+    System.out.println(cursor.next());
+} Bson filter = Filters.ne("userName", "Jack");
+FindIterable<Document> documents = collection.find(filter);
+
+MongoCursor<Document> cursor = documents.iterator();
+while (cursor.hasNext()) {
+    System.out.println(cursor.next());
+} "userName" "Jack" while 4.2. Метод gt() Метод Filters.gt() создает фильтр для получения документов, в которых значение поля больше заданного значения. Filters.gt()  Рассмотрим следующий пример: Bson filter = Filters.gt("age", 25);
+FindIterable<Document> documents = collection.find(filter);
+
+MongoCursor<Document> cursor = documents.iterator();
+while (cursor.hasNext()) {
+    System.out.println(cursor.next());
+} Bson filter = Filters.gt("age", 25);
+FindIterable<Document> documents = collection.find(filter);
+
+MongoCursor<Document> cursor = documents.iterator();
+while (cursor.hasNext()) {
+    System.out.println(cursor.next());
+} "age" 25 while В приведенном примере извлекаются документы, в которых возраст (age) превышает 25 лет.  Аналогично методу Filters.gt(), есть метод Filters.lt(), который соответствует документам, имеющим значение поля меньше указанного: Filters.gt() Filters.lt() Bson filter = Filters.lt("age", 25);
+FindIterable<Document> documents = collection.find(filter);
+
+MongoCursor<Document> cursor = documents.iterator();
+while (cursor.hasNext()) {
+    System.out.println(cursor.next());
+} Bson filter = Filters.lt("age", 25);
+FindIterable<Document> documents = collection.find(filter);
+
+MongoCursor<Document> cursor = documents.iterator();
+while (cursor.hasNext()) {
+    System.out.println(cursor.next());
+} "age" 25 while Существуют еще методы Filters.gte() и Filters.lte(), которые соответствуют значениям "больше или равно" и "меньше или равно" соответственно. Filters.gte() Filters.lte() 4.3. Метод in() Метод Filters.in() создаёт фильтр для получения документов, в которых значение поля равно одному из значений в списке. Filters.in()  Давайте посмотрим на пример: Bson filter = Filters.in("userName", "Jack", "Lisa");
+FindIterable<Document> documents = collection.find(filter);
+
+MongoCursor<Document> cursor = documents.iterator();
+while (cursor.hasNext()) {
+    System.out.println(cursor.next());
+} Bson filter = Filters.in("userName", "Jack", "Lisa");
+FindIterable<Document> documents = collection.find(filter);
+
+MongoCursor<Document> cursor = documents.iterator();
+while (cursor.hasNext()) {
+    System.out.println(cursor.next());
+} "userName" "Jack" "Lisa" while Здесь мы получаем документы, в которых userName равно "Jack" или "Lisa". userName Подобно методу Filters.in() есть метод Filters.nin(), который выбирает документы со значением поля не равным ни одному из значений списка: Filters.in() Filters.nin() Bson filter = Filters.nin("userName", "Jack", "Lisa");
+FindIterable<Document> documents = collection.find(filter);
+
+MongoCursor<Document> cursor = documents.iterator();
+while (cursor.hasNext()) {
+    System.out.println(cursor.next());
+} Bson filter = Filters.nin("userName", "Jack", "Lisa");
+FindIterable<Document> documents = collection.find(filter);
+
+MongoCursor<Document> cursor = documents.iterator();
+while (cursor.hasNext()) {
+    System.out.println(cursor.next());
+} "userName" "Jack" "Lisa" while 4.4. Метод and() Метод Filters.and() создает фильтр, выполняющий логическую операцию "И" для переданного списка фильтров. Filters.and() Давайте найдем пользователей с возрастом (age) больше 25 лет и ролью (role) "Admin": Bson filter = Filters.and(Filters.gt("age", 25), Filters.eq("role", "Admin"));
+FindIterable<Document> documents = collection.find(filter);
+
+MongoCursor<Document> cursor = documents.iterator();
+while (cursor.hasNext()) {
+    System.out.println(cursor.next());
+} Bson filter = Filters.and(Filters.gt("age", 25), Filters.eq("role", "Admin"));
+FindIterable<Document> documents = collection.find(filter);
+
+MongoCursor<Document> cursor = documents.iterator();
+while (cursor.hasNext()) {
+    System.out.println(cursor.next());
+} "age" 25 "role" "Admin" while 4.5. Метод or() Как и следовало ожидать, метод Filters.or() выполняет логическую операцию "ИЛИ". Filters.or() Давайте напишем пример, который возвращает пользователей с возрастом (age) больше 30 или ролью (role) "Admin": Bson filter = Filters.or(Filters.gt("age", 30), Filters.eq("role", "Admin"));
+FindIterable<Document> documents = collection.find(filter);
+
+MongoCursor<Document> cursor = documents.iterator();
+while (cursor.hasNext()) {
+    System.out.println(cursor.next());
+} Bson filter = Filters.or(Filters.gt("age", 30), Filters.eq("role", "Admin"));
+FindIterable<Document> documents = collection.find(filter);
+
+MongoCursor<Document> cursor = documents.iterator();
+while (cursor.hasNext()) {
+    System.out.println(cursor.next());
+} "age" 30 "role" "Admin" while 4.6. Метод exists() Метод Filters.exists() ищет документы, в которых присутствует указанное поле. Filters.exists() Bson filter = Filters.exists("type");
+FindIterable<Document> documents = collection.find(filter);
+
+MongoCursor<Document> cursor = documents.iterator();
+while (cursor.hasNext()) {
+    System.out.println(cursor.next());
+} Bson filter = Filters.exists("type");
+FindIterable<Document> documents = collection.find(filter);
+
+MongoCursor<Document> cursor = documents.iterator();
+while (cursor.hasNext()) {
+    System.out.println(cursor.next());
+} "type" while Приведенный выше код возвращает документы коллекции user, в которых есть поле type. user type 4.7. Метод regex() Наконец, метод Filters.regex() проверяет поле документа на соответствие заданному регулярному выражению. Filters.regex()  Bson filter = Filters.regex("userName", "a");
+FindIterable<Document> documents = collection.find(filter);
+
+MongoCursor<Document> cursor = documents.iterator();
+while (cursor.hasNext()) {
+    System.out.println(cursor.next());
+} Bson filter = Filters.regex("userName", "a");
+FindIterable<Document> documents = collection.find(filter);
+
+MongoCursor<Document> cursor = documents.iterator();
+while (cursor.hasNext()) {
+    System.out.println(cursor.next());
+} "userName" "a" while Здесь мы извлекаем все документы, в которых userName соответствует регулярному выражению "a". userName Мы рассмотрели некоторые из наиболее часто используемых операторов фильтрации. В качестве фильтра в методе find() можно использовать любую комбинацию операторов фильтрации. find() операторов фильтрации операторов фильтрации Более того, фильтры могут использоваться и в других местах, например, в пайплайне агрегации, в методах deleteOne() и updateOne() и др. deleteOne() updateOne() 5. Заключение В этой статье мы обсудили, как использовать билдер Filters для выполнения операций фильтрации коллекций MongoDB.  Полный код всех примеров доступен на GitHub. GitHub GitHub  На пути от монолита к микросервисам нас ожидают множество мелких неприятностей, которые могут стать серьезной проблемой по мере развития проекта. Скоро пройдет открытый урок, на котором мы рассмотрим, как легко и изящно можно их преодолеть с помощью инструментов от Spring Cloud. Регистрируйтесь по ссылке. по ссылке. ]]></text>
+</doc>

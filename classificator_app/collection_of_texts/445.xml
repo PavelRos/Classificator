@@ -1,0 +1,743 @@
+<?xml version="1.0" ?>
+<doc>
+	<label auto="true" type="str" verify="true"><![CDATA[Develop]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[dancheg]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-12-05, 00:04]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/post/703408/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Gitea + Drone + Nginx + Portainer. Пошаговое руководство по деплою аналога github на своём железе]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Nginx]]></item>
+		<item type="str"><![CDATA[Git]]></item>
+		<item type="str"><![CDATA[Go]]></item>
+		<item type="str"><![CDATA[DevOps]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[drone]]></item>
+		<item type="str"><![CDATA[nginx]]></item>
+		<item type="str"><![CDATA[portainer]]></item>
+		<item type="str"><![CDATA[gitea]]></item>
+		<item type="str"><![CDATA[lego]]></item>
+		<item type="str"><![CDATA[go]]></item>
+		<item type="str"><![CDATA[git]]></item>
+		<item type="str"><![CDATA[self]]></item>
+		<item type="str"><![CDATA[self-hosted]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[Всем привет!
+В данном туториале я расскажу вам как можно задеплоить gitea на своём железе с использованием docker-compose подключить drone, для возможности автоматизации тестирования и доставки собственных приложений, настроить reverse-proxy через nginx для доступа через сеть и включить portainer для мониторинга запущенных контейнеров.
+Шаг 1 - проверяем наличие необходимых программ
+Для запуска полного стека нам будет необходим следующий софт:
+docker - стоит v20.10.21, хотя версии больше 18 должны подойти;
+docker-compose - главное что бы поддерживался compose v3, у меня стоит 2.12.2;
+go - golang v1.19.3+ будет использоваться для получения сертификатов через lego, тем кто не планирует размещение сайта данный пункт можно пропустить.
+Инструкций по установке в зависимости от системы более чем достаточно, установка не должна быть сложной. Для проверки, что всё в норме можно запустить данный скрипт:
+go version;docker version;docker compose version
+Скрипт должен показать установленные версии программ.
+Шаг 2 - запускаем локальный инстанс gitea
+Минимальный compose для запуска локального инстанса выглядит следующим образом:
+services:
+  gitea:
+    image: gitea/gitea:1.17.3
+    container_name: gitea
+    restart: unless-stopped
+    environment:
+      USER_UID: 1000
+      USER_GID: 1000
+      GITEA__server__APP_DATA_PATH: /data/gitea
+      GITEA__server__DOMAIN: localhost
+      GITEA__server__HTTP_PORT: 80
+      GITEA__server__ROOT_URL: http://localhost/
+    volumes:
+      - ./gitea:/data
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    ports:
+      - 80:80
+Создаем рабочую директорию, в ней файл docker-compose.yml и добавляем туда следующее содержимое. После запускаем команду docker compose up.
+После мы можем перейти в браузере по адресу localhost, порт можно не указывать, и мы должны увидеть окно настройки gitea:
+Параметры менять не обязательно, можно оставить всё как есть и запустить локальную копию. После небольшого ожидания мы должны увидеть локальную версию gitea, уже готовую к использованию.
+У gitea очень большой набор настроек, и список различных модификаций, далее постараюсь подсветить список самого интересного для первого запуска:
+DEFAULT_USER_IS_RESTRICTED (service) - позволяет ограничить в правах новых пользователей (не могут просматривать контент и выполнять никакие действия), подойдет для закрытых команд;
+MAX_CREATION_LIMIT (repository) - пользователи могут просматривать репозитории и создавать issue, но ограниченны определенным количеством в создании собственных;
+PROTOCOL (server) - будет ли использоваться http или https, если планируется выносить сайт в сеть, то строго рекомендуется использовать https или настроить https после через nginx;
+DOMAIN (server) - название домена сервера, которое в случае использование поддомена должно так же включать и его sub.example.pw;
+ROOT_URL (server) - должен совпадать с используемой ссылкой и включать http:// или https://.
+Полный список настроек есть на официальном сайте.
+Так же есть много различных опций по настройке тем, плагинов и других плюшек.
+Шаг 3 - подключаем drone-ci
+Далее можно подключить к gitea дрона, что бы автоматизировать процесс тестирования и анализа кода:
+Дрон подключается к gitea как сторонее приложение и требует предоставления ему соответствующих прав, через графу настройки -> приложения:
+Там нужно указать название приложения и его адрес для перехода по ссылке в формате:
+http://localhost:81/login - протокол, хост, порт, /login
+И после создать кнопку создать приложение, сохраненные secret/ client_id сохранить для compose. Далее необходимо сгенерировать токен в этой же вкладке, опять же для compose.
+Теперь добавим дрон в сам с полученными параметрами docker-compose:
+services:
+  gitea:
+    image: gitea/gitea:1.17.3
+    container_name: gitea
+    restart: unless-stopped
+    environment:
+      USER_UID: 1000
+      USER_GID: 1000
+      GITEA__server__APP_DATA_PATH: /data/gitea
+      GITEA__server__DOMAIN: localhost
+      GITEA__server__HTTP_PORT: 80
+      GITEA__server__ROOT_URL: http://localhost/
+    volumes:
+      - ./gitea:/data
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    ports:
+      - 80:80
+
+  drone:
+    image: drone/drone:2.15
+    container_name: drone
+    restart: unless-stopped
+    environment:
+      DRONE_DATABASE_DRIVER: sqlite3
+      DRONE_DATABASE_DATASOURCE: /data/database.sqlite
+      DRONE_GITEA_SERVER: http://localhost/
+      DRONE_GIT_ALWAYS_AUTH: false
+      DRONE_RPC_SECRET: very-secret
+      DRONE_SERVER_PROTO: http
+      DRONE_SERVER_HOST: localhost:81
+      DRONE_TLS_AUTOCERT: false
+      DRONE_USER_CREATE: username:dancheg97,machine:false,admin:true,token:55f24eb3d61ef6ac5e83d550178638dc
+      DRONE_GITEA_CLIENT_ID: 1445cb69-6bf9-4803-beec-f914477b8053
+      DRONE_GITEA_CLIENT_SECRET: gto_2rybvjtwcmcbd2k2k3exm5sguipdb6xjngv5n5jfjdszg6onwyva
+    volumes:
+      - ./drone:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - 81:80
+    depends_on:
+      - gitea
+
+  drone-runner:
+    image: drone/drone-runner-docker:1.8.2
+    container_name: droner
+    restart: unless-stopped
+    environment:
+      DRONE_RPC_PROTO: http
+      DRONE_RPC_HOST: drone
+      DRONE_RPC_SECRET: very-secret
+      DRONE_RUNNER_NAME: drone-runner
+      DRONE_RUNNER_CAPACITY: 2
+      DRONE_RUNNER_NETWORKS: habrz_default
+      DRONE_DEBUG: false
+      DRONE_TRACE: false
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - drone
+Полученный токен идет в env DRONE_USER_CREATE, после token. Запускаем compose и подключаем drone.
+Если запутались в процессе настройки, то тут официальная дока.
+Авторизуем приложение и можем настроить дрон. В данный момент drone может начать выдавать ошибку:
+invalid character '<' looking for beginning of value
+Не стоит из-за этого сильно переживать, тк после настройки nginx данная проблема быстро решается.
+Шаг 4 - перенаправляем трафик на наш ip адрес, при необходимости настраиваем маршрутизатор.
+Сейчас наша задача - перенаправить весь входящий трафик на нашу железку, что бы при переходе по ссылке можно было всегда попадать в одно место.
+Как правило данное действие состоит из двух этапов, во-первых - перенаправляем DNS записи у предоставителя нашего домена (на fozzy это выглядит так, сильных отличий в других местах быть не должно, интерфейс будет однообразен):
+Для каждого поддомена рекомендуется создать отдельную запись.
+Далее необходимо перенаправить трафик в роутере в локальной сети (в случае с использованием виртуалки достаточно просто открыть порты).
+На моём роутере это выглядит примерно так:
+Шаг 5 - настраиваем nginx
+Теперь когда у нас уже есть gitea и drone, можно приступить к настройке nginx:
+  nginx:
+    image: nginx:1.23-alpine
+    container_name: nginx
+    restart: unless-stopped
+    ports:
+      - 80:80
+      - 443:443
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/nginx.conf:ro
+      - ./.lego/certificates:/certs:ro
+      - ./web:/web:ro
+    depends_on:
+      - gitea
+      - drone
+Добавляем следующие строки в уже написанный docker-compose. Так мы добавим nginx к существующим сервисам, но сначала нам нужно прописать конфиг для nginx.
+Я буду писать его в файле - nginx/nginx.conf (и потом маунтить его в докер).
+Он будет включать 2 пункта - в зависимости от поддомена (которые вы можете задать как хотите) будет перенаправлять трафик на запущенные контейнеры:
+server {
+    listen 80;
+    listen 443 ssl;
+    server_name gitea.dancheg97.ru;
+    ssl_certificate /certs/gitea.example.pw.crt;
+    ssl_certificate_key /certs/gitea.example.pw.key;
+    location / {
+        proxy_pass http://gitea/;
+    }
+}
+
+server {
+    listen 80;
+    listen 443 ssl;
+    server_name drone.dancheg97.ru;
+    ssl_certificate /certs/drone.example.pw.crt;
+    ssl_certificate_key /certs/drone.example.pw.key;
+    location / {
+        proxy_pass http://drone/;
+    }
+}
+Теперь мы установим cli-утилиту которая называется lego и получим бесплатные сертификаты запустив данный скрипт в нашей директории с docker-compose.yml файлом.
+go install github.com/go-acme/lego/v4/cmd/lego@latest
+sudo lego --email="mail@gmail.com" --domains="gitea.example.pw" --http run
+sudo lego --email="mail@gmail.com" --domains="drone.example.pw" --http run
+sudo chown -R dancheg97:dancheg97 .lego
+при этом певая строка - установка сертбота, последняя - предоставление доступа к сертам всем пользователям на устройстве (замените имя на своего пользователя).
+Далее мы можем запускать nginx вместе с остальными контейнерами.
+Шаг 6 - Подключаем portainer
+Теперь мы можем опционально подключить портейнер (не всем это нужно, даже без него у нас есть рабочая конфигурация).
+Далее этого добавим в compose еще 1 сервис:
+  portainer:
+    image: portainer/portainer-ce:2.0.0
+    container_name: portainer
+    command: -H unix:///var/run/docker.sock
+    restart: always
+    environment:
+      - VIRTUAL_HOST=portainer.example.pw
+      - VIRTUAL_PORT=9000
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./portainer:/data
+И выполним похожие действия по настройке домена/серта/nginx-a.
+Настроенный портейнер позволит мониторить состояние остальных сервисов:
+Данный сетап позволяет полностью уйти от использования внешних систем контроля версий (в моём случае - github) и оставлять все свои данные на собственных носителях. Настройка требует времени, но появляются следующие плюшки:
+Полностью open-source + self-hosted стек.
+Полный контроль за всеми данными в системе, отсутствие облаков и третьих лиц.
+Удобный drone-ci для автоматизации операций с контейнерами.
+Возможность моментальной автоматической выкладки в сеть верифицированного контента.
+При наличии свободной железки (старый ноут или raspberry), система будет обходится примерно в 200Р в месяц в зависимости от стоимости домена/статического ip адреса у провайдера.
+Мой собственный инстанс после настройки тем и других докрутов выглядит примерно так:
+https://gitea.dancheg97.ru/
+Моя версия docker-compose.yml (многое докрутил под себя):
+services:
+  nginx:
+    image: nginx:1.23-alpine
+    container_name: nginx
+    restart: unless-stopped
+    ports:
+      - 80:80
+      - 443:443
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/nginx.conf:ro
+      - ./.lego/certificates:/certs:ro
+      - ./web:/web:ro
+    depends_on:
+      - gitea
+      - drone
+
+  gitea:
+    image: gitea/gitea:1.17.3
+    container_name: gitea
+    restart: unless-stopped
+    environment:
+      USER_UID: 1000
+      USER_GID: 1000
+      GITEA__server__APP_DATA_PATH: /data/gitea
+      GITEA__server__DOMAIN: gitea.dancheg97.ru
+      GITEA__server__SSH_DOMAIN: gitea.dancheg97.ru
+      GITEA__server__HTTP_PORT: 80
+      GITEA__server__ROOT_URL: https://gitea.dancheg97.ru/
+      GITEA__server__DISABLE_SSH: false
+      GITEA__server__SSH_PORT: 22
+      GITEA__server__SSH_LISTEN_PORT: 22
+      GITEA__server__LFS_START_SERVER: true
+      GITEA__server__LFS_JWT_SECRET: xxx
+      GITEA__server__OFFLINE_MODE: false
+      GITEA__ui__THEMES: gitea,arc-green,plex,aquamarine,dark,dracula,hotline,organizr,space-gray,hotpink,onedark,overseerr,nord,earl-grey
+      GITEA__ui__DEFAULT_THEME: earl-grey
+      GITEA__service_DISABLE_REGISTRATION: false
+      GITEA__service_REQUIRE_SIGNIN_VIEW: false
+      GITEA__service_REGISTER_EMAIL_CONFIRM: false
+      GITEA__service_ENABLE_NOTIFY_MAIL: false
+      GITEA__service_ALLOW_ONLY_EXTERNAL_REGISTRATION: false
+      GITEA__service_ENABLE_CAPTCHA: false
+      GITEA__service_DEFAULT_KEEP_EMAIL_PRIVATE: false
+      GITEA__service_DEFAULT_ALLOW_CREATE_ORGANIZATION: true
+      GITEA__service_DEFAULT_ENABLE_TIMETRACKING: true
+      GITEA__service_NO_REPLY_ADDRESS: noreply.localhost
+      GITEA__service_DEFAULT_USER_IS_RESTRICTED: true
+    volumes:
+      - ./gitea:/data
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+
+  drone:
+    image: drone/drone:2.15
+    container_name: drone
+    restart: unless-stopped
+    environment:
+      DRONE_DATABASE_DRIVER: sqlite3
+      DRONE_DATABASE_DATASOURCE: /data/database.sqlite
+      DRONE_GITEA_SERVER: https://gitea.dancheg97.ru/
+      DRONE_GIT_ALWAYS_AUTH: false
+      DRONE_RPC_SECRET: xxx
+      DRONE_SERVER_PROTO: https
+      DRONE_SERVER_HOST: drone.dancheg97.ru
+      DRONE_TLS_AUTOCERT: false
+      DRONE_USER_CREATE: xxx
+      DRONE_GITEA_CLIENT_ID: xxx
+      DRONE_GITEA_CLIENT_SECRET: xxx
+    volumes:
+      - ./drone:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - gitea
+
+  drone-runner:
+    image: drone/drone-runner-docker:1.8.2
+    container_name: droner
+    restart: unless-stopped
+    environment:
+      DRONE_RPC_PROTO: http
+      DRONE_RPC_HOST: drone
+      DRONE_RPC_SECRET: xxx
+      DRONE_RUNNER_NAME: drone-runner
+      DRONE_RUNNER_CAPACITY: 2
+      DRONE_RUNNER_NETWORKS: composer_default
+      DRONE_DEBUG: false
+      DRONE_TRACE: false
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - drone
+При наличии вопросов в настройке прошу обращаться: tlg @dancheg97 Всем привет! В данном туториале я расскажу вам как можно задеплоить gitea на своём железе с использованием docker-compose подключить drone, для возможности автоматизации тестирования и доставки собственных приложений, настроить reverse-proxy через nginx для доступа через сеть и включить portainer для мониторинга запущенных контейнеров. gitea docker-compose drone reverse-proxy nginx portainer   Шаг 1 - проверяем наличие необходимых программ Для запуска полного стека нам будет необходим следующий софт: docker - стоит v20.10.21, хотя версии больше 18 должны подойти;
+docker-compose - главное что бы поддерживался compose v3, у меня стоит 2.12.2;
+go - golang v1.19.3+ будет использоваться для получения сертификатов через lego, тем кто не планирует размещение сайта данный пункт можно пропустить. docker - стоит v20.10.21, хотя версии больше 18 должны подойти; docker - стоит v20.10.21, хотя версии больше 18 должны подойти; docker docker-compose - главное что бы поддерживался compose v3, у меня стоит 2.12.2; docker-compose - главное что бы поддерживался compose v3, у меня стоит 2.12.2; docker-compose go - golang v1.19.3+ будет использоваться для получения сертификатов через lego, тем кто не планирует размещение сайта данный пункт можно пропустить. go - golang v1.19.3+ будет использоваться для получения сертификатов через lego, тем кто не планирует размещение сайта данный пункт можно пропустить. go lego Инструкций по установке в зависимости от системы более чем достаточно, установка не должна быть сложной. Для проверки, что всё в норме можно запустить данный скрипт: go version;docker version;docker compose version go version;docker version;docker compose version Скрипт должен показать установленные версии программ. Шаг 2 - запускаем локальный инстанс gitea Минимальный compose для запуска локального инстанса выглядит следующим образом: compose services:
+  gitea:
+    image: gitea/gitea:1.17.3
+    container_name: gitea
+    restart: unless-stopped
+    environment:
+      USER_UID: 1000
+      USER_GID: 1000
+      GITEA__server__APP_DATA_PATH: /data/gitea
+      GITEA__server__DOMAIN: localhost
+      GITEA__server__HTTP_PORT: 80
+      GITEA__server__ROOT_URL: http://localhost/
+    volumes:
+      - ./gitea:/data
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    ports:
+      - 80:80 services:
+  gitea:
+    image: gitea/gitea:1.17.3
+    container_name: gitea
+    restart: unless-stopped
+    environment:
+      USER_UID: 1000
+      USER_GID: 1000
+      GITEA__server__APP_DATA_PATH: /data/gitea
+      GITEA__server__DOMAIN: localhost
+      GITEA__server__HTTP_PORT: 80
+      GITEA__server__ROOT_URL: http://localhost/
+    volumes:
+      - ./gitea:/data
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    ports:
+      - 80:80 Создаем рабочую директорию, в ней файл docker-compose.yml и добавляем туда следующее содержимое. После запускаем команду docker compose up. docker-compose.yml docker compose up. После мы можем перейти в браузере по адресу localhost, порт можно не указывать, и мы должны увидеть окно настройки gitea: localhost gitea   Параметры менять не обязательно, можно оставить всё как есть и запустить локальную копию. После небольшого ожидания мы должны увидеть локальную версию gitea, уже готовую к использованию.   У gitea очень большой набор настроек, и список различных модификаций, далее постараюсь подсветить список самого интересного для первого запуска: gitea DEFAULT_USER_IS_RESTRICTED (service) - позволяет ограничить в правах новых пользователей (не могут просматривать контент и выполнять никакие действия), подойдет для закрытых команд;
+MAX_CREATION_LIMIT (repository) - пользователи могут просматривать репозитории и создавать issue, но ограниченны определенным количеством в создании собственных;
+PROTOCOL (server) - будет ли использоваться http или https, если планируется выносить сайт в сеть, то строго рекомендуется использовать https или настроить https после через nginx;
+DOMAIN (server) - название домена сервера, которое в случае использование поддомена должно так же включать и его sub.example.pw;
+ROOT_URL (server) - должен совпадать с используемой ссылкой и включать http:// или https://. DEFAULT_USER_IS_RESTRICTED (service) - позволяет ограничить в правах новых пользователей (не могут просматривать контент и выполнять никакие действия), подойдет для закрытых команд; DEFAULT_USER_IS_RESTRICTED (service) - позволяет ограничить в правах новых пользователей (не могут просматривать контент и выполнять никакие действия), подойдет для закрытых команд; DEFAULT_USER_IS_RESTRICTED service MAX_CREATION_LIMIT (repository) - пользователи могут просматривать репозитории и создавать issue, но ограниченны определенным количеством в создании собственных; MAX_CREATION_LIMIT (repository) - пользователи могут просматривать репозитории и создавать issue, но ограниченны определенным количеством в создании собственных; MAX_CREATION_LIMIT repository PROTOCOL (server) - будет ли использоваться http или https, если планируется выносить сайт в сеть, то строго рекомендуется использовать https или настроить https после через nginx; PROTOCOL (server) - будет ли использоваться http или https, если планируется выносить сайт в сеть, то строго рекомендуется использовать https или настроить https после через nginx; PROTOCOL server http https https https nginx DOMAIN (server) - название домена сервера, которое в случае использование поддомена должно так же включать и его sub.example.pw; DOMAIN (server) - название домена сервера, которое в случае использование поддомена должно так же включать и его sub.example.pw; DOMAIN server sub.example.pw ROOT_URL (server) - должен совпадать с используемой ссылкой и включать http:// или https://. ROOT_URL (server) - должен совпадать с используемой ссылкой и включать http:// или https://. ROOT_URL server http:// https:// Полный список настроек есть на официальном сайте. на официальном сайте Так же есть много различных опций по настройке тем, плагинов и других плюшек. настройке тем других плюшек Шаг 3 - подключаем drone-ci Далее можно подключить к gitea дрона, что бы автоматизировать процесс тестирования и анализа кода: gitea дрона   Дрон подключается к gitea как сторонее приложение и требует предоставления ему соответствующих прав, через графу настройки -> приложения: gitea настройки приложения   Там нужно указать название приложения и его адрес для перехода по ссылке в формате: http://localhost:81/login - протокол, хост, порт, /login http://localhost:81/login - протокол, хост, порт, /login http://localhost:81/login - протокол, хост, порт, /login http://localhost:81/login И после создать кнопку создать приложение, сохраненные secret/ client_id сохранить для compose. Далее необходимо сгенерировать токен в этой же вкладке, опять же для compose. secret client_id compose compose Теперь добавим дрон в сам с полученными параметрами docker-compose: docker-compose services:
+  gitea:
+    image: gitea/gitea:1.17.3
+    container_name: gitea
+    restart: unless-stopped
+    environment:
+      USER_UID: 1000
+      USER_GID: 1000
+      GITEA__server__APP_DATA_PATH: /data/gitea
+      GITEA__server__DOMAIN: localhost
+      GITEA__server__HTTP_PORT: 80
+      GITEA__server__ROOT_URL: http://localhost/
+    volumes:
+      - ./gitea:/data
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    ports:
+      - 80:80
+
+  drone:
+    image: drone/drone:2.15
+    container_name: drone
+    restart: unless-stopped
+    environment:
+      DRONE_DATABASE_DRIVER: sqlite3
+      DRONE_DATABASE_DATASOURCE: /data/database.sqlite
+      DRONE_GITEA_SERVER: http://localhost/
+      DRONE_GIT_ALWAYS_AUTH: false
+      DRONE_RPC_SECRET: very-secret
+      DRONE_SERVER_PROTO: http
+      DRONE_SERVER_HOST: localhost:81
+      DRONE_TLS_AUTOCERT: false
+      DRONE_USER_CREATE: username:dancheg97,machine:false,admin:true,token:55f24eb3d61ef6ac5e83d550178638dc
+      DRONE_GITEA_CLIENT_ID: 1445cb69-6bf9-4803-beec-f914477b8053
+      DRONE_GITEA_CLIENT_SECRET: gto_2rybvjtwcmcbd2k2k3exm5sguipdb6xjngv5n5jfjdszg6onwyva
+    volumes:
+      - ./drone:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - 81:80
+    depends_on:
+      - gitea
+
+  drone-runner:
+    image: drone/drone-runner-docker:1.8.2
+    container_name: droner
+    restart: unless-stopped
+    environment:
+      DRONE_RPC_PROTO: http
+      DRONE_RPC_HOST: drone
+      DRONE_RPC_SECRET: very-secret
+      DRONE_RUNNER_NAME: drone-runner
+      DRONE_RUNNER_CAPACITY: 2
+      DRONE_RUNNER_NETWORKS: habrz_default
+      DRONE_DEBUG: false
+      DRONE_TRACE: false
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - drone services:
+  gitea:
+    image: gitea/gitea:1.17.3
+    container_name: gitea
+    restart: unless-stopped
+    environment:
+      USER_UID: 1000
+      USER_GID: 1000
+      GITEA__server__APP_DATA_PATH: /data/gitea
+      GITEA__server__DOMAIN: localhost
+      GITEA__server__HTTP_PORT: 80
+      GITEA__server__ROOT_URL: http://localhost/
+    volumes:
+      - ./gitea:/data
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    ports:
+      - 80:80
+
+  drone:
+    image: drone/drone:2.15
+    container_name: drone
+    restart: unless-stopped
+    environment:
+      DRONE_DATABASE_DRIVER: sqlite3
+      DRONE_DATABASE_DATASOURCE: /data/database.sqlite
+      DRONE_GITEA_SERVER: http://localhost/
+      DRONE_GIT_ALWAYS_AUTH: false
+      DRONE_RPC_SECRET: very-secret
+      DRONE_SERVER_PROTO: http
+      DRONE_SERVER_HOST: localhost:81
+      DRONE_TLS_AUTOCERT: false
+      DRONE_USER_CREATE: username:dancheg97,machine:false,admin:true,token:55f24eb3d61ef6ac5e83d550178638dc
+      DRONE_GITEA_CLIENT_ID: 1445cb69-6bf9-4803-beec-f914477b8053
+      DRONE_GITEA_CLIENT_SECRET: gto_2rybvjtwcmcbd2k2k3exm5sguipdb6xjngv5n5jfjdszg6onwyva
+    volumes:
+      - ./drone:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - 81:80
+    depends_on:
+      - gitea
+
+  drone-runner:
+    image: drone/drone-runner-docker:1.8.2
+    container_name: droner
+    restart: unless-stopped
+    environment:
+      DRONE_RPC_PROTO: http
+      DRONE_RPC_HOST: drone
+      DRONE_RPC_SECRET: very-secret
+      DRONE_RUNNER_NAME: drone-runner
+      DRONE_RUNNER_CAPACITY: 2
+      DRONE_RUNNER_NETWORKS: habrz_default
+      DRONE_DEBUG: false
+      DRONE_TRACE: false
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - drone Полученный токен идет в env DRONE_USER_CREATE, после token. Запускаем compose и подключаем drone. DRONE_USER_CREATE, token. Если запутались в процессе настройки, то тут официальная дока. официальная дока    Авторизуем приложение и можем настроить дрон. В данный момент drone может начать выдавать ошибку: invalid character '<' looking for beginning of value invalid character '<' looking for beginning of value invalid character '<' looking for beginning of value Не стоит из-за этого сильно переживать, тк после настройки nginx данная проблема быстро решается. nginx Шаг 4 - перенаправляем трафик на наш ip адрес, при необходимости настраиваем маршрутизатор. Сейчас наша задача - перенаправить весь входящий трафик на нашу железку, что бы при переходе по ссылке можно было всегда попадать в одно место. Как правило данное действие состоит из двух этапов, во-первых - перенаправляем DNS записи у предоставителя нашего домена (на fozzy это выглядит так, сильных отличий в других местах быть не должно, интерфейс будет однообразен): fozzy   Для каждого поддомена рекомендуется создать отдельную запись. Далее необходимо перенаправить трафик в роутере в локальной сети (в случае с использованием виртуалки достаточно просто открыть порты). На моём роутере это выглядит примерно так:   Шаг 5 - настраиваем nginx Теперь когда у нас уже есть gitea и drone, можно приступить к настройке nginx:   nginx:
+    image: nginx:1.23-alpine
+    container_name: nginx
+    restart: unless-stopped
+    ports:
+      - 80:80
+      - 443:443
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/nginx.conf:ro
+      - ./.lego/certificates:/certs:ro
+      - ./web:/web:ro
+    depends_on:
+      - gitea
+      - drone   nginx:
+    image: nginx:1.23-alpine
+    container_name: nginx
+    restart: unless-stopped
+    ports:
+      - 80:80
+      - 443:443
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/nginx.conf:ro
+      - ./.lego/certificates:/certs:ro
+      - ./web:/web:ro
+    depends_on:
+      - gitea
+      - drone Добавляем следующие строки в уже написанный docker-compose. Так мы добавим nginx к существующим сервисам, но сначала нам нужно прописать конфиг для nginx. docker-compose Я буду писать его в файле - nginx/nginx.conf (и потом маунтить его в докер). nginx/nginx.conf Он будет включать 2 пункта - в зависимости от поддомена (которые вы можете задать как хотите) будет перенаправлять трафик на запущенные контейнеры: server {
+    listen 80;
+    listen 443 ssl;
+    server_name gitea.dancheg97.ru;
+    ssl_certificate /certs/gitea.example.pw.crt;
+    ssl_certificate_key /certs/gitea.example.pw.key;
+    location / {
+        proxy_pass http://gitea/;
+    }
+}
+
+server {
+    listen 80;
+    listen 443 ssl;
+    server_name drone.dancheg97.ru;
+    ssl_certificate /certs/drone.example.pw.crt;
+    ssl_certificate_key /certs/drone.example.pw.key;
+    location / {
+        proxy_pass http://drone/;
+    }
+} server {
+    listen 80;
+    listen 443 ssl;
+    server_name gitea.dancheg97.ru;
+    ssl_certificate /certs/gitea.example.pw.crt;
+    ssl_certificate_key /certs/gitea.example.pw.key;
+    location / {
+        proxy_pass http://gitea/;
+    }
+}
+
+server {
+    listen 80;
+    listen 443 ssl;
+    server_name drone.dancheg97.ru;
+    ssl_certificate /certs/drone.example.pw.crt;
+    ssl_certificate_key /certs/drone.example.pw.key;
+    location / {
+        proxy_pass http://drone/;
+    }
+} Теперь мы установим cli-утилиту которая называется lego и получим бесплатные сертификаты запустив данный скрипт в нашей директории с docker-compose.yml файлом. lego docker-compose.yml go install github.com/go-acme/lego/v4/cmd/lego@latest
+sudo lego --email="mail@gmail.com" --domains="gitea.example.pw" --http run
+sudo lego --email="mail@gmail.com" --domains="drone.example.pw" --http run
+sudo chown -R dancheg97:dancheg97 .lego go install github.com/go-acme/lego/v4/cmd/lego@latest
+sudo lego --email="mail@gmail.com" --domains="gitea.example.pw" --http run
+sudo lego --email="mail@gmail.com" --domains="drone.example.pw" --http run
+sudo chown -R dancheg97:dancheg97 .lego при этом певая строка - установка сертбота, последняя - предоставление доступа к сертам всем пользователям на устройстве (замените имя на своего пользователя). Далее мы можем запускать nginx вместе с остальными контейнерами. nginx Шаг 6 - Подключаем portainer Теперь мы можем опционально подключить портейнер (не всем это нужно, даже без него у нас есть рабочая конфигурация). Далее этого добавим в compose еще 1 сервис:   portainer:
+    image: portainer/portainer-ce:2.0.0
+    container_name: portainer
+    command: -H unix:///var/run/docker.sock
+    restart: always
+    environment:
+      - VIRTUAL_HOST=portainer.example.pw
+      - VIRTUAL_PORT=9000
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./portainer:/data   portainer:
+    image: portainer/portainer-ce:2.0.0
+    container_name: portainer
+    command: -H unix:///var/run/docker.sock
+    restart: always
+    environment:
+      - VIRTUAL_HOST=portainer.example.pw
+      - VIRTUAL_PORT=9000
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./portainer:/data И выполним похожие действия по настройке домена/серта/nginx-a. Настроенный портейнер позволит мониторить состояние остальных сервисов:   Данный сетап позволяет полностью уйти от использования внешних систем контроля версий (в моём случае - github) и оставлять все свои данные на собственных носителях. Настройка требует времени, но появляются следующие плюшки: github Полностью open-source + self-hosted стек.
+Полный контроль за всеми данными в системе, отсутствие облаков и третьих лиц.
+Удобный drone-ci для автоматизации операций с контейнерами.
+Возможность моментальной автоматической выкладки в сеть верифицированного контента. Полностью open-source + self-hosted стек. Полностью open-source + self-hosted стек. Полный контроль за всеми данными в системе, отсутствие облаков и третьих лиц. Полный контроль за всеми данными в системе, отсутствие облаков и третьих лиц. Удобный drone-ci для автоматизации операций с контейнерами. Удобный drone-ci для автоматизации операций с контейнерами. Возможность моментальной автоматической выкладки в сеть верифицированного контента. Возможность моментальной автоматической выкладки в сеть верифицированного контента. При наличии свободной железки (старый ноут или raspberry), система будет обходится примерно в 200Р в месяц в зависимости от стоимости домена/статического ip адреса у провайдера. Мой собственный инстанс после настройки тем и других докрутов выглядит примерно так: https://gitea.dancheg97.ru/ https://gitea.dancheg97.ru/ Моя версия docker-compose.yml (многое докрутил под себя): docker-compose.yml services:
+  nginx:
+    image: nginx:1.23-alpine
+    container_name: nginx
+    restart: unless-stopped
+    ports:
+      - 80:80
+      - 443:443
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/nginx.conf:ro
+      - ./.lego/certificates:/certs:ro
+      - ./web:/web:ro
+    depends_on:
+      - gitea
+      - drone
+
+  gitea:
+    image: gitea/gitea:1.17.3
+    container_name: gitea
+    restart: unless-stopped
+    environment:
+      USER_UID: 1000
+      USER_GID: 1000
+      GITEA__server__APP_DATA_PATH: /data/gitea
+      GITEA__server__DOMAIN: gitea.dancheg97.ru
+      GITEA__server__SSH_DOMAIN: gitea.dancheg97.ru
+      GITEA__server__HTTP_PORT: 80
+      GITEA__server__ROOT_URL: https://gitea.dancheg97.ru/
+      GITEA__server__DISABLE_SSH: false
+      GITEA__server__SSH_PORT: 22
+      GITEA__server__SSH_LISTEN_PORT: 22
+      GITEA__server__LFS_START_SERVER: true
+      GITEA__server__LFS_JWT_SECRET: xxx
+      GITEA__server__OFFLINE_MODE: false
+      GITEA__ui__THEMES: gitea,arc-green,plex,aquamarine,dark,dracula,hotline,organizr,space-gray,hotpink,onedark,overseerr,nord,earl-grey
+      GITEA__ui__DEFAULT_THEME: earl-grey
+      GITEA__service_DISABLE_REGISTRATION: false
+      GITEA__service_REQUIRE_SIGNIN_VIEW: false
+      GITEA__service_REGISTER_EMAIL_CONFIRM: false
+      GITEA__service_ENABLE_NOTIFY_MAIL: false
+      GITEA__service_ALLOW_ONLY_EXTERNAL_REGISTRATION: false
+      GITEA__service_ENABLE_CAPTCHA: false
+      GITEA__service_DEFAULT_KEEP_EMAIL_PRIVATE: false
+      GITEA__service_DEFAULT_ALLOW_CREATE_ORGANIZATION: true
+      GITEA__service_DEFAULT_ENABLE_TIMETRACKING: true
+      GITEA__service_NO_REPLY_ADDRESS: noreply.localhost
+      GITEA__service_DEFAULT_USER_IS_RESTRICTED: true
+    volumes:
+      - ./gitea:/data
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+
+  drone:
+    image: drone/drone:2.15
+    container_name: drone
+    restart: unless-stopped
+    environment:
+      DRONE_DATABASE_DRIVER: sqlite3
+      DRONE_DATABASE_DATASOURCE: /data/database.sqlite
+      DRONE_GITEA_SERVER: https://gitea.dancheg97.ru/
+      DRONE_GIT_ALWAYS_AUTH: false
+      DRONE_RPC_SECRET: xxx
+      DRONE_SERVER_PROTO: https
+      DRONE_SERVER_HOST: drone.dancheg97.ru
+      DRONE_TLS_AUTOCERT: false
+      DRONE_USER_CREATE: xxx
+      DRONE_GITEA_CLIENT_ID: xxx
+      DRONE_GITEA_CLIENT_SECRET: xxx
+    volumes:
+      - ./drone:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - gitea
+
+  drone-runner:
+    image: drone/drone-runner-docker:1.8.2
+    container_name: droner
+    restart: unless-stopped
+    environment:
+      DRONE_RPC_PROTO: http
+      DRONE_RPC_HOST: drone
+      DRONE_RPC_SECRET: xxx
+      DRONE_RUNNER_NAME: drone-runner
+      DRONE_RUNNER_CAPACITY: 2
+      DRONE_RUNNER_NETWORKS: composer_default
+      DRONE_DEBUG: false
+      DRONE_TRACE: false
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - drone services:
+  nginx:
+    image: nginx:1.23-alpine
+    container_name: nginx
+    restart: unless-stopped
+    ports:
+      - 80:80
+      - 443:443
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/nginx.conf:ro
+      - ./.lego/certificates:/certs:ro
+      - ./web:/web:ro
+    depends_on:
+      - gitea
+      - drone
+
+  gitea:
+    image: gitea/gitea:1.17.3
+    container_name: gitea
+    restart: unless-stopped
+    environment:
+      USER_UID: 1000
+      USER_GID: 1000
+      GITEA__server__APP_DATA_PATH: /data/gitea
+      GITEA__server__DOMAIN: gitea.dancheg97.ru
+      GITEA__server__SSH_DOMAIN: gitea.dancheg97.ru
+      GITEA__server__HTTP_PORT: 80
+      GITEA__server__ROOT_URL: https://gitea.dancheg97.ru/
+      GITEA__server__DISABLE_SSH: false
+      GITEA__server__SSH_PORT: 22
+      GITEA__server__SSH_LISTEN_PORT: 22
+      GITEA__server__LFS_START_SERVER: true
+      GITEA__server__LFS_JWT_SECRET: xxx
+      GITEA__server__OFFLINE_MODE: false
+      GITEA__ui__THEMES: gitea,arc-green,plex,aquamarine,dark,dracula,hotline,organizr,space-gray,hotpink,onedark,overseerr,nord,earl-grey
+      GITEA__ui__DEFAULT_THEME: earl-grey
+      GITEA__service_DISABLE_REGISTRATION: false
+      GITEA__service_REQUIRE_SIGNIN_VIEW: false
+      GITEA__service_REGISTER_EMAIL_CONFIRM: false
+      GITEA__service_ENABLE_NOTIFY_MAIL: false
+      GITEA__service_ALLOW_ONLY_EXTERNAL_REGISTRATION: false
+      GITEA__service_ENABLE_CAPTCHA: false
+      GITEA__service_DEFAULT_KEEP_EMAIL_PRIVATE: false
+      GITEA__service_DEFAULT_ALLOW_CREATE_ORGANIZATION: true
+      GITEA__service_DEFAULT_ENABLE_TIMETRACKING: true
+      GITEA__service_NO_REPLY_ADDRESS: noreply.localhost
+      GITEA__service_DEFAULT_USER_IS_RESTRICTED: true
+    volumes:
+      - ./gitea:/data
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+
+  drone:
+    image: drone/drone:2.15
+    container_name: drone
+    restart: unless-stopped
+    environment:
+      DRONE_DATABASE_DRIVER: sqlite3
+      DRONE_DATABASE_DATASOURCE: /data/database.sqlite
+      DRONE_GITEA_SERVER: https://gitea.dancheg97.ru/
+      DRONE_GIT_ALWAYS_AUTH: false
+      DRONE_RPC_SECRET: xxx
+      DRONE_SERVER_PROTO: https
+      DRONE_SERVER_HOST: drone.dancheg97.ru
+      DRONE_TLS_AUTOCERT: false
+      DRONE_USER_CREATE: xxx
+      DRONE_GITEA_CLIENT_ID: xxx
+      DRONE_GITEA_CLIENT_SECRET: xxx
+    volumes:
+      - ./drone:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - gitea
+
+  drone-runner:
+    image: drone/drone-runner-docker:1.8.2
+    container_name: droner
+    restart: unless-stopped
+    environment:
+      DRONE_RPC_PROTO: http
+      DRONE_RPC_HOST: drone
+      DRONE_RPC_SECRET: xxx
+      DRONE_RUNNER_NAME: drone-runner
+      DRONE_RUNNER_CAPACITY: 2
+      DRONE_RUNNER_NETWORKS: composer_default
+      DRONE_DEBUG: false
+      DRONE_TRACE: false
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - drone При наличии вопросов в настройке прошу обращаться: tlg @dancheg97 ]]></text>
+</doc>

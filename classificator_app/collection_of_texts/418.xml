@@ -1,0 +1,386 @@
+<?xml version="1.0" ?>
+<doc>
+	<label auto="true" type="str" verify="true"><![CDATA[Develop]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[dmitriizolotov]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-12-05, 14:09]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/company/otus/blog/703516/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Разработка игр на Kotlin Native. Часть 1]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Блог компании OTUS]]></item>
+		<item type="str"><![CDATA[Разработка игр]]></item>
+		<item type="str"><![CDATA[GTK+]]></item>
+		<item type="str"><![CDATA[Kotlin]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[otus]]></item>
+		<item type="str"><![CDATA[kotlin]]></item>
+		<item type="str"><![CDATA[gtk]]></item>
+		<item type="str"><![CDATA[sdl]]></item>
+		<item type="str"><![CDATA[kotlin native]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[Возможность компиляции Kotlin в нативный код, который может использовать С-библиотеки позволяет разрабатывать мультимедийные приложения и игры на основе библиотек SDL, GTK/OpenGL, GDX и специализированных библиотек для Kotlin (например, KorGE). В этой статье мы последовательно создадим кроссплатформенную реализацию Pacman (как для мобильных платформ, так и для компьютеров на Windows / Linux / MacOS).
+Прежде всего нужно обозначить как именно Kotlin Native позволяет выполнить компиляцию исходного кода в исполняемый образ для целевой операционной системы. Компилятор Kotlin Native (konanc) основан на стеке llvm и используют платформенно-специфические инструменты для сборки исполняемого артефакта (инструменты командной строки XCode для iOS / MacOS / TvOS, инструменты toolchain gcc + ld для остальных систем). Технически компиляция происходит в несколько этапов:
+преобразование во внутреннее представление (IR) в LLVM Frontend на основе абстрактного синтаксического дерева, построенного из исходных текстов.
+компиляция в двоичный артефакт (объектный файл) для целевой аппаратной архитектуры (используются возможности toolchain).
+связывание с другими объектными файлами и создание исполняемого файла или библиотеки для подключения к внешним приложениям.
+Поскольку представление структур данных и строк в Kotlin отличается от C, на этапе вызова методов и получения результатов будет необходимо использовать методы преобразования, которые предоставлены пакетами kotlinx.cinterop. Также отдельного внимания требует управление памятью (получение указателей, работа с указателями и приведение типа, выделение и освобождение памяти), которое реализуется отдельным механизмом в Kotlin Native. Также при компиляции Kotlin Native используются альтернативные реализации стандартной библиотеки (ввод-вывод, операции с коллекциями и строками, математические операции и др.) благодаря поддержке модификаторов except-actual (связывает интерфейс класса и его методов и платформенную реализацию для конкретной операционной системы).
+Начнем с установки Kotlin Native и компиляции простого приложения в исполняемый файл. В статье мы будем использовать возможности компиляции через утилиты командной строки, но также доступна и интеграция в задачу gradle, в этом случае необходимо создать мультиплатформенный проект, создать ветки для сборки в программно-аппаратную архитектуру, например для MacOS ветка в Gradle будет выглядеть следующим образом:
+kotlin {
+    macosX64("native").apply {
+        binaries {
+            executable {
+                entryPoint = "main"
+            }
+        }
+    }
+    sourceSets {
+        val nativeMain by getting
+        val nativeTest by getting
+    }
+}
+Если необходимо подключить сторонние библиотеки, необходимо выполнять ряд подготовительных операций
+На основе header-файлов библиотеки создать файл .klib (содержит сигнатуры экспортируемых функций и представляет их как часть Kotlin-пакета, а также двоичный образ скомпилированной библиотеки для указанной архитектуры). Для создания klib-файла используется утилита cinterop из Kotlin Native CLI и def-файл с описанием исходных header-файлов и параметров компиляции. Альтернативно для компиляции klib можно использовать следующий фрагмент кода в описании сборки для платформы (для сборки libcurl на основе заголовочных файлов):
+hostTarget.apply {
+    compilations["main"].cinterops {
+        val libcurl by creating {
+            when (preset) {
+                presets["macosX64"] -> includeDirs.headerFilterOnly("/opt/local/include", "/usr/local/include")
+                presets["linuxX64"] -> includeDirs.headerFilterOnly("/usr/include", "/usr/include/x86_64-linux-gnu")
+                presets["mingwX64"] -> includeDirs.headerFilterOnly(mingwPath.resolve("include"))
+            }
+        }
+    }
+}
+Импортировать библиотеки и использовать методы из kotlinx.cinterop для работы со структурами данных, указателями, выделения и освобождения памяти, строками.
+Подключить klib файлы в gradle через implementation(files('<path_to_klib>'))
+Для компиляции в klib можно использовать исходные тексты на Kotlin:
+kotlinc-native test.kt -p library -o test
+создает файл test.klib, в котором будет размещено промежуточный результат компиляции исходных кодов в IR и описание всех экспортированных функций. Альтернативно можно использовать исходные коды на другом языке (например, C) и выполнить сборку библиотеки и создание klib-файла на основе h-файла с описанием интерфейса и def-файла для метаданных и параметров компилятора.
+Создадим простой проект на C и соответствующий заголовочный файл:
+int sum(int a, int b) {
+  return a + b;
+}
+int sum(int, int);
+и создадим статическую библиотеку из исходных кодов:
+gcc -c test.c -o test.o
+ar rcs test.a test.o
+подготовим файл с описанием метаданных для сборки klib:
+headers = test.h
+package = test
+staticLibraries = test.a
+libraryPaths = .
+и создадим klib-файл на основе файла с заголовками функций и скомпилированным двоичным образом:
+cinterop -def test.def -compiler-options -I`pwd` -o test
+установим созданный пакет в репозиторий klib:
+klib install test.klib
+проверим использование нативного кода простой функцией:
+import test.*
+
+fun main() {
+  println(test.sum(5,7))
+}
+выполним компиляцию в нативное приложение и проверим его работу:
+kotlinc-native -l test sample.kt -o sample
+./sample
+после запуска мы получим в консоли вывод суммы (число 12). Аналогично можно использовать связывание с динамической библиотекой (в этом случае будет необходимо указать путь к расположению .so / .dylib-файла во время выполнения сборки приложения), на примере MacOS:
+gcc -dynamiclib -o test.dylib test.c
+или для Linux:
+g++ -shared -o test.so test.c
+и выполним сборку с использованием динамической библиотеки:
+kotlinc-native -l test sample.kt -o sample -linker-options "-L`pwd` -ltest"
+после запуска получим аналогичный результат (12).
+Теперь, когда мы рассмотрели основные моменты сборки klib для встраивания внешних C-библиотек, можем перейти к примерам с использованием библиотек для поддержки мультимедиа и создания игр. Единственное отличие для использования существующих библиотек - при выполнении cinterop необходимо указать корректное расположение каталога с header-файлами библиотеки (в Linux обычно /usr/include), а при сборке - расположение so/dylib - файлов (в linker-options, чаще всего /usr/lib). 
+GTK
+Наиболее очевидным кроссплатформенным решением для создания графических приложений является библиотека GTK. Библиотека предлагает большой выбор готовых виджетов для наполнения элементами управления окна приложения (например, текстовые надписи, кнопки, переключатели, вкладки), а также их расположения по области окна (менеджеры композиции). Для создания игр больше подходит компонент GDK (GTK Drawing Kit), который предоставляет низкоуровневые примитивы для рисования на поверхности и окна и GSK (GTK Scene Graph Kit) для группировки элементов окна. 
+Для использования библиотеки GTK в Kotlin-Native можно применить связывание из https://gitlab.com/gtk-kt/gtk-kt. Подключим необходимые зависимости:
+// основная библиотека
+implementation("org.gtk-kt:gtk:1.0.0-alpha1")
+
+// DSL-библиотека
+implementation("org.gtk-kt:dsl:0.1.0-alpha0")
+
+// поддержка корутин в Kotlin для обертки асинхронных вызовов GTK
+implementation("org.gtk-kt:coroutines:0.1.0-alpha0")
+implementation("org.gtk-kt:ktx:0.1.0-alpha0")
+
+// обертки вокруг GDK, Cairo (поддержка графических операций) и Pango (поддержка вывода текста и шрифтов)
+implementation("org.gtk-kt:cairo:0.1.0-alpha0")
+implementation("org.gtk-kt:gdk-pixbuf:0.1.0-alpha0")
+implementation("org.gtk-kt:pango:0.1.0-alpha0")
+Для корректной установки соберем версии библиотек под свою аппаратную архитектуру и операционную систему. На MacOS нужно дополнительно установить:
+brew install gtk4
+на Debian/Ubuntu 
+sudo apt install libgtk-4-dev libncurses5 gcc-multilib
+или на Fedora
+sudo dnf install gtk4-devel ncurses-compat-libs
+Выполним клонирование исходных текстов gtk-kt и сборку в локальный maven-репозиторий:
+git clone https://gitlab.com/gtk-kt/gtk-kt
+cd gtk-kt
+git checkout gtk-4
+./gradlew publishToMavenLocal
+Теперь создадим новый проект и попробуем нарисовать заставку для игры с использованием GDK. Добавим в начало списка repositories mavenLocal() и подключим перечисленные выше зависимости в kotlin.sourceSets:
+        val nativeMain by getting {
+            dependencies {
+//...
+            }
+        }
+И создадим пустое окно приложения:
+import org.gtk.dsl.gio.onCreateUI
+import org.gtk.gtk.widgets.DrawingArea
+import org.gtk.dsl.gtk.*
+
+fun main() {
+    application("tech.dzolotov.samplegame") {
+        onCreateUI {
+            applicationWindow {
+                title = "My Game"
+                defaultSize = 512 x 512
+                frame {
+                }
+            }.show()
+        }
+    }
+}
+Теперь сделаем содержанием frame изображение:
+//...
+     frame {
+                    val image = Image()
+                    image.setImage("logo.png", isResource = false)
+                    child = image
+     }
+//...
+Но теперь надо будет решить еще одну задачу - собрать ресурсы (изображения, звуки, видео и прочее) в общий архив с исполняемым файлом. Для этого можно создать дополнительные gradle-задачи для копирования результата компиляции и ресурсов в единый архив:
+tasks {
+    val thePackageTask = register("package", Copy::class) {
+        group = "package"
+        description = "Copies the release exe and resources into one directory"
+
+        from("$buildDir/processedResources/native/main") {
+            include("**/*")
+        }
+
+        from("$buildDir/bin/native/releaseExecutable") {
+            include("**/*")
+        }
+
+        into("$buildDir/packaged")
+        includeEmptyDirs = false
+        dependsOn("nativeProcessResources")
+        dependsOn("assemble")
+    }
+    val zipTask = register<Zip>("packageToZip") {
+        group = "package"
+        description = "Copies the release exe and resources into one ZIP file."
+
+        archiveFileName.set("packaged.zip")
+        destinationDirectory.set(file("$buildDir/packagedZip"))
+
+        from("$buildDir/packaged")
+
+        dependsOn(thePackageTask)
+    }
+    named("build").get().dependsOn(zipTask.get())
+
+    register<Exec>("runPackaged") {
+        group = "package"
+   description = "Run packaged exe file"
+        workingDir = File("$buildDir/packaged")
+        commandLine("./${project.name}.kexe")
+        dependsOn(thePackageTask)
+    }
+}
+Теперь разместим изображение в ресурсы nativeMain (src/nativeMain/resources) и запустим наше приложение через ./gradlew runPackaged. После запуска приложения мы увидим окно с заголовком My Game и логотипом:
+Добавим обработчик нажатие на кнопку мыши для перехода к основному экрану:
+                    val click = GestureClick()
+                    click.button = GDK_BUTTON_PRIMARY.toUInt()
+                    click.addOnPressedCallback { nPress, x, y ->
+                        removeController(click)
+       //здесь мы будем заменять экран
+                    }
+                    addController(click)
+После срабатывания контроллера необходимо отключить его от виджета, чтобы избежать повторный вызов. Заменим заставку на меню и сделаем его реализацию на основе сетки:
+      click.addOnPressedCallback { nPress, x, y ->
+                        removeController(click)
+       child = menu(
+                            {},
+                            this@applicationWindow::destroy
+                        )
+                    } 
+Меню будет содержать несколько элементов:
+простая анимация (в нашем случае - вращающийся треугольник, но может быть любая другая);
+заголовок (название приложение);
+кнопки запуска игры и выхода.
+Начнем с простого прототипа:
+fun menu(onStart: () -> Unit, onQuit: () -> Unit): Widget {
+    return grid {
+        this.verticalAlign = Align.CENTER
+        this.horizontalAlign = Align.CENTER
+
+
+        val drawingArea = DrawingArea()
+        drawingArea.sizeRequest = 64 x 64
+        
+        val label = Label("My Simple Game")
+
+        button("Start Game", 0, 2, 1, 1) {
+            addOnClickedCallback {
+                onStart()
+            }
+        }
+        button("Quit", 0, 3, 1, 1) {
+            onClicked {
+                onQuit()
+            }
+        }
+
+        attach(drawingArea, 0, 0, 1, 1)
+        attach(label, 0, 1, 1, 1)
+ }
+}
+Далее добавим стилевое оформление к кнопкам и заголовку:
+  val style = CssProvider()
+       style.loadFromData(
+       """
+        .menuButton {
+          color: blue;
+          font-size: 22px;
+          padding: 16px;
+          margin: 16px;
+        }
+        
+        .label {
+          color: darkgreen;
+          font-size: 40px;
+          padding-bottom: 64px;
+        }
+     """.trimIndent()
+     )
+
+        val drawingArea = DrawingArea()
+        drawingArea.sizeRequest = 64 x 64
+  
+   val label = Label("My Simple Game").apply {
+            this.styleContext.addProvider(style, GTK_STYLE_PROVIDER_PRIORITY_USER.toUInt())
+            this.addCSSClass("label")
+        }
+        button("Start Game", 0, 2, 1, 1) {
+            this.styleContext.addProvider(style, GTK_STYLE_PROVIDER_PRIORITY_USER.toUInt())
+            this.addCSSClass("menuButton")
+            addOnClickedCallback {
+                onStart()
+            }
+        }
+        button("Quit", 0, 3, 1, 1) {
+            this.styleContext.addProvider(style, GTK_STYLE_PROVIDER_PRIORITY_USER.toUInt())
+            this.addCSSClass("menuButton")
+            onClicked {
+                onQuit()
+            }
+        }
+        attach(drawingArea, 0, 0, 1, 1)
+        attach(label, 0, 1, 1, 1)
+Также реализуем анимацию вращения треугольника, для этого переопределим drawingFunction для drawingArea и подсоединим обработчик TickCallback для контейнера:
+   var angle = 0.0
+
+        val drawingArea = DrawingArea()
+        drawingArea.sizeRequest = 64 x 64
+        drawingArea.setOnDrawFunction { cairo, width, height ->
+            val centerX = width / 2
+            val centerY = height / 2
+            val size = minOf(width / 2, height / 2)
+            val point1 = centerX + size * cos(angle) to centerY + size * sin(angle)
+            val point2 = centerX + size * cos(angle + 2 * PI / 3) to centerY + size * sin(angle + 2 * PI / 3)
+            val point3 = centerX + size * cos(angle + 2 * 2 * PI / 3) to centerY + size * sin(angle + 2 * 2 * PI / 3)
+            cairo.apply {
+                setSourceRGB(0.8, 0.2, 0.2)
+                moveTo(point1.first, point1.second)
+                lineTo(point2.first, point2.second)
+                lineTo(point3.first, point3.second)
+                lineTo(point1.first, point1.second)
+                stroke()
+            }
+        }
+
+        addTickCallback {
+            drawingArea.queueDraw()
+            angle = it.frameCounter/60.0
+            true
+        }
+Здесь возникнет небольшая проблема, поскольку в текущей реализации библиотеки gtk-kt очень мало поддерживаемых функций из cairo имеют kotlin-обертки, но это легко исправить через функции расширения:
+fun Cairo.moveTo(x: Double, y: Double) {
+    cairo_move_to(this.pointer, x, y)
+}
+
+fun Cairo.lineTo(x: Double, y: Double) {
+    cairo_line_to(this.pointer, x, y)
+}
+
+fun Cairo.stroke() {
+    cairo_stroke(this.pointer)
+}
+Аналогично может быть построено игровое поле с использованием графических примитивов Cairo. Но в настоящей игре также нужны более сложные визуальные эффекты - трехмерная графика, фоновая музыка и звуки. Для достижения этих целей мы можем использовать библиотеку SDL (Simple DirectMedia Layer), которая   представляет интерфейсы для работы с таймером, воспроизведением аудио и видео, считывания положения джойстика, game controller и управления haptic feedback. Пример использования SDL для декодирования аудио/видео можно найти в официальном примере от Jetbrains, где для поддержки кодеков используется библиотека ffmpeg. Подробно добавление музыки и звуков к нашей игре (как и работу с выделением памяти и указателями в Kotlin Native) мы рассмотрим во второй части этой статьи.
+Исходные тексты приложения размещены на github: https://github.com/dzolotov/kotlin-game. 
+Данный материал подготовлен в преддверии старта курса Kotlin Backend Developer. Professional. Узнать подробнее о курсе, а также получить запись бесплатного урока можно по ссылке ниже.
+Подробнее о курсе   Возможность компиляции Kotlin в нативный код, который может использовать С-библиотеки позволяет разрабатывать мультимедийные приложения и игры на основе библиотек SDL, GTK/OpenGL, GDX и специализированных библиотек для Kotlin (например, KorGE). В этой статье мы последовательно создадим кроссплатформенную реализацию Pacman (как для мобильных платформ, так и для компьютеров на Windows / Linux / MacOS). Прежде всего нужно обозначить как именно Kotlin Native позволяет выполнить компиляцию исходного кода в исполняемый образ для целевой операционной системы. Компилятор Kotlin Native (konanc) основан на стеке llvm и используют платформенно-специфические инструменты для сборки исполняемого артефакта (инструменты командной строки XCode для iOS / MacOS / TvOS, инструменты toolchain gcc + ld для остальных систем). Технически компиляция происходит в несколько этапов: преобразование во внутреннее представление (IR) в LLVM Frontend на основе абстрактного синтаксического дерева, построенного из исходных текстов.
+компиляция в двоичный артефакт (объектный файл) для целевой аппаратной архитектуры (используются возможности toolchain).
+связывание с другими объектными файлами и создание исполняемого файла или библиотеки для подключения к внешним приложениям. преобразование во внутреннее представление (IR) в LLVM Frontend на основе абстрактного синтаксического дерева, построенного из исходных текстов. преобразование во внутреннее представление (IR) в LLVM Frontend на основе абстрактного синтаксического дерева, построенного из исходных текстов. компиляция в двоичный артефакт (объектный файл) для целевой аппаратной архитектуры (используются возможности toolchain). компиляция в двоичный артефакт (объектный файл) для целевой аппаратной архитектуры (используются возможности toolchain). связывание с другими объектными файлами и создание исполняемого файла или библиотеки для подключения к внешним приложениям. связывание с другими объектными файлами и создание исполняемого файла или библиотеки для подключения к внешним приложениям. Поскольку представление структур данных и строк в Kotlin отличается от C, на этапе вызова методов и получения результатов будет необходимо использовать методы преобразования, которые предоставлены пакетами kotlinx.cinterop. Также отдельного внимания требует управление памятью (получение указателей, работа с указателями и приведение типа, выделение и освобождение памяти), которое реализуется отдельным механизмом в Kotlin Native. Также при компиляции Kotlin Native используются альтернативные реализации стандартной библиотеки (ввод-вывод, операции с коллекциями и строками, математические операции и др.) благодаря поддержке модификаторов except-actual (связывает интерфейс класса и его методов и платформенную реализацию для конкретной операционной системы). Начнем с установки Kotlin Native и компиляции простого приложения в исполняемый файл. В статье мы будем использовать возможности компиляции через утилиты командной строки, но также доступна и интеграция в задачу gradle, в этом случае необходимо создать мультиплатформенный проект, создать ветки для сборки в программно-аппаратную архитектуру, например для MacOS ветка в Gradle будет выглядеть следующим образом: kotlin {
+    macosX64("native").apply {
+        binaries {
+            executable {
+                entryPoint = "main"
+            }
+        }
+    }
+    sourceSets {
+        val nativeMain by getting
+        val nativeTest by getting
+    }
+} kotlin {
+    macosX64("native").apply {
+        binaries {
+            executable {
+                entryPoint = "main"
+            }
+        }
+    }
+    sourceSets {
+        val nativeMain by getting
+        val nativeTest by getting
+    }
+} Если необходимо подключить сторонние библиотеки, необходимо выполнять ряд подготовительных операций На основе header-файлов библиотеки создать файл .klib (содержит сигнатуры экспортируемых функций и представляет их как часть Kotlin-пакета, а также двоичный образ скомпилированной библиотеки для указанной архитектуры). Для создания klib-файла используется утилита cinterop из Kotlin Native CLI и def-файл с описанием исходных header-файлов и параметров компиляции. Альтернативно для компиляции klib можно использовать следующий фрагмент кода в описании сборки для платформы (для сборки libcurl на основе заголовочных файлов): На основе header-файлов библиотеки создать файл .klib (содержит сигнатуры экспортируемых функций и представляет их как часть Kotlin-пакета, а также двоичный образ скомпилированной библиотеки для указанной архитектуры). Для создания klib-файла используется утилита cinterop из Kotlin Native CLI и def-файл с описанием исходных header-файлов и параметров компиляции. Альтернативно для компиляции klib можно использовать следующий фрагмент кода в описании сборки для платформы (для сборки libcurl на основе заголовочных файлов): На основе header-файлов библиотеки создать файл .klib (содержит сигнатуры экспортируемых функций и представляет их как часть Kotlin-пакета, а также двоичный образ скомпилированной библиотеки для указанной архитектуры). Для создания klib-файла используется утилита cinterop из Kotlin Native CLI и def-файл с описанием исходных header-файлов и параметров компиляции. Альтернативно для компиляции klib можно использовать следующий фрагмент кода в описании сборки для платформы (для сборки libcurl на основе заголовочных файлов): hostTarget.apply {
+    compilations["main"].cinterops {
+        val libcurl by creating {
+            when (preset) {
+                presets["macosX64"] -> includeDirs.headerFilterOnly("/opt/local/include", "/usr/local/include")
+                presets["linuxX64"] -> includeDirs.headerFilterOnly("/usr/include", "/usr/include/x86_64-linux-gnu")
+                presets["mingwX64"] -> includeDirs.headerFilterOnly(mingwPath.resolve("include"))
+            }
+        }
+    }
+} hostTarget.apply {
+    compilations["main"].cinterops {
+        val libcurl by creating {
+            when (preset) {
+                presets["macosX64"] -> includeDirs.headerFilterOnly("/opt/local/include", "/usr/local/include")
+                presets["linuxX64"] -> includeDirs.headerFilterOnly("/usr/include", "/usr/include/x86_64-linux-gnu")
+                presets["mingwX64"] -> includeDirs.headerFilterOnly(mingwPath.resolve("include"))
+            }
+        }
+    }
+} Импортировать библиотеки и использовать методы из kotlinx.cinterop для работы со структурами данных, указателями, выделения и освобождения памяти, строками.
+Подключить klib файлы в gradle через implementation(files('<path_to_klib>')) Импортировать библиотеки и использовать методы из kotlinx.cinterop для работы со структурами данных, указателями, выделения и освобождения памяти, строками. Импортировать библиотеки и использовать методы из kotlinx.cinterop для работы со структурами данных, указателями, выделения и освобождения памяти, строками. Подключить klib файлы в gradle через implementation(files('<path_to_klib>')) Подключить klib файлы в gradle через implementation(files('<path_to_klib>')) Для компиляции в klib можно использовать исходные тексты на Kotlin: kotlinc-native test.kt -p library -o test kotlinc-native test.kt -p library -o test создает файл test.klib, в котором будет размещено промежуточный результат компиляции исходных кодов в IR и описание всех экспортированных функций. Альтернативно можно использовать исходные коды на другом языке (например, C) и выполнить сборку библиотеки и создание klib-файла на основе h-файла с описанием интерфейса и def-файла для метаданных и параметров компилятора. Создадим простой проект на C и соответствующий заголовочный файл: int sum(int a, int b) {
+  return a + b;
+} int sum(int a, int b) {
+  return a + b;
+} int sum(int, int); int sum(int, int); и создадим статическую библиотеку из исходных кодов: gcc -c test.c -o test.o
+ar rcs test.a test.o gcc -c test.c -o test.o
+ar rcs test.a test.o подготовим файл с описанием метаданных для сборки klib: headers = test.h
+package = test
+staticLibraries = test.a
+libraryPaths = . headers = test.h
+package = test
+staticLibraries = test.a
+libraryPaths = .]]></text>
+</doc>

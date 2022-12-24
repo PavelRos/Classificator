@@ -1,0 +1,202 @@
+<?xml version="1.0" ?>
+<doc>
+	<label auto="true" type="str" verify="true"><![CDATA[Develop]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[otkydadengi]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-11-29, 08:32]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/post/702174/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[FusionPBX ядро телефонии. Подключение IssabelPBX и FreePBX]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Asterisk]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[fusionpbx]]></item>
+		<item type="str"><![CDATA[issabelpbx]]></item>
+		<item type="str"><![CDATA[freepbx]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[Начало опубликовали, может и дальше зайдет. Сегодня значит подключим потенциальных "клиентов". По легенде это 2 клиента которые берут по одному городскому номеру и подключают к ним АТС в офисе.
+Для этого созданы 2 внутренних номера: 3115515 и 3115510
+Тут вроде ничего лишнего и нового все стандартно, пока не разобрался как ограничитель  Limit Max  работает.  На всякий случай указал Limit Max 1. Надеюсь потом разберусь.
+Маршрутизацию для них сделали в прошлый раз, так что переходим к клиентам.
+Issabel PBX, развернута на виртуальной машине
+По железу вот так. Процессор кушают не особо. ОЗУ для мелкого офиса до 20 аппаратов достаточно и 1Гб. Диска 20Гб без записи разговоров хватит примерно на пару лет (или навсегда). С записями разговоров хватает в среднем на 6 месяцев.
+Имеем вот такую вот конфигурацию
+Для начала нас интересует создание транка. PBX-PBX Configuration - Trunks - Add SIP Trunk
+Outgoing Settings
+Для копипасты:
+type=peer
+secret=e4n$%%tImpf^kYuYVSMa
+qualify=400
+insecure=invite,port
+host=domainprov.do
+fromuser=3115515
+fromdomain=domainprov.do
+dtmfmode=auto
+disallow=all
+directmedia=no
+defaultuser=3115515
+allow=alaw&ulaw
+Incoming Settings
+type=user
+secret=e4n$%%tImpf^kYuYVSMa
+qualify=400
+insecure=invite,port
+host=domainprov.do
+fromuser=3115515
+fromdomain=domainprov.do
+dtmfmode=auto
+disallow=all
+directmedia=no
+defaultuser=3115515
+allow=alaw&ulaw
+Строка регистрации:
+3115515:e4n$%%tImpf^kYuYVSMa:3115515@domainprov.do:5060/3115515
+С регистрацией вышла непонятка, почему то Issabel её не отправляла и соответвенно были только исходящие звонки.
+Полечилось без лишних танцев с буном через редактор файлов:
+А 
+В поиске вводим sip_additional.conf, переходим в конец файла, добавляем строку регистрации, сохраним и reload asterisk.
+Всё просто
+После этого регистрация прошла, строка из файла пропала и больше проблем не было, регистрируется теперь нормально (возможно мой локальный глюк, но мало ли).
+Переходим в Fusion, Status- Registrations
+Видим нашего клиента, радуемся.
+Настраиваем на Issabel Входящую/Исходящую маршрутизацию, подключаем телефон и проверяем хождение звонка.
+FreePBX. Изначально в нем не было необходимости, но пока маялся с регистрацией Issabel решил проверить в чем именно дело. FreePBX, который вообще в лёт зарегался.
+Первым делом надо вернуть нам chan_sip на порт 5060. Setting-Advanced SIP Settings
+1
+2 Save, Apply Config
+Переходим к настройкам транка
+Тут не сложно и всё по аналогии с Issabel
+Outgoing
+type=peer
+secret=63S9m7NWWJd7rSU
+qualify=400
+nat=no
+insecure=invite,port
+host=domainprov.do
+fromuser=3115510
+fromdomain=domainprov.do
+dtmfmode=auto
+disallow=all
+directmedia=no
+defaultuser=3115510
+allow=alaw&ulaw
+Incoming
+type=user
+secret=63S9m7NWWJd7rSU
+qualify=400
+nat=no
+insecure=invite,port
+host=domainprov.do
+fromuser=3115510
+fromdomain=domainprov.do
+dtmfmode=auto
+disallow=all
+directmedia=no
+defaultuser=3115510
+allow=alaw&ulaw
+Строка регистрации:
+3115510:63S9m7NWWJd7rSU@domainprov.do/3115510
+Тут всё зарегестрировалось сразу.
+Возвращаемся в Fusion и видим
+Наш FreePBX
+Точно также настраиваем Вх/Исх маршрутизацию, заводим номера и звоним куда я разрешу.
+Что дальше?
+Дальше не понятно как сделать ограничение по количеству вызовов, желательно даже каналов (вх/исх одновременно).
+Ещё дальше так же хотелось бы подавать транк с несколькими номерами и без авторизации с привязкой к IP. Начало опубликовали, может и дальше зайдет. Сегодня значит подключим потенциальных "клиентов". По легенде это 2 клиента которые берут по одному городскому номеру и подключают к ним АТС в офисе. Для этого созданы 2 внутренних номера: 3115515 и 3115510  Тут вроде ничего лишнего и нового все стандартно, пока не разобрался как ограничитель  Limit Max  работает.  На всякий случай указал Limit Max 1. Надеюсь потом разберусь. Маршрутизацию для них сделали в прошлый раз, так что переходим к клиентам. Issabel PBX, развернута на виртуальной машине
+По железу вот так. Процессор кушают не особо. ОЗУ для мелкого офиса до 20 аппаратов достаточно и 1Гб. Диска 20Гб без записи разговоров хватит примерно на пару лет (или навсегда). С записями разговоров хватает в среднем на 6 месяцев. Issabel PBX, развернута на виртуальной машине
+По железу вот так. Процессор кушают не особо. ОЗУ для мелкого офиса до 20 аппаратов достаточно и 1Гб. Диска 20Гб без записи разговоров хватит примерно на пару лет (или навсегда). С записями разговоров хватает в среднем на 6 месяцев. Issabel PBX, развернута на виртуальной машине По железу вот так. Процессор кушают не особо. ОЗУ для мелкого офиса до 20 аппаратов достаточно и 1Гб. Диска 20Гб без записи разговоров хватит примерно на пару лет (или навсегда). С записями разговоров хватает в среднем на 6 месяцев.  По железу вот так. Процессор кушают не особо. ОЗУ для мелкого офиса до 20 аппаратов достаточно и 1Гб. Диска 20Гб без записи разговоров хватит примерно на пару лет (или навсегда). С записями разговоров хватает в среднем на 6 месяцев. Имеем вот такую вот конфигурацию  Имеем вот такую вот конфигурацию Для начала нас интересует создание транка. PBX-PBX Configuration - Trunks - Add SIP Trunk      Outgoing Settings Для копипасты:
+type=peer
+secret=e4n$%%tImpf^kYuYVSMa
+qualify=400
+insecure=invite,port
+host=domainprov.do
+fromuser=3115515
+fromdomain=domainprov.do
+dtmfmode=auto
+disallow=all
+directmedia=no
+defaultuser=3115515
+allow=alaw&ulaw Для копипасты: type=peer
+secret=e4n$%%tImpf^kYuYVSMa
+qualify=400
+insecure=invite,port
+host=domainprov.do
+fromuser=3115515
+fromdomain=domainprov.do
+dtmfmode=auto
+disallow=all
+directmedia=no
+defaultuser=3115515
+allow=alaw&ulaw     host=   fromdomain=       Incoming Settings type=user
+secret=e4n$%%tImpf^kYuYVSMa
+qualify=400
+insecure=invite,port
+host=domainprov.do
+fromuser=3115515
+fromdomain=domainprov.do
+dtmfmode=auto
+disallow=all
+directmedia=no
+defaultuser=3115515
+allow=alaw&ulaw type=user
+secret=e4n$%%tImpf^kYuYVSMa
+qualify=400
+insecure=invite,port
+host=domainprov.do
+fromuser=3115515
+fromdomain=domainprov.do
+dtmfmode=auto
+disallow=all
+directmedia=no
+defaultuser=3115515
+allow=alaw&ulaw     host=   fromdomain=      Строка регистрации: 3115515:e4n$%%tImpf^kYuYVSMa:3115515@domainprov.do:5060/3115515 3115515:e4n$%%tImpf^kYuYVSMa:3115515@domainprov.do:5060/3115515 С регистрацией вышла непонятка, почему то Issabel её не отправляла и соответвенно были только исходящие звонки. Полечилось без лишних танцев с буном через редактор файлов:  А  В поиске вводим sip_additional.conf, переходим в конец файла, добавляем строку регистрации, сохраним и reload asterisk.  Всё просто После этого регистрация прошла, строка из файла пропала и больше проблем не было, регистрируется теперь нормально (возможно мой локальный глюк, но мало ли). Переходим в Fusion, Status- Registrations  Видим нашего клиента, радуемся. Настраиваем на Issabel Входящую/Исходящую маршрутизацию, подключаем телефон и проверяем хождение звонка. FreePBX. Изначально в нем не было необходимости, но пока маялся с регистрацией Issabel решил проверить в чем именно дело. FreePBX, который вообще в лёт зарегался. FreePBX. Изначально в нем не было необходимости, но пока маялся с регистрацией Issabel решил проверить в чем именно дело. FreePBX, который вообще в лёт зарегался. FreePBX. Изначально в нем не было необходимости, но пока маялся с регистрацией Issabel решил проверить в чем именно дело. FreePBX, который вообще в лёт зарегался.    Первым делом надо вернуть нам chan_sip на порт 5060. Setting-Advanced SIP Settings  1  2 Save, Apply Config Переходим к настройкам транка   Тут не сложно и всё по аналогии с Issabel    Outgoing type=peer
+secret=63S9m7NWWJd7rSU
+qualify=400
+nat=no
+insecure=invite,port
+host=domainprov.do
+fromuser=3115510
+fromdomain=domainprov.do
+dtmfmode=auto
+disallow=all
+directmedia=no
+defaultuser=3115510
+allow=alaw&ulaw type=peer
+secret=63S9m7NWWJd7rSU
+qualify=400
+nat=no
+insecure=invite,port
+host=domainprov.do
+fromuser=3115510
+fromdomain=domainprov.do
+dtmfmode=auto
+disallow=all
+directmedia=no
+defaultuser=3115510
+allow=alaw&ulaw      host=   fromdomain=       Incoming type=user
+secret=63S9m7NWWJd7rSU
+qualify=400
+nat=no
+insecure=invite,port
+host=domainprov.do
+fromuser=3115510
+fromdomain=domainprov.do
+dtmfmode=auto
+disallow=all
+directmedia=no
+defaultuser=3115510
+allow=alaw&ulaw type=user
+secret=63S9m7NWWJd7rSU
+qualify=400
+nat=no
+insecure=invite,port
+host=domainprov.do
+fromuser=3115510
+fromdomain=domainprov.do
+dtmfmode=auto
+disallow=all
+directmedia=no
+defaultuser=3115510
+allow=alaw&ulaw      host=   fromdomain=      Строка регистрации: 3115510:63S9m7NWWJd7rSU@domainprov.do/3115510 3115510:63S9m7NWWJd7rSU@domainprov.do/3115510 3115510:63S9m7NWWJd7rSU@domainprov.do Тут всё зарегестрировалось сразу. Возвращаемся в Fusion и видим  Наш FreePBX Точно также настраиваем Вх/Исх маршрутизацию, заводим номера и звоним куда я разрешу. Что дальше? Дальше не понятно как сделать ограничение по количеству вызовов, желательно даже каналов (вх/исх одновременно). Ещё дальше так же хотелось бы подавать транк с несколькими номерами и без авторизации с привязкой к IP. ]]></text>
+</doc>

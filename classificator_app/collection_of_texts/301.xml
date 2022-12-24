@@ -1,0 +1,267 @@
+<?xml version="1.0" ?>
+<doc>
+	<original_author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[strictmode.io]]></item>
+	</original_author>
+	<label auto="true" type="str" verify="true"><![CDATA[Develop]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[kmoseenk]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-12-08, 18:28]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/company/otus/blog/704398/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Как собрать, покрыть тестами и опубликовать TypeScript-пакет в npm в 2022 году]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Блог компании OTUS]]></item>
+		<item type="str"><![CDATA[JavaScript]]></item>
+		<item type="str"><![CDATA[Программирование]]></item>
+		<item type="str"><![CDATA[TypeScript]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[javascript]]></item>
+		<item type="str"><![CDATA[typescript]]></item>
+		<item type="str"><![CDATA[npm]]></item>
+		<item type="str"><![CDATA[работа со стилями]]></item>
+		<item type="str"><![CDATA[TypeScript-пакет]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[В этой статье мы с вами создадим с нуля и опубликуем в  NPM TypeScript-пакет, не забыв про Jest для покрытия тестами.
+Мы инициализируем проект, настроим TypeScript, напишем для него тесты в Jest и опубликуем его в NPM.
+Наш проект
+Наша простая библиотека будет называтся digx. Она позволяет “выкапывать” значения из вложенных объектов по заданному пути (аналогично lodash get).
+Например:
+const source = { my: { nested: [1, 2, 3] } }
+digx(source, "my.nested[1]") //=> 2
+Для раскрытия темы этой статьи это не так важно что она делает, главное чтобы она была достаточно проста и тестируема.
+Модуль npm можно найти здесь. GitHub-репозиторий находится здесь.
+Инициализируем проект
+Давайте начнем с создания пустого каталога и его инициализации.
+mkdir digx
+cd digx
+npm init --yes
+Команда npm init --yes создаст файл package.json и заполнит его некоторыми дефолтными значениями (которые вы, возможно, захотите изменить).
+И давайте сразу настроим git-репозиторий в этой же папке.
+git init
+echo "node_modules" >> .gitignore
+echo "dist" >> .gitignore
+git add .
+git commit -m "initial"
+Сборка библиотеки
+Мы будем использовать TypeScript. Давайте установим его.
+npm i -D typescript
+Далее мы создадим tsconfig.json со следующей конфигурацией:
+{
+  "files": ["src/index.ts"],
+  "compilerOptions": {
+    "target": "es2015",
+    "module": "es2015",
+    "declaration": true,
+    "outDir": "./dist",
+    "noEmit": false,
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "strictFunctionTypes": true,
+    "strictBindCallApply": true,
+    "strictPropertyInitialization": true,
+    "noImplicitThis": true,
+    "alwaysStrict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true
+  }
+}
+Вот наиболее важные настройки:
+Наш основной файл будет находиться в папке src, поэтому "files": ["src/index.ts"].
+"target": "es2015", чтобы убедиться, что мы поддерживаем только современные платформы и не утяжеляем проект лишними оболочками.
+"module": "es2015". У нас будет стандартный ES-модуль (по умолчанию здесь CommonJS), чтобы у современных браузеров не было с ним никаких проблем; даже Node поддерживает его с 13-й версии.
+"declaration": true - потому что нам нужны файлы деклараций d.ts. Нашим пользователям TypeScript они точно потребуются.
+Большинство остальных пунктов — это просто различные необязательные проверки TypeScript, которые лично я предпочитаю включать.
+Откройте package.json и обновите раздел "scripts":
+"scripts": {
+  "build": "tsc"
+}
+Теперь мы можем запустить сборку с помощью npm run build... Что выдаст ошибку, ведь у нас еще нет кода, который бы мы могли собирать.
+Но мы начнем с другого конца.
+Добавление тестов
+Как ответственные взрослые, коими мы являемся, мы начнем с тестов. Мы будем использовать jest, потому что он прост и прекрасен.
+npm i -D jest @types/jest ts-jest
+Для того, чтобы Jest понимал TypeScript, нам потребуется пакет ts-jest. В качестве альтернативы мы можем использовать babel, но он потребует дополнительной настройки и дополнительных модулей. Не усложнять себе работу — в наших же интересах.
+Инициализируйте файл конфигурации jest с помощью
+./node_modules/.bin/jest --init
+Дальше просто прожмите Enter для каждого вопроса. Сейчас нас вполне устроят настройки по умолчанию.
+Это команда создаст файл jest.config.js с некоторыми значениями по умолчанию и добавит скрипт "test": "jest" в package.json.
+Откройте jest.config.js, найдите строку, начинающуюся с preset, и измените ее следующим образом:
+{
+  // ...
+  preset: "ts-jest",
+  // ...
+}
+Наконец, создайте каталог src и наш тестовый файл src/digx.test.ts и внесите туда следующее:
+import dg from "./index";
+
+test("works with a shallow object", () => {
+  expect(dg({ param: 1 }, "param")).toBe(1);
+});
+
+test("works with a shallow array", () => {
+  expect(dg([1, 2, 3], "[2]")).toBe(3);
+});
+
+test("works with a shallow array when shouldThrow is true", () => {
+  expect(dg([1, 2, 3], "[2]", true)).toBe(3);
+});
+
+test("works with a nested object", () => {
+  const source = { param: [{}, { test: "A" }] };
+  expect(dg(source, "param[1].test")).toBe("A");
+});
+
+test("returns undefined when source is null", () => {
+  expect(dg(null, "param[1].test")).toBeUndefined();
+});
+
+test("returns undefined when path is wrong", () => {
+  expect(dg({ param: [] }, "param[1].test")).toBeUndefined();
+});
+
+test("throws an exception when path is wrong and shouldThrow is true", () => {
+  expect(() => dg({ param: [] }, "param[1].test", true)).toThrow();
+});
+
+test("works tranparently with Sets and Maps", () => {
+  const source = new Map([
+    ["param", new Set()],
+    ["innerSet", new Set([new Map(), new Map([["innerKey", "value"]])])],
+  ]);
+  expect(dg(source, "innerSet[1].innerKey")).toBe("value");
+});
+Эти модульные тесты дают хорошее представление о том, что мы создаем.
+Наш модуль экспортирует одну функцию, digx. Она принимает любой объект, строковый параметр path и опциональный параметр shouldThrow, который вызывает исключение, если вложенная структура исходного объекта не содержит указанный путь.
+В качестве вложенных структур могут выступать объекты, массивы, Map’ы и Set’ы.
+Запустить тесты можно с помощью команды npm t; Конечно, сейчас они будут выдавать ошибку — так и должно быть.
+Теперь откройте файл src/index.ts и скопируйте туда это:
+export default dig;
+
+/**
+ * Функция dig, которая принимает любой объект с вложенной структурой и путь для него, 
+и возвращает значение, которое было найдено по этому пути или undefined, если значение 
+не найдено
+ *
+ * @param {any}     Объекты с вложенной структурой.
+ * @param {string}  path - Строка с путем, например, `my[1].test.field`
+ * @param {boolean} [shouldThrow=false] - Опционально пробрасывает исключение, если ничего не найдено
+ *
+ */
+function dig(source: any, path: string, shouldThrow: boolean = false) {
+  if (source === null || source === undefined) {
+    return undefined;
+  }
+
+  // split path: "param[3].test" => ["param", 3, "test"]
+  const parts = splitPath(path);
+
+  return parts.reduce((acc, el) => {
+    if (acc === undefined) {
+      if (shouldThrow) {
+        throw new Error(`Could not dig the value using path: ${path}`);
+      } else {
+        return undefined;
+      }
+    }
+
+    if (isNum(el)) {
+      // Для массива
+      const arrIndex = parseInt(el);
+      if (acc instanceof Set) {
+        return Array.from(acc)[arrIndex];
+      } else {
+        return acc[arrIndex];
+      }
+    } else {
+      // Для объекта
+      if (acc instanceof Map) {
+        return acc.get(el);
+      } else {
+        return acc[el];
+      }
+    }
+  }, source);
+}
+
+const ALL_DIGITS_REGEX = /^\d+$/;
+
+function isNum(str: string) {
+  return str.match(ALL_DIGITS_REGEX);
+}
+
+const PATH_SPLIT_REGEX = /\.|\]|\[/;
+
+function splitPath(str: string) {
+  return (
+    str
+      .split(PATH_SPLIT_REGEX)
+      // Удаляем пустые строки
+      .filter((x) => !!x)
+  );
+}
+Если честно, то реализация могла бы быть и получше, но для нас важнее то, что тесты проходятся уже сейчас. Попробуйте сами, запустив npm t.
+Теперь, если мы запустим npm run build, мы должны увидеть каталог dist с двумя файлами, index.js и index.d.ts.
+Теперь мы готовы к публикации.
+Публикация npm-пакета 
+Зарегистрируйтесь на npm, если вы еще этого не сделали.
+Затем залогиньтесь через свой терминал с помощью npm login.
+Мы всего в одном шаге от публикации нашего замечательного нового пакета. Тем не менее, есть несколько вещей, о которых нам еще нужно позаботиться.
+Во-первых, давайте удостоверимся, что в нашем package.json правильные метаданные.
+Убедитесь, что для свойства main задан наш файл "main": "dist/index.js".
+Добавьте "types": "dist/index.d.ts" для наших пользователей TypeScript.
+Поскольку наша библиотека будет использоваться как ESM-модуль, нам также необходимо указать "type": "module".
+Также нужно задать имя (name) и описание (description).
+Далее нам нужно позаботиться о файлах, которые мы хотим опубликовать. Мы бы не хотели опубликовать какие-либо файлы конфигурации или исходные, или тестовые файлы.
+Для этого мы могли бы воспользоваться .npmignore, где мы перечислим все файлы, которые мы НЕ ХОТИМ публиковать. Но вместо этого я бы предпочел иметь “вайтлист”, поэтому давайте воспользуемся полем files  в  package.json , чтобы указать файлы, которые мы ХОТИМ включить.
+{
+  // ...
+  "files": ["dist", "LICENSE", "README.md", "package.json"],
+  // ...
+}
+Наконец, мы готовы опубликовать наш пакет.
+Запустите
+npm publish --dry-run
+И убедитесь, что включены только необходимые файлы.
+Когда мы будем готовы, мы, наконец, сможем запустить
+npm publish
+Финальная проверка
+Давайте создадим новый проект и установим наш модуль.
+npm install --save digx
+А теперь давайте напишем простую программу для проверки.
+import dg from "digx"
+
+console.log(dg({ test: [1, 2, 3] }, "test[0]"))
+Это наши типы, замечательно!
+DIGX DIGX типы доступны прямо из коробки.
+Теперь запустите его с помощю node index.js, и вы должны увидеть на экране 1.
+Заключение
+Мы создали с нуля простой npm-пакет и успешно опубликовали его.
+Наша библиотека предоставляет ESM-модуль, типы для TypeScript и покрыта тестами с использованием jest.
+Никто не будет отрицать, что это было не так уж и сложно.
+Скоро состоится открытое занятие «CSS-in-JS. Удобный способ управлять стилями». На уроке обсудим Styled components, Linaria, Astroturf и другие инструменты упрощения работы со стилями. Регистрация открыта по ссылке для всех желающих. В этой статье мы с вами создадим с нуля и опубликуем в  NPM TypeScript-пакет, не забыв про Jest для покрытия тестами. Мы инициализируем проект, настроим TypeScript, напишем для него тесты в Jest и опубликуем его в NPM. Наш проект Наша простая библиотека будет называтся digx. Она позволяет “выкапывать” значения из вложенных объектов по заданному пути (аналогично lodash get). lodash get Например: const source = { my: { nested: [1, 2, 3] } }
+digx(source, "my.nested[1]") //=> 2 const source = { my: { nested: [1, 2, 3] } }
+digx(source, "my.nested[1]") //=> 2 Для раскрытия темы этой статьи это не так важно что она делает, главное чтобы она была достаточно проста и тестируема. Модуль npm можно найти здесь. GitHub-репозиторий находится здесь. можно найти здесь здесь Инициализируем проект Давайте начнем с создания пустого каталога и его инициализации. mkdir digx
+cd digx
+npm init --yes mkdir digx
+cd digx
+npm init --yes Команда npm init --yes создаст файл package.json и заполнит его некоторыми дефолтными значениями (которые вы, возможно, захотите изменить). npm init --yes package.json И давайте сразу настроим git-репозиторий в этой же папке. git init
+echo "node_modules" >> .gitignore
+echo "dist" >> .gitignore
+git add .
+git commit -m "initial" git init
+echo "node_modules" >> .gitignore
+echo "dist" >> .gitignore
+git add .
+git commit -m "initial" Сборка библиотеки Мы будем использовать TypeScript. Давайте установим его.]]></text>
+</doc>

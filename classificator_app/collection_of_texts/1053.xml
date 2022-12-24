@@ -1,0 +1,1201 @@
+<?xml version="1.0" ?>
+<doc>
+	<label auto="true" type="str" verify="true"><![CDATA[Other]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[evilsadko]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-08-25, 08:45]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/post/684284/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Blender, захват движения, нейронные сети]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Python]]></item>
+		<item type="str"><![CDATA[Программирование]]></item>
+		<item type="str"><![CDATA[Работа с 3D-графикой]]></item>
+		<item type="str"><![CDATA[Машинное обучение]]></item>
+		<item type="str"><![CDATA[Компьютерная анимация]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Blender]]></item>
+		<item type="str"><![CDATA[захват движения]]></item>
+		<item type="str"><![CDATA[нейронные сети]]></item>
+		<item type="str"><![CDATA[анимация]]></item>
+		<item type="str"><![CDATA[python]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[Blender отличный 3d редактор, открытый документированный код, убирает ограничения в реализации творческих фантазий. Большая "фанатская база" сгенерировала решения под разные задачи, ускоряя творческий процесс. Периодически получаю практический опыта в Blender, главное в саморазвитие, ставить цель c желаемым результатом, повторение действий из уроков не рабочий способ получения знаний для меня. Выбираю цель, с учетом собственного интереса, предварительно проверяю на отсутствие готового решения, что бы не лишить себя этапов развития. Моим критериям соответствует - анимация персонажа в Blender, с использованием нейронных сетей. Существуют статьи, видео, рабочие коммерческие решения, но нет готового подходящего мне, только части головоломки которые нужно собрать.
+Примерный алгоритм:
+Получить координаты движения суставов человека из видео, с помощью искусственных нейронных сетей.
+Обработать координаты, использовать фильтр Калмана для получения приемлемого результата.
+Создать скелет из координат в Blender.
+Анимировать скелет.
+ВАЖНО! Последовательность подачи информации соответствует ходу моих изначальных действий
+Захват движения суставов человека с помощь искусственных нейронных сетей, популярное направление машинного обучения, огромное количество реализаций с различными характеристиками скорости и точности. Главный упор моего повествования будет на создание скелета и анимации движения в Blender, поэтому какую архитектуры использовать не важно. Несколько пазлов моей мозаики обнаружил в хранилище https://github.com/haryo-s/blender_lifting, автор кода использует статью CVPR 2017 года Lifting from the Deep: Convolutional 3D Pose Estimation from a Single Image. Haryo Sukmawanto, проделал отличную работу, но ограничился созданием скелета по изображению без анимации. Фрагмент нужный мне, внес незначительные изменения.
+import bpy
+from mathutils import Vector, Matrix
+import numpy as np
+import math
+from math import radians, ceil
+
+# Importing global modules
+import time
+import subprocess
+import sys
+import json
+import pickle
+import os, random
+import numpy as np
+
+def create_armature(coordinates, name, scale=1.0):
+    """
+    Creates an armature skeleton data object from the input coordinates acquired from lift_image(). 
+    The skeleton's bones will have been appropriately labelled and parented.
+    The skeleton data object will be implemented into the scene as well.
+    :param coordinates: List of vertex coordinates from lifter
+    :param name: Base name of the bezier_curves 
+    :param scale: Scale of the skeleton 
+    """
+    # Setting the scale to a hundredth already as the distances from lifting are considerably large.
+    scale = scale * 0.01  
+    arm_dat_name = 'Armature_dat_' + name
+    arm_obj_name = 'Armature_obj_' + name
+    arm_dat = bpy.data.armatures.new(arm_dat_name)
+    arm_obj = bpy.data.objects.new(arm_obj_name, arm_dat)    
+    
+    bpy.context.scene.collection.objects.link(arm_obj)
+    bpy.context.view_layer.objects.active = arm_obj
+    
+    bpy.ops.object.mode_set(mode='EDIT', toggle=False)
+    
+    edit_bones = bpy.data.armatures[arm_dat_name].edit_bones
+    b = edit_bones.new('base')
+    b.head = [coordinates[0][0]*scale, coordinates[0][1]*scale + 100*scale, coordinates[0][2]*scale]
+    b.tail = [coordinates[0][0]*scale, coordinates[0][1]*scale,             coordinates[0][2]*scale]
+    bone_nr = 0
+    for conn in CONNECTIONS:        
+        b = edit_bones.new(LIFTING_BONE_NAMES[bone_nr])
+        b.head = [scale*item for item in coordinates[conn[0]]]
+        b.tail = [scale*item for item in coordinates[conn[1]]]
+        b.parent = edit_bones[LIFTING_BONE_PARENTS[str(LIFTING_BONE_NAMES[bone_nr])]]
+        b.use_connect = True
+        bone_nr += 1
+        
+    bpy.ops.object.mode_set(mode='OBJECT')
+    return arm_obj       
+Haryo, использует обученную сеть из https://github.com/DenisTome/Lifting-from-the-Deep-release/ - хранилище подразумевает работу с единичным изображением, изменил код для своей задачи, получить набор координат движения суставов человека из последовательности кадров видео.
+import cv2
+import json
+from lifting import PoseEstimator
+
+"""
+хороший вариант сохранения массива с помощью numpy,
+я решил сохранять примитивно.
+"""
+cap = cv2.VideoCapture("test_video.mp4")
+h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+pose_estimator = PoseEstimator((h,w,3), SESSION_PATH, PROB_MODEL_PATH)
+pose_estimator.initialise()
+outfile = open('data_c.txt', 'w')
+while True:
+    ret, image = cap.read()
+    if ret == False:
+        break 
+    pose_2d, visibility, pose_3d = pose_estimator.estimate(image)
+    try:
+      for ii in pose_3d:
+          coordinates = []
+          for i in range(len(ii[0])):
+              coordinates.append([ii[0][i], ii[1][i], ii[2][i]])
+          outfile.write(str(json.dumps(coordinates))+"\n")  
+    except Exception as e:
+      print (e)
+outfile.close()
+cap.release()
+cv2.destroyAllWindows()
+Из полученных данных создаю скелет.
+# получить координаты
+def get_c(returned_val):
+    with open(returned_val) as f:
+         f = f.readlines()
+         ls = []         
+         for i in f:
+            ls.append(json.loads(i))
+         return ls
+
+coordinates = get_c("data_c.txt")
+scene.frame_start = 0
+scene.frame_end = len(coordinates)
+ARM = create_armature(coordinates[0], "A")
+созданный скелет, структура кости
+Анимация. Наивно предположил изменять координаты head и tail кости, используя keyframe_insert, ротацию и локацию. Естественно, не рабочий вариант, keyframe_insert фиксирует изменения в режиме поз, а изменения head и tail работают в режиме редактирования. Могу получать значения head и tail в режиме поз, но воздействовать не могу. Продолжил собирать информацию, документация Blender, комментарии Stack Exchange, статьи... Появилось две идеи, которые нужно реализовать что бы проверить:
+двойник скелета;
+ограничение костей скелета, примитивными объектами.
+Двойник скелета. Создаю два скелета, первый скелет изменяю в режиме редактирования, на второй переношу изменения в режиме позы.
+# простая версия - копирование матрицы позы
+def get_pose(ARM, ARM2):
+    for bone in ARM.pose.bones: 
+            ARM.pose.bones[bone.name].matrix = ARM2.pose.bones[bone.name].matrix       
+            ARM.pose.bones[bone.name].rotation_mode = 'XYZ'
+            ARM.pose.bones[bone.name].keyframe_insert(data_path='rotation_euler', frame=frame)
+            scene.frame_set(frame)
+    scene.frame_set(frame)
+
+# сложная версия - генерирование матрици позы, с учетом расположения в пространстве
+def snap_rotation(source, target):
+    Ms = source.id_data.convert_space(
+        pose_bone=source,
+        matrix=source.matrix,
+        from_space='POSE',
+        )
+    Mt = target.id_data.convert_space(
+        pose_bone=target,
+        matrix=target.matrix,
+        from_space='POSE',
+        ) 
+         
+    _, q, _ = Ms.decompose()
+    t, _, s = Mt.decompose()
+    M = (
+        Matrix.Translation(t) @
+        q.to_matrix().to_4x4() @ 
+        Matrix.Diagonal(s.to_4d())
+        )
+    target.matrix = target.id_data.convert_space(
+        pose_bone=target,
+        matrix=M,
+        to_space='POSE',
+        )
+
+def change_arm(coordinates, name, scale=1.0):
+    scale = scale * 0.01  
+    arm_dat_name = 'Armature_dat_' + name
+    arm_obj_name = 'Armature_obj_' + name
+    bpy.ops.object.mode_set(mode='EDIT', toggle=False)
+    edit_bones = bpy.data.armatures[arm_dat_name].edit_bones
+    bone_nr = 0
+    for conn in CONNECTIONS:        
+        b = edit_bones[LIFTING_BONE_NAMES[bone_nr]]
+        b.head = [scale*item for item in coordinates[conn[0]]]
+        b.tail = [scale*item for item in coordinates[conn[1]]]
+        bone_nr += 1
+    bpy.ops.object.mode_set(mode = 'POSE')
+    # простая версия
+    # get_pose(ARM, ARM2)
+    
+    # сложная версия
+    for bone in ARM.pose.bones:
+        ARM.pose.bones[bone.name].rotation_mode = 'QUATERNION'
+        snap_rotation(bpy.data.objects[arm_obj_name].pose.bones[bone.name],
+                      ARM.pose.bones[bone.name])            
+        ARM.pose.bones[bone.name].keyframe_insert(data_path='rotation_quaternion', frame=frame)
+        scene.frame_set(frame) 
+   
+ARM = create_armature(coordinates[0], "A")
+ARM2 = create_armature(coordinates[0], "B")
+for frame in range(len(coordinates)):
+            scene.frame_set(frame)
+            COR = coordinates[frame]
+            change_arm(COR, "B") 
+без фильтра Калмана
+Идея с двойником показалась рабочей, детальное изучение выявило проблему - вращение в оси кости. При выставлении координат head и tail в режиме редактирования, программа автоматически вращает кость (параметр roll), эти вращения присутствуют в режиме позы, вместе с нужными вращениями мы переносим артефакты. Существенный дефект.
+параметр roll
+Ограничение костей скелета, примитивными объектами. Создать примитивный объект, создать ограничение кости к объекту. В последовательности кадров, из координат суставов кости, вычислить направляющий вектор, передать координаты вектора объекту. Сохранять изменения вращения кости keyframe_insert получаемые от воздействия объекта.
+def create_armature(coordinates, name, scale=1.0):
+    """
+    Creates an armature skeleton data object from the input coordinates acquired from lift_image(). 
+    The skeleton's bones will have been appropriately labelled and parented.
+    The skeleton data object will be implemented into the scene as well.
+    :param coordinates: List of vertex coordinates from lifter
+    :param name: Base name of the bezier_curves 
+    :param scale: Scale of the skeleton 
+    """
+    # Setting the scale to a hundredth already as the distances from lifting are considerably large.
+    scale = scale * 0.01  
+    arm_dat_name = 'Armature_dat_' + name
+    arm_obj_name = 'Armature_obj_' + name
+    arm_dat = bpy.data.armatures.new(arm_dat_name)
+    arm_obj = bpy.data.objects.new(arm_obj_name, arm_dat)
+    bpy.context.scene.collection.objects.link(arm_obj)
+    bpy.context.view_layer.objects.active = arm_obj
+    bpy.ops.object.mode_set(mode='EDIT', toggle=False)
+    edit_bones = bpy.data.armatures[arm_dat_name].edit_bones
+    b = edit_bones.new('base')
+    b.head = [coordinates[0][0]*scale, coordinates[0][1]*scale + 100*scale, coordinates[0][2]*scale]
+    b.tail = [coordinates[0][0]*scale, coordinates[0][1]*scale,             coordinates[0][2]*scale]
+    bone_nr = 0
+    for conn in CONNECTIONS:        
+        b = edit_bones.new(LIFTING_BONE_NAMES[bone_nr])
+        b.head = [scale*item for item in coordinates[conn[0]]]
+        b.tail = [scale*item for item in coordinates[conn[1]]]
+        b.parent = edit_bones[LIFTING_BONE_PARENTS[str(LIFTING_BONE_NAMES[bone_nr])]]
+        b.use_connect = True
+        bone_nr += 1
+    bpy.ops.object.mode_set(mode='POSE')
+    bone_nr = 0
+    for conn in CONNECTIONS:    
+        b = arm_obj.pose.bones[LIFTING_BONE_NAMES[bone_nr]]    
+        v1 = Vector(coordinates[conn[0]])
+        v2 = Vector(coordinates[conn[1]]) 
+        # направляющий вектор
+        v = v2 - v1 
+        v.normalize() 
+        vGoal = v + b.tail 
+        # примитивный объект
+        bpy.ops.object.mode_set(mode='OBJECT')
+        bpy.ops.object.empty_add(type='PLAIN_AXES', location= vGoal) 
+        target_axis = bpy.context.active_object
+        temp_list.append(target_axis.name)
+        # создать ограничение
+        neckCopyRot = arm_obj.pose.bones[LIFTING_BONE_NAMES[bone_nr]].constraints.new('DAMPED_TRACK') 
+        neckCopyRot.target = target_axis 
+        target_axis.select_set(False) 
+        bpy.context.view_layer.objects.active = arm_obj
+        bpy.ops.object.mode_set(mode='POSE')   
+        bone_nr += 1 
+    # в режиме редактирования установить позу из режима поз    
+    bpy.context.view_layer.objects.active = arm_obj
+    bpy.data.objects['Armature_obj_A'].select_set(True)
+    bpy.ops.object.mode_set(mode = 'POSE')
+    bpy.ops.pose.select_all(action='SELECT')
+    bpy.ops.pose.armature_apply(selected=False)
+    bpy.ops.object.mode_set(mode = 'OBJECT')        
+    return arm_obj
+  
+def change_arm(coordinates, scale=1.0):
+    bpy.ops.object.mode_set(mode='POSE', toggle=False)    
+    RIG = bpy.context.active_object.id_data
+    bone_nr = 0
+    for conn in CONNECTIONS:
+        v1 = Vector(coordinates[conn[0]])
+        v2 = Vector(coordinates[conn[1]])      
+        v = v2 - v1 
+        v.normalize() 
+        vGoal = v + ARM.pose.bones[LIFTING_BONE_NAMES[bone_nr]].tail       
+        bpy.ops.object.mode_set(mode='OBJECT')
+        J = bpy.data.objects[temp_list[bone_nr]]
+        J.location = vGoal
+        ARM.select_set(True)
+        bpy.context.view_layer.objects.active = ARM
+        bpy.ops.object.mode_set(mode='POSE')
+        RIG.data.bones[LIFTING_BONE_NAMES[bone_nr]].select = True
+        bpy.ops.pose.visual_transform_apply()
+        # сохранение изменения локации примитивного объекта
+        J.keyframe_insert(data_path="location", frame=frame)
+        # сохранение изменения вращения кости
+        ARM.pose.bones[LIFTING_BONE_NAMES[bone_nr]].keyframe_insert(data_path="rotation_quaternion", frame=frame)
+        bone_nr += 1                                                          
+        scene.frame_set(frame)  
+без фильтра Калмана
+Получил приближенный к желаемому, результат. В глаза бросаются артефакты, используемая нейронная сеть работает с одним кадром, нет зависимости координат между кадрами для сглаживания. Современные алгоритмы решают эту проблему разными способами, а я использовал фильтр Калмана. Этот алгоритм в распоряжении человечества, долго будет актуальным в разных задачах.
+class KalmanFilter:
+    def __init__(self):  
+       # значение инициализации
+        self.x_P = 0.9
+        self.x_Q = 0.08
+        
+        self.y_P = 0.9
+        self.y_Q = 0.08
+        
+        self.z_P = 0.9
+        self.z_Q = 0.08
+        
+        self.x_priori_estimated_covariance = 1 
+        self.y_priori_estimated_covariance = 1
+        self.z_priori_estimated_covariance = 1
+        # X 
+        self.x_estimated_value_dict = {'base': 0, 'pelvis_r': 0, 'thigh_r': 0, 'calf_r': 0, 'pelvis_l': 0, 
+                                       'thigh_l': 0, 'calf_l': 0, 'waist': 0, 'chest': 0, 
+                                       'neck': 0, 'head': 0, 'shoulder_l': 0, 'arm_l': 0, 
+                                       'forearm_l': 0, 'shoulder_r': 0, 'arm_r': 0, 'forearm_r': 0}
+
+        self.x_post_estimated_covariance_dict = {'base': 1, 'pelvis_r': 1, 'thigh_r': 1, 'calf_r': 1, 'pelvis_l': 1, 
+                                                 'thigh_l': 1, 'calf_l': 1, 'waist': 1, 'chest': 1, 
+                                                 'neck': 1, 'head': 1, 'shoulder_l': 1, 'arm_l': 1, 
+                                                 'forearm_l': 1, 'shoulder_r': 1, 'arm_r': 1, 'forearm_r': 1}
+        # Y 
+        self.y_estimated_value_dict = {'base': 0, 'pelvis_r': 0, 'thigh_r': 0, 'calf_r': 0, 'pelvis_l': 0, 
+                                       'thigh_l': 0, 'calf_l': 0, 'waist': 0, 'chest': 0, 
+                                       'neck': 0, 'head': 0, 'shoulder_l': 0, 'arm_l': 0, 
+                                       'forearm_l': 0, 'shoulder_r': 0, 'arm_r': 0, 'forearm_r': 0}
+
+        self.y_post_estimated_covariance_dict = {'base': 1, 'pelvis_r': 1, 'thigh_r': 1, 'calf_r': 1, 'pelvis_l': 1, 
+                                                 'thigh_l': 1, 'calf_l': 1, 'waist': 1, 'chest': 1, 
+                                                 'neck': 1, 'head': 1, 'shoulder_l': 1, 'arm_l': 1, 
+                                                 'forearm_l': 1, 'shoulder_r': 1, 'arm_r': 1, 'forearm_r': 1}
+                                                 
+        # Z                                         
+        self.z_estimated_value_dict = {'base': 0, 'pelvis_r': 0, 'thigh_r': 0, 'calf_r': 0, 'pelvis_l': 0, 
+                                       'thigh_l': 0, 'calf_l': 0, 'waist': 0, 'chest': 0, 
+                                       'neck': 0, 'head': 0, 'shoulder_l': 0, 'arm_l': 0, 
+                                       'forearm_l': 0, 'shoulder_r': 0, 'arm_r': 0, 'forearm_r': 0}
+
+        self.z_post_estimated_covariance_dict = {'base': 1, 'pelvis_r': 1, 'thigh_r': 1, 'calf_r': 1, 'pelvis_l': 1, 
+                                                 'thigh_l': 1, 'calf_l': 1, 'waist': 1, 'chest': 1, 
+                                                 'neck': 1, 'head': 1, 'shoulder_l': 1, 'arm_l': 1, 
+                                                 'forearm_l': 1, 'shoulder_r': 1, 'arm_r': 1, 'forearm_r': 1}
+
+    # перезагрузка значений
+    def x_reset(self, P, Q): 
+        self.x_P = P
+        self.x_Q = Q
+
+    def y_reset(self, P, Q):
+        self.y_P = P
+        self.y_Q = Q
+
+    def z_reset(self, P, Q):
+        self.z_P = P
+        self.z_Q = Q
+
+    # входные текущие значения поступающие в фильтр   
+    def cal_X(self, current_value, label):  
+        self.current_value = current_value
+        self.x_priori_estimated_covariance = self.x_post_estimated_covariance_dict[label]
+        x_kalman_gain = self.x_priori_estimated_covariance / (self.x_priori_estimated_covariance + self.x_P)  
+        output = self.x_estimated_value_dict[label] + x_kalman_gain * (
+                    current_value - self.x_estimated_value_dict[label])  
+        self.x_estimated_value_dict[label] = output
+        self.x_post_estimated_covariance_dict[label] = (1 - x_kalman_gain) * self.x_priori_estimated_covariance + self.x_Q
+        self.x_priori_estimated_covariance = self.x_post_estimated_covariance_dict[label]
+        return output  
+
+    def cal_Y(self, current_value, label):  
+        self.current_value = current_value
+        self.y_priori_estimated_covariance = self.y_post_estimated_covariance_dict[label]
+        y_kalman_gain = self.y_priori_estimated_covariance / (self.y_priori_estimated_covariance + self.y_P)  
+        output = self.y_estimated_value_dict[label] + y_kalman_gain * (
+                    current_value - self.y_estimated_value_dict[label])  
+        self.y_estimated_value_dict[label] = output
+        self.y_post_estimated_covariance_dict[label] = (1 - y_kalman_gain) * self.y_priori_estimated_covariance + self.y_Q
+        self.y_priori_estimated_covariance = self.y_post_estimated_covariance_dict[label]
+        return output
+
+    def cal_Z(self, current_value, label): 
+        self.current_value = current_value
+        self.z_priori_estimated_covariance = self.z_post_estimated_covariance_dict[label]
+        z_kalman_gain = self.z_priori_estimated_covariance / (self.z_priori_estimated_covariance + self.z_P)  
+        output = self.z_estimated_value_dict[label] + z_kalman_gain * (
+                    current_value - self.z_estimated_value_dict[label])  
+        self.z_estimated_value_dict[label] = output
+        self.z_post_estimated_covariance_dict[label] = (1 - z_kalman_gain) * self.z_priori_estimated_covariance + self.z_Q
+        self.z_priori_estimated_covariance = self.z_post_estimated_covariance_dict[label]
+        return output
+
+
+class KalmanProcess():
+    def __init__(self):
+        self.kalman_filter_X = KalmanFilter()
+        self.kalman_filter_Y = KalmanFilter()
+        self.kalman_filter_Z = KalmanFilter()
+
+    def reset_kalman_filter_X(self, P, Q):
+        self.kalman_filter_X.x_reset(P, Q)
+
+    def reset_kalman_filter_Y(self, P, Q):
+        self.kalman_filter_Y.y_reset(P, Q)
+
+    def reset_kalman_filter_Z(self, P, Q):
+        self.kalman_filter_Z.z_reset(P, Q)
+
+
+    def do_kalman_filter(self, X, Y, Z, label):
+        X_cal = self.kalman_filter_X.cal_X(X, label)
+        Y_cal = self.kalman_filter_Y.cal_Y(Y, label)
+        Z_cal = self.kalman_filter_Z.cal_Z(Z, label)
+        return X_cal, Y_cal, Z_cal
+      
+kalman_process = KalmanProcess()
+_dict = {'base': 0, 'pelvis_r': 0, 'thigh_r': 0, 'calf_r': 0, 'pelvis_l': 0, 
+         'thigh_l': 0, 'calf_l': 0, 'waist': 0, 'chest': 0, 
+         'neck': 0, 'head': 0, 'shoulder_l': 0, 'arm_l': 0, 
+         'forearm_l': 0, 'shoulder_r': 0, 'arm_r': 0, 'forearm_r': 0}
+
+list_dict = list(_dict.keys())   
+# получить координаты
+def lift_image(returned_val):
+    with open(returned_val) as f:
+         f = f.readlines()
+         ls = []         
+         for i in f:
+            ls.append(json.loads(i))
+         return ls
+         
+returned_val = "data_c.txt"
+coordinates = lift_image(returned_val)
+_file = open("data_c_kalman.txt","w")
+for i in coordinates:
+    coordinates = []
+    for iz, z in enumerate(i):
+        out_kalman_x, out_kalman_y, out_kalman_z = kalman_process.do_kalman_filter(z[0], z[1], z[2], list_dict[iz])
+        coordinates.append([out_kalman_x, out_kalman_y, out_kalman_z])
+    _file.write(str(coordinates)+"\n")  
+_file.close()    
+с фильтром Калмана
+https://github.com/naturalkind/natural-motion
+Простая и интересная задача, помогла лучше изучить механизмы работы Blender. Развитие цифровых вселенных, удивительная тенденция, сегодня переносим свой образ и движение в цифровой мир, завтра переносим сознание, если считаете что перенос сознания не возможен, докажите. Blender отличный 3d редактор, открытый документированный код, убирает ограничения в реализации творческих фантазий. Большая "фанатская база" сгенерировала решения под разные задачи, ускоряя творческий процесс. Периодически получаю практический опыта в Blender, главное в саморазвитие, ставить цель c желаемым результатом, повторение действий из уроков не рабочий способ получения знаний для меня. Выбираю цель, с учетом собственного интереса, предварительно проверяю на отсутствие готового решения, что бы не лишить себя этапов развития. Моим критериям соответствует - анимация персонажа в Blender, с использованием нейронных сетей. Существуют статьи, видео, рабочие коммерческие решения, но нет готового подходящего мне, только части головоломки которые нужно собрать. Примерный алгоритм: Получить координаты движения суставов человека из видео, с помощью искусственных нейронных сетей.
+Обработать координаты, использовать фильтр Калмана для получения приемлемого результата.
+Создать скелет из координат в Blender.
+Анимировать скелет. Получить координаты движения суставов человека из видео, с помощью искусственных нейронных сетей. Получить координаты движения суставов человека из видео, с помощью искусственных нейронных сетей. Обработать координаты, использовать фильтр Калмана для получения приемлемого результата. Обработать координаты, использовать фильтр Калмана для получения приемлемого результата. Создать скелет из координат в Blender. Создать скелет из координат в Blender. Анимировать скелет. Анимировать скелет. ВАЖНО! Последовательность подачи информации соответствует ходу моих изначальных действий ВАЖНО! Захват движения суставов человека с помощь искусственных нейронных сетей, популярное направление машинного обучения, огромное количество реализаций с различными характеристиками скорости и точности. Главный упор моего повествования будет на создание скелета и анимации движения в Blender, поэтому какую архитектуры использовать не важно. Несколько пазлов моей мозаики обнаружил в хранилище https://github.com/haryo-s/blender_lifting, автор кода использует статью CVPR 2017 года Lifting from the Deep: Convolutional 3D Pose Estimation from a Single Image. Haryo Sukmawanto, проделал отличную работу, но ограничился созданием скелета по изображению без анимации. Фрагмент нужный мне, внес незначительные изменения. https://github.com/haryo-s/blender_lifting Lifting from the Deep: Convolutional 3D Pose Estimation from a Single Image import bpy
+from mathutils import Vector, Matrix
+import numpy as np
+import math
+from math import radians, ceil
+
+# Importing global modules
+import time
+import subprocess
+import sys
+import json
+import pickle
+import os, random
+import numpy as np
+
+def create_armature(coordinates, name, scale=1.0):
+    """
+    Creates an armature skeleton data object from the input coordinates acquired from lift_image(). 
+    The skeleton's bones will have been appropriately labelled and parented.
+    The skeleton data object will be implemented into the scene as well.
+    :param coordinates: List of vertex coordinates from lifter
+    :param name: Base name of the bezier_curves 
+    :param scale: Scale of the skeleton 
+    """
+    # Setting the scale to a hundredth already as the distances from lifting are considerably large.
+    scale = scale * 0.01  
+    arm_dat_name = 'Armature_dat_' + name
+    arm_obj_name = 'Armature_obj_' + name
+    arm_dat = bpy.data.armatures.new(arm_dat_name)
+    arm_obj = bpy.data.objects.new(arm_obj_name, arm_dat)    
+    
+    bpy.context.scene.collection.objects.link(arm_obj)
+    bpy.context.view_layer.objects.active = arm_obj
+    
+    bpy.ops.object.mode_set(mode='EDIT', toggle=False)
+    
+    edit_bones = bpy.data.armatures[arm_dat_name].edit_bones
+    b = edit_bones.new('base')
+    b.head = [coordinates[0][0]*scale, coordinates[0][1]*scale + 100*scale, coordinates[0][2]*scale]
+    b.tail = [coordinates[0][0]*scale, coordinates[0][1]*scale,             coordinates[0][2]*scale]
+    bone_nr = 0
+    for conn in CONNECTIONS:        
+        b = edit_bones.new(LIFTING_BONE_NAMES[bone_nr])
+        b.head = [scale*item for item in coordinates[conn[0]]]
+        b.tail = [scale*item for item in coordinates[conn[1]]]
+        b.parent = edit_bones[LIFTING_BONE_PARENTS[str(LIFTING_BONE_NAMES[bone_nr])]]
+        b.use_connect = True
+        bone_nr += 1
+        
+    bpy.ops.object.mode_set(mode='OBJECT')
+    return arm_obj        import bpy
+from mathutils import Vector, Matrix
+import numpy as np
+import math
+from math import radians, ceil
+
+# Importing global modules
+import time
+import subprocess
+import sys
+import json
+import pickle
+import os, random
+import numpy as np
+
+def create_armature(coordinates, name, scale=1.0):
+    """
+    Creates an armature skeleton data object from the input coordinates acquired from lift_image(). 
+    The skeleton's bones will have been appropriately labelled and parented.
+    The skeleton data object will be implemented into the scene as well.
+    :param coordinates: List of vertex coordinates from lifter
+    :param name: Base name of the bezier_curves 
+    :param scale: Scale of the skeleton 
+    """
+    # Setting the scale to a hundredth already as the distances from lifting are considerably large.
+    scale = scale * 0.01  
+    arm_dat_name = 'Armature_dat_' + name
+    arm_obj_name = 'Armature_obj_' + name
+    arm_dat = bpy.data.armatures.new(arm_dat_name)
+    arm_obj = bpy.data.objects.new(arm_obj_name, arm_dat)    
+    
+    bpy.context.scene.collection.objects.link(arm_obj)
+    bpy.context.view_layer.objects.active = arm_obj
+    
+    bpy.ops.object.mode_set(mode='EDIT', toggle=False)
+    
+    edit_bones = bpy.data.armatures[arm_dat_name].edit_bones
+    b = edit_bones.new('base')
+    b.head = [coordinates[0][0]*scale, coordinates[0][1]*scale + 100*scale, coordinates[0][2]*scale]
+    b.tail = [coordinates[0][0]*scale, coordinates[0][1]*scale,             coordinates[0][2]*scale]
+    bone_nr = 0
+    for conn in CONNECTIONS:        
+        b = edit_bones.new(LIFTING_BONE_NAMES[bone_nr])
+        b.head = [scale*item for item in coordinates[conn[0]]]
+        b.tail = [scale*item for item in coordinates[conn[1]]]
+        b.parent = edit_bones[LIFTING_BONE_PARENTS[str(LIFTING_BONE_NAMES[bone_nr])]]
+        b.use_connect = True
+        bone_nr += 1
+        
+    bpy.ops.object.mode_set(mode='OBJECT')
+    return arm_obj        Haryo, использует обученную сеть из https://github.com/DenisTome/Lifting-from-the-Deep-release/ - хранилище подразумевает работу с единичным изображением, изменил код для своей задачи, получить набор координат движения суставов человека из последовательности кадров видео. https://github.com/DenisTome/Lifting-from-the-Deep-release/ import cv2
+import json
+from lifting import PoseEstimator
+
+"""
+хороший вариант сохранения массива с помощью numpy,
+я решил сохранять примитивно.
+"""
+cap = cv2.VideoCapture("test_video.mp4")
+h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+pose_estimator = PoseEstimator((h,w,3), SESSION_PATH, PROB_MODEL_PATH)
+pose_estimator.initialise()
+outfile = open('data_c.txt', 'w')
+while True:
+    ret, image = cap.read()
+    if ret == False:
+        break 
+    pose_2d, visibility, pose_3d = pose_estimator.estimate(image)
+    try:
+      for ii in pose_3d:
+          coordinates = []
+          for i in range(len(ii[0])):
+              coordinates.append([ii[0][i], ii[1][i], ii[2][i]])
+          outfile.write(str(json.dumps(coordinates))+"\n")  
+    except Exception as e:
+      print (e)
+outfile.close()
+cap.release()
+cv2.destroyAllWindows() import cv2
+import json
+from lifting import PoseEstimator
+
+"""
+хороший вариант сохранения массива с помощью numpy,
+я решил сохранять примитивно.
+"""
+cap = cv2.VideoCapture("test_video.mp4")
+h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+pose_estimator = PoseEstimator((h,w,3), SESSION_PATH, PROB_MODEL_PATH)
+pose_estimator.initialise()
+outfile = open('data_c.txt', 'w')
+while True:
+    ret, image = cap.read()
+    if ret == False:
+        break 
+    pose_2d, visibility, pose_3d = pose_estimator.estimate(image)
+    try:
+      for ii in pose_3d:
+          coordinates = []
+          for i in range(len(ii[0])):
+              coordinates.append([ii[0][i], ii[1][i], ii[2][i]])
+          outfile.write(str(json.dumps(coordinates))+"\n")  
+    except Exception as e:
+      print (e)
+outfile.close()
+cap.release()
+cv2.destroyAllWindows() Из полученных данных создаю скелет. # получить координаты
+def get_c(returned_val):
+    with open(returned_val) as f:
+         f = f.readlines()
+         ls = []         
+         for i in f:
+            ls.append(json.loads(i))
+         return ls
+
+coordinates = get_c("data_c.txt")
+scene.frame_start = 0
+scene.frame_end = len(coordinates)
+ARM = create_armature(coordinates[0], "A") # получить координаты
+def get_c(returned_val):
+    with open(returned_val) as f:
+         f = f.readlines()
+         ls = []         
+         for i in f:
+            ls.append(json.loads(i))
+         return ls
+
+coordinates = get_c("data_c.txt")
+scene.frame_start = 0
+scene.frame_end = len(coordinates)
+ARM = create_armature(coordinates[0], "A")  созданный скелет, структура кости Анимация. Наивно предположил изменять координаты head и tail кости, используя keyframe_insert, ротацию и локацию. Естественно, не рабочий вариант, keyframe_insert фиксирует изменения в режиме поз, а изменения head и tail работают в режиме редактирования. Могу получать значения head и tail в режиме поз, но воздействовать не могу. Продолжил собирать информацию, документация Blender, комментарии Stack Exchange, статьи... Появилось две идеи, которые нужно реализовать что бы проверить: Анимация keyframe_insert keyframe_insert двойник скелета;
+ограничение костей скелета, примитивными объектами. двойник скелета; двойник скелета; двойник скелета; ограничение костей скелета, примитивными объектами. ограничение костей скелета, примитивными объектами. ограничение ограничение костей скелета, примитивными объектами. Двойник скелета. Создаю два скелета, первый скелет изменяю в режиме редактирования, на второй переношу изменения в режиме позы. Двойник скелета # простая версия - копирование матрицы позы
+def get_pose(ARM, ARM2):
+    for bone in ARM.pose.bones: 
+            ARM.pose.bones[bone.name].matrix = ARM2.pose.bones[bone.name].matrix       
+            ARM.pose.bones[bone.name].rotation_mode = 'XYZ'
+            ARM.pose.bones[bone.name].keyframe_insert(data_path='rotation_euler', frame=frame)
+            scene.frame_set(frame)
+    scene.frame_set(frame)
+
+# сложная версия - генерирование матрици позы, с учетом расположения в пространстве
+def snap_rotation(source, target):
+    Ms = source.id_data.convert_space(
+        pose_bone=source,
+        matrix=source.matrix,
+        from_space='POSE',
+        )
+    Mt = target.id_data.convert_space(
+        pose_bone=target,
+        matrix=target.matrix,
+        from_space='POSE',
+        ) 
+         
+    _, q, _ = Ms.decompose()
+    t, _, s = Mt.decompose()
+    M = (
+        Matrix.Translation(t) @
+        q.to_matrix().to_4x4() @ 
+        Matrix.Diagonal(s.to_4d())
+        )
+    target.matrix = target.id_data.convert_space(
+        pose_bone=target,
+        matrix=M,
+        to_space='POSE',
+        )
+
+def change_arm(coordinates, name, scale=1.0):
+    scale = scale * 0.01  
+    arm_dat_name = 'Armature_dat_' + name
+    arm_obj_name = 'Armature_obj_' + name
+    bpy.ops.object.mode_set(mode='EDIT', toggle=False)
+    edit_bones = bpy.data.armatures[arm_dat_name].edit_bones
+    bone_nr = 0
+    for conn in CONNECTIONS:        
+        b = edit_bones[LIFTING_BONE_NAMES[bone_nr]]
+        b.head = [scale*item for item in coordinates[conn[0]]]
+        b.tail = [scale*item for item in coordinates[conn[1]]]
+        bone_nr += 1
+    bpy.ops.object.mode_set(mode = 'POSE')
+    # простая версия
+    # get_pose(ARM, ARM2)
+    
+    # сложная версия
+    for bone in ARM.pose.bones:
+        ARM.pose.bones[bone.name].rotation_mode = 'QUATERNION'
+        snap_rotation(bpy.data.objects[arm_obj_name].pose.bones[bone.name],
+                      ARM.pose.bones[bone.name])            
+        ARM.pose.bones[bone.name].keyframe_insert(data_path='rotation_quaternion', frame=frame)
+        scene.frame_set(frame) 
+   
+ARM = create_armature(coordinates[0], "A")
+ARM2 = create_armature(coordinates[0], "B")
+for frame in range(len(coordinates)):
+            scene.frame_set(frame)
+            COR = coordinates[frame]
+            change_arm(COR, "B")  # простая версия - копирование матрицы позы
+def get_pose(ARM, ARM2):
+    for bone in ARM.pose.bones: 
+            ARM.pose.bones[bone.name].matrix = ARM2.pose.bones[bone.name].matrix       
+            ARM.pose.bones[bone.name].rotation_mode = 'XYZ'
+            ARM.pose.bones[bone.name].keyframe_insert(data_path='rotation_euler', frame=frame)
+            scene.frame_set(frame)
+    scene.frame_set(frame)
+
+# сложная версия - генерирование матрици позы, с учетом расположения в пространстве
+def snap_rotation(source, target):
+    Ms = source.id_data.convert_space(
+        pose_bone=source,
+        matrix=source.matrix,
+        from_space='POSE',
+        )
+    Mt = target.id_data.convert_space(
+        pose_bone=target,
+        matrix=target.matrix,
+        from_space='POSE',
+        ) 
+         
+    _, q, _ = Ms.decompose()
+    t, _, s = Mt.decompose()
+    M = (
+        Matrix.Translation(t) @
+        q.to_matrix().to_4x4() @ 
+        Matrix.Diagonal(s.to_4d())
+        )
+    target.matrix = target.id_data.convert_space(
+        pose_bone=target,
+        matrix=M,
+        to_space='POSE',
+        )
+
+def change_arm(coordinates, name, scale=1.0):
+    scale = scale * 0.01  
+    arm_dat_name = 'Armature_dat_' + name
+    arm_obj_name = 'Armature_obj_' + name
+    bpy.ops.object.mode_set(mode='EDIT', toggle=False)
+    edit_bones = bpy.data.armatures[arm_dat_name].edit_bones
+    bone_nr = 0
+    for conn in CONNECTIONS:        
+        b = edit_bones[LIFTING_BONE_NAMES[bone_nr]]
+        b.head = [scale*item for item in coordinates[conn[0]]]
+        b.tail = [scale*item for item in coordinates[conn[1]]]
+        bone_nr += 1
+    bpy.ops.object.mode_set(mode = 'POSE')
+    # простая версия
+    # get_pose(ARM, ARM2)
+    
+    # сложная версия
+    for bone in ARM.pose.bones:
+        ARM.pose.bones[bone.name].rotation_mode = 'QUATERNION'
+        snap_rotation(bpy.data.objects[arm_obj_name].pose.bones[bone.name],
+                      ARM.pose.bones[bone.name])            
+        ARM.pose.bones[bone.name].keyframe_insert(data_path='rotation_quaternion', frame=frame)
+        scene.frame_set(frame) 
+   
+ARM = create_armature(coordinates[0], "A")
+ARM2 = create_armature(coordinates[0], "B")
+for frame in range(len(coordinates)):
+            scene.frame_set(frame)
+            COR = coordinates[frame]
+            change_arm(COR, "B")   без фильтра Калмана Идея с двойником показалась рабочей, детальное изучение выявило проблему - вращение в оси кости. При выставлении координат head и tail в режиме редактирования, программа автоматически вращает кость (параметр roll), эти вращения присутствуют в режиме позы, вместе с нужными вращениями мы переносим артефакты. Существенный дефект. параметр roll  параметр roll Ограничение костей скелета, примитивными объектами. Создать примитивный объект, создать ограничение кости к объекту. В последовательности кадров, из координат суставов кости, вычислить направляющий вектор, передать координаты вектора объекту. Сохранять изменения вращения кости keyframe_insert получаемые от воздействия объекта. Ограничение Ограничение костей скелета, примитивными объектами keyframe_insert def create_armature(coordinates, name, scale=1.0):
+    """
+    Creates an armature skeleton data object from the input coordinates acquired from lift_image(). 
+    The skeleton's bones will have been appropriately labelled and parented.
+    The skeleton data object will be implemented into the scene as well.
+    :param coordinates: List of vertex coordinates from lifter
+    :param name: Base name of the bezier_curves 
+    :param scale: Scale of the skeleton 
+    """
+    # Setting the scale to a hundredth already as the distances from lifting are considerably large.
+    scale = scale * 0.01  
+    arm_dat_name = 'Armature_dat_' + name
+    arm_obj_name = 'Armature_obj_' + name
+    arm_dat = bpy.data.armatures.new(arm_dat_name)
+    arm_obj = bpy.data.objects.new(arm_obj_name, arm_dat)
+    bpy.context.scene.collection.objects.link(arm_obj)
+    bpy.context.view_layer.objects.active = arm_obj
+    bpy.ops.object.mode_set(mode='EDIT', toggle=False)
+    edit_bones = bpy.data.armatures[arm_dat_name].edit_bones
+    b = edit_bones.new('base')
+    b.head = [coordinates[0][0]*scale, coordinates[0][1]*scale + 100*scale, coordinates[0][2]*scale]
+    b.tail = [coordinates[0][0]*scale, coordinates[0][1]*scale,             coordinates[0][2]*scale]
+    bone_nr = 0
+    for conn in CONNECTIONS:        
+        b = edit_bones.new(LIFTING_BONE_NAMES[bone_nr])
+        b.head = [scale*item for item in coordinates[conn[0]]]
+        b.tail = [scale*item for item in coordinates[conn[1]]]
+        b.parent = edit_bones[LIFTING_BONE_PARENTS[str(LIFTING_BONE_NAMES[bone_nr])]]
+        b.use_connect = True
+        bone_nr += 1
+    bpy.ops.object.mode_set(mode='POSE')
+    bone_nr = 0
+    for conn in CONNECTIONS:    
+        b = arm_obj.pose.bones[LIFTING_BONE_NAMES[bone_nr]]    
+        v1 = Vector(coordinates[conn[0]])
+        v2 = Vector(coordinates[conn[1]]) 
+        # направляющий вектор
+        v = v2 - v1 
+        v.normalize() 
+        vGoal = v + b.tail 
+        # примитивный объект
+        bpy.ops.object.mode_set(mode='OBJECT')
+        bpy.ops.object.empty_add(type='PLAIN_AXES', location= vGoal) 
+        target_axis = bpy.context.active_object
+        temp_list.append(target_axis.name)
+        # создать ограничение
+        neckCopyRot = arm_obj.pose.bones[LIFTING_BONE_NAMES[bone_nr]].constraints.new('DAMPED_TRACK') 
+        neckCopyRot.target = target_axis 
+        target_axis.select_set(False) 
+        bpy.context.view_layer.objects.active = arm_obj
+        bpy.ops.object.mode_set(mode='POSE')   
+        bone_nr += 1 
+    # в режиме редактирования установить позу из режима поз    
+    bpy.context.view_layer.objects.active = arm_obj
+    bpy.data.objects['Armature_obj_A'].select_set(True)
+    bpy.ops.object.mode_set(mode = 'POSE')
+    bpy.ops.pose.select_all(action='SELECT')
+    bpy.ops.pose.armature_apply(selected=False)
+    bpy.ops.object.mode_set(mode = 'OBJECT')        
+    return arm_obj
+  
+def change_arm(coordinates, scale=1.0):
+    bpy.ops.object.mode_set(mode='POSE', toggle=False)    
+    RIG = bpy.context.active_object.id_data
+    bone_nr = 0
+    for conn in CONNECTIONS:
+        v1 = Vector(coordinates[conn[0]])
+        v2 = Vector(coordinates[conn[1]])      
+        v = v2 - v1 
+        v.normalize() 
+        vGoal = v + ARM.pose.bones[LIFTING_BONE_NAMES[bone_nr]].tail       
+        bpy.ops.object.mode_set(mode='OBJECT')
+        J = bpy.data.objects[temp_list[bone_nr]]
+        J.location = vGoal
+        ARM.select_set(True)
+        bpy.context.view_layer.objects.active = ARM
+        bpy.ops.object.mode_set(mode='POSE')
+        RIG.data.bones[LIFTING_BONE_NAMES[bone_nr]].select = True
+        bpy.ops.pose.visual_transform_apply()
+        # сохранение изменения локации примитивного объекта
+        J.keyframe_insert(data_path="location", frame=frame)
+        # сохранение изменения вращения кости
+        ARM.pose.bones[LIFTING_BONE_NAMES[bone_nr]].keyframe_insert(data_path="rotation_quaternion", frame=frame)
+        bone_nr += 1                                                          
+        scene.frame_set(frame)   def create_armature(coordinates, name, scale=1.0):
+    """
+    Creates an armature skeleton data object from the input coordinates acquired from lift_image(). 
+    The skeleton's bones will have been appropriately labelled and parented.
+    The skeleton data object will be implemented into the scene as well.
+    :param coordinates: List of vertex coordinates from lifter
+    :param name: Base name of the bezier_curves 
+    :param scale: Scale of the skeleton 
+    """
+    # Setting the scale to a hundredth already as the distances from lifting are considerably large.
+    scale = scale * 0.01  
+    arm_dat_name = 'Armature_dat_' + name
+    arm_obj_name = 'Armature_obj_' + name
+    arm_dat = bpy.data.armatures.new(arm_dat_name)
+    arm_obj = bpy.data.objects.new(arm_obj_name, arm_dat)
+    bpy.context.scene.collection.objects.link(arm_obj)
+    bpy.context.view_layer.objects.active = arm_obj
+    bpy.ops.object.mode_set(mode='EDIT', toggle=False)
+    edit_bones = bpy.data.armatures[arm_dat_name].edit_bones
+    b = edit_bones.new('base')
+    b.head = [coordinates[0][0]*scale, coordinates[0][1]*scale + 100*scale, coordinates[0][2]*scale]
+    b.tail = [coordinates[0][0]*scale, coordinates[0][1]*scale,             coordinates[0][2]*scale]
+    bone_nr = 0
+    for conn in CONNECTIONS:        
+        b = edit_bones.new(LIFTING_BONE_NAMES[bone_nr])
+        b.head = [scale*item for item in coordinates[conn[0]]]
+        b.tail = [scale*item for item in coordinates[conn[1]]]
+        b.parent = edit_bones[LIFTING_BONE_PARENTS[str(LIFTING_BONE_NAMES[bone_nr])]]
+        b.use_connect = True
+        bone_nr += 1
+    bpy.ops.object.mode_set(mode='POSE')
+    bone_nr = 0
+    for conn in CONNECTIONS:    
+        b = arm_obj.pose.bones[LIFTING_BONE_NAMES[bone_nr]]    
+        v1 = Vector(coordinates[conn[0]])
+        v2 = Vector(coordinates[conn[1]]) 
+        # направляющий вектор
+        v = v2 - v1 
+        v.normalize() 
+        vGoal = v + b.tail 
+        # примитивный объект
+        bpy.ops.object.mode_set(mode='OBJECT')
+        bpy.ops.object.empty_add(type='PLAIN_AXES', location= vGoal) 
+        target_axis = bpy.context.active_object
+        temp_list.append(target_axis.name)
+        # создать ограничение
+        neckCopyRot = arm_obj.pose.bones[LIFTING_BONE_NAMES[bone_nr]].constraints.new('DAMPED_TRACK') 
+        neckCopyRot.target = target_axis 
+        target_axis.select_set(False) 
+        bpy.context.view_layer.objects.active = arm_obj
+        bpy.ops.object.mode_set(mode='POSE')   
+        bone_nr += 1 
+    # в режиме редактирования установить позу из режима поз    
+    bpy.context.view_layer.objects.active = arm_obj
+    bpy.data.objects['Armature_obj_A'].select_set(True)
+    bpy.ops.object.mode_set(mode = 'POSE')
+    bpy.ops.pose.select_all(action='SELECT')
+    bpy.ops.pose.armature_apply(selected=False)
+    bpy.ops.object.mode_set(mode = 'OBJECT')        
+    return arm_obj
+  
+def change_arm(coordinates, scale=1.0):
+    bpy.ops.object.mode_set(mode='POSE', toggle=False)    
+    RIG = bpy.context.active_object.id_data
+    bone_nr = 0
+    for conn in CONNECTIONS:
+        v1 = Vector(coordinates[conn[0]])
+        v2 = Vector(coordinates[conn[1]])      
+        v = v2 - v1 
+        v.normalize() 
+        vGoal = v + ARM.pose.bones[LIFTING_BONE_NAMES[bone_nr]].tail       
+        bpy.ops.object.mode_set(mode='OBJECT')
+        J = bpy.data.objects[temp_list[bone_nr]]
+        J.location = vGoal
+        ARM.select_set(True)
+        bpy.context.view_layer.objects.active = ARM
+        bpy.ops.object.mode_set(mode='POSE')
+        RIG.data.bones[LIFTING_BONE_NAMES[bone_nr]].select = True
+        bpy.ops.pose.visual_transform_apply()
+        # сохранение изменения локации примитивного объекта
+        J.keyframe_insert(data_path="location", frame=frame)
+        # сохранение изменения вращения кости
+        ARM.pose.bones[LIFTING_BONE_NAMES[bone_nr]].keyframe_insert(data_path="rotation_quaternion", frame=frame)
+        bone_nr += 1                                                          
+        scene.frame_set(frame)   без фильтра Калмана  без фильтра Калмана Получил приближенный к желаемому, результат. В глаза бросаются артефакты, используемая нейронная сеть работает с одним кадром, нет зависимости координат между кадрами для сглаживания. Современные алгоритмы решают эту проблему разными способами, а я использовал фильтр Калмана. Этот алгоритм в распоряжении человечества, долго будет актуальным в разных задачах. фильтр Калмана class KalmanFilter:
+    def __init__(self):  
+       # значение инициализации
+        self.x_P = 0.9
+        self.x_Q = 0.08
+        
+        self.y_P = 0.9
+        self.y_Q = 0.08
+        
+        self.z_P = 0.9
+        self.z_Q = 0.08
+        
+        self.x_priori_estimated_covariance = 1 
+        self.y_priori_estimated_covariance = 1
+        self.z_priori_estimated_covariance = 1
+        # X 
+        self.x_estimated_value_dict = {'base': 0, 'pelvis_r': 0, 'thigh_r': 0, 'calf_r': 0, 'pelvis_l': 0, 
+                                       'thigh_l': 0, 'calf_l': 0, 'waist': 0, 'chest': 0, 
+                                       'neck': 0, 'head': 0, 'shoulder_l': 0, 'arm_l': 0, 
+                                       'forearm_l': 0, 'shoulder_r': 0, 'arm_r': 0, 'forearm_r': 0}
+
+        self.x_post_estimated_covariance_dict = {'base': 1, 'pelvis_r': 1, 'thigh_r': 1, 'calf_r': 1, 'pelvis_l': 1, 
+                                                 'thigh_l': 1, 'calf_l': 1, 'waist': 1, 'chest': 1, 
+                                                 'neck': 1, 'head': 1, 'shoulder_l': 1, 'arm_l': 1, 
+                                                 'forearm_l': 1, 'shoulder_r': 1, 'arm_r': 1, 'forearm_r': 1}
+        # Y 
+        self.y_estimated_value_dict = {'base': 0, 'pelvis_r': 0, 'thigh_r': 0, 'calf_r': 0, 'pelvis_l': 0, 
+                                       'thigh_l': 0, 'calf_l': 0, 'waist': 0, 'chest': 0, 
+                                       'neck': 0, 'head': 0, 'shoulder_l': 0, 'arm_l': 0, 
+                                       'forearm_l': 0, 'shoulder_r': 0, 'arm_r': 0, 'forearm_r': 0}
+
+        self.y_post_estimated_covariance_dict = {'base': 1, 'pelvis_r': 1, 'thigh_r': 1, 'calf_r': 1, 'pelvis_l': 1, 
+                                                 'thigh_l': 1, 'calf_l': 1, 'waist': 1, 'chest': 1, 
+                                                 'neck': 1, 'head': 1, 'shoulder_l': 1, 'arm_l': 1, 
+                                                 'forearm_l': 1, 'shoulder_r': 1, 'arm_r': 1, 'forearm_r': 1}
+                                                 
+        # Z                                         
+        self.z_estimated_value_dict = {'base': 0, 'pelvis_r': 0, 'thigh_r': 0, 'calf_r': 0, 'pelvis_l': 0, 
+                                       'thigh_l': 0, 'calf_l': 0, 'waist': 0, 'chest': 0, 
+                                       'neck': 0, 'head': 0, 'shoulder_l': 0, 'arm_l': 0, 
+                                       'forearm_l': 0, 'shoulder_r': 0, 'arm_r': 0, 'forearm_r': 0}
+
+        self.z_post_estimated_covariance_dict = {'base': 1, 'pelvis_r': 1, 'thigh_r': 1, 'calf_r': 1, 'pelvis_l': 1, 
+                                                 'thigh_l': 1, 'calf_l': 1, 'waist': 1, 'chest': 1, 
+                                                 'neck': 1, 'head': 1, 'shoulder_l': 1, 'arm_l': 1, 
+                                                 'forearm_l': 1, 'shoulder_r': 1, 'arm_r': 1, 'forearm_r': 1}
+
+    # перезагрузка значений
+    def x_reset(self, P, Q): 
+        self.x_P = P
+        self.x_Q = Q
+
+    def y_reset(self, P, Q):
+        self.y_P = P
+        self.y_Q = Q
+
+    def z_reset(self, P, Q):
+        self.z_P = P
+        self.z_Q = Q
+
+    # входные текущие значения поступающие в фильтр   
+    def cal_X(self, current_value, label):  
+        self.current_value = current_value
+        self.x_priori_estimated_covariance = self.x_post_estimated_covariance_dict[label]
+        x_kalman_gain = self.x_priori_estimated_covariance / (self.x_priori_estimated_covariance + self.x_P)  
+        output = self.x_estimated_value_dict[label] + x_kalman_gain * (
+                    current_value - self.x_estimated_value_dict[label])  
+        self.x_estimated_value_dict[label] = output
+        self.x_post_estimated_covariance_dict[label] = (1 - x_kalman_gain) * self.x_priori_estimated_covariance + self.x_Q
+        self.x_priori_estimated_covariance = self.x_post_estimated_covariance_dict[label]
+        return output  
+
+    def cal_Y(self, current_value, label):  
+        self.current_value = current_value
+        self.y_priori_estimated_covariance = self.y_post_estimated_covariance_dict[label]
+        y_kalman_gain = self.y_priori_estimated_covariance / (self.y_priori_estimated_covariance + self.y_P)  
+        output = self.y_estimated_value_dict[label] + y_kalman_gain * (
+                    current_value - self.y_estimated_value_dict[label])  
+        self.y_estimated_value_dict[label] = output
+        self.y_post_estimated_covariance_dict[label] = (1 - y_kalman_gain) * self.y_priori_estimated_covariance + self.y_Q
+        self.y_priori_estimated_covariance = self.y_post_estimated_covariance_dict[label]
+        return output
+
+    def cal_Z(self, current_value, label): 
+        self.current_value = current_value
+        self.z_priori_estimated_covariance = self.z_post_estimated_covariance_dict[label]
+        z_kalman_gain = self.z_priori_estimated_covariance / (self.z_priori_estimated_covariance + self.z_P)  
+        output = self.z_estimated_value_dict[label] + z_kalman_gain * (
+                    current_value - self.z_estimated_value_dict[label])  
+        self.z_estimated_value_dict[label] = output
+        self.z_post_estimated_covariance_dict[label] = (1 - z_kalman_gain) * self.z_priori_estimated_covariance + self.z_Q
+        self.z_priori_estimated_covariance = self.z_post_estimated_covariance_dict[label]
+        return output
+
+
+class KalmanProcess():
+    def __init__(self):
+        self.kalman_filter_X = KalmanFilter()
+        self.kalman_filter_Y = KalmanFilter()
+        self.kalman_filter_Z = KalmanFilter()
+
+    def reset_kalman_filter_X(self, P, Q):
+        self.kalman_filter_X.x_reset(P, Q)
+
+    def reset_kalman_filter_Y(self, P, Q):
+        self.kalman_filter_Y.y_reset(P, Q)
+
+    def reset_kalman_filter_Z(self, P, Q):
+        self.kalman_filter_Z.z_reset(P, Q)
+
+
+    def do_kalman_filter(self, X, Y, Z, label):
+        X_cal = self.kalman_filter_X.cal_X(X, label)
+        Y_cal = self.kalman_filter_Y.cal_Y(Y, label)
+        Z_cal = self.kalman_filter_Z.cal_Z(Z, label)
+        return X_cal, Y_cal, Z_cal
+      
+kalman_process = KalmanProcess()
+_dict = {'base': 0, 'pelvis_r': 0, 'thigh_r': 0, 'calf_r': 0, 'pelvis_l': 0, 
+         'thigh_l': 0, 'calf_l': 0, 'waist': 0, 'chest': 0, 
+         'neck': 0, 'head': 0, 'shoulder_l': 0, 'arm_l': 0, 
+         'forearm_l': 0, 'shoulder_r': 0, 'arm_r': 0, 'forearm_r': 0}
+
+list_dict = list(_dict.keys())   
+# получить координаты
+def lift_image(returned_val):
+    with open(returned_val) as f:
+         f = f.readlines()
+         ls = []         
+         for i in f:
+            ls.append(json.loads(i))
+         return ls
+         
+returned_val = "data_c.txt"
+coordinates = lift_image(returned_val)
+_file = open("data_c_kalman.txt","w")
+for i in coordinates:
+    coordinates = []
+    for iz, z in enumerate(i):
+        out_kalman_x, out_kalman_y, out_kalman_z = kalman_process.do_kalman_filter(z[0], z[1], z[2], list_dict[iz])
+        coordinates.append([out_kalman_x, out_kalman_y, out_kalman_z])
+    _file.write(str(coordinates)+"\n")  
+_file.close()     class KalmanFilter:
+    def __init__(self):  
+       # значение инициализации
+        self.x_P = 0.9
+        self.x_Q = 0.08
+        
+        self.y_P = 0.9
+        self.y_Q = 0.08
+        
+        self.z_P = 0.9
+        self.z_Q = 0.08
+        
+        self.x_priori_estimated_covariance = 1 
+        self.y_priori_estimated_covariance = 1
+        self.z_priori_estimated_covariance = 1
+        # X 
+        self.x_estimated_value_dict = {'base': 0, 'pelvis_r': 0, 'thigh_r': 0, 'calf_r': 0, 'pelvis_l': 0, 
+                                       'thigh_l': 0, 'calf_l': 0, 'waist': 0, 'chest': 0, 
+                                       'neck': 0, 'head': 0, 'shoulder_l': 0, 'arm_l': 0, 
+                                       'forearm_l': 0, 'shoulder_r': 0, 'arm_r': 0, 'forearm_r': 0}
+
+        self.x_post_estimated_covariance_dict = {'base': 1, 'pelvis_r': 1, 'thigh_r': 1, 'calf_r': 1, 'pelvis_l': 1, 
+                                                 'thigh_l': 1, 'calf_l': 1, 'waist': 1, 'chest': 1, 
+                                                 'neck': 1, 'head': 1, 'shoulder_l': 1, 'arm_l': 1, 
+                                                 'forearm_l': 1, 'shoulder_r': 1, 'arm_r': 1, 'forearm_r': 1}
+        # Y 
+        self.y_estimated_value_dict = {'base': 0, 'pelvis_r': 0, 'thigh_r': 0, 'calf_r': 0, 'pelvis_l': 0, 
+                                       'thigh_l': 0, 'calf_l': 0, 'waist': 0, 'chest': 0, 
+                                       'neck': 0, 'head': 0, 'shoulder_l': 0, 'arm_l': 0, 
+                                       'forearm_l': 0, 'shoulder_r': 0, 'arm_r': 0, 'forearm_r': 0}
+
+        self.y_post_estimated_covariance_dict = {'base': 1, 'pelvis_r': 1, 'thigh_r': 1, 'calf_r': 1, 'pelvis_l': 1, 
+                                                 'thigh_l': 1, 'calf_l': 1, 'waist': 1, 'chest': 1, 
+                                                 'neck': 1, 'head': 1, 'shoulder_l': 1, 'arm_l': 1, 
+                                                 'forearm_l': 1, 'shoulder_r': 1, 'arm_r': 1, 'forearm_r': 1}
+                                                 
+        # Z                                         
+        self.z_estimated_value_dict = {'base': 0, 'pelvis_r': 0, 'thigh_r': 0, 'calf_r': 0, 'pelvis_l': 0, 
+                                       'thigh_l': 0, 'calf_l': 0, 'waist': 0, 'chest': 0, 
+                                       'neck': 0, 'head': 0, 'shoulder_l': 0, 'arm_l': 0, 
+                                       'forearm_l': 0, 'shoulder_r': 0, 'arm_r': 0, 'forearm_r': 0}
+
+        self.z_post_estimated_covariance_dict = {'base': 1, 'pelvis_r': 1, 'thigh_r': 1, 'calf_r': 1, 'pelvis_l': 1, 
+                                                 'thigh_l': 1, 'calf_l': 1, 'waist': 1, 'chest': 1, 
+                                                 'neck': 1, 'head': 1, 'shoulder_l': 1, 'arm_l': 1, 
+                                                 'forearm_l': 1, 'shoulder_r': 1, 'arm_r': 1, 'forearm_r': 1}
+
+    # перезагрузка значений
+    def x_reset(self, P, Q): 
+        self.x_P = P
+        self.x_Q = Q
+
+    def y_reset(self, P, Q):
+        self.y_P = P
+        self.y_Q = Q
+
+    def z_reset(self, P, Q):
+        self.z_P = P
+        self.z_Q = Q
+
+    # входные текущие значения поступающие в фильтр   
+    def cal_X(self, current_value, label):  
+        self.current_value = current_value
+        self.x_priori_estimated_covariance = self.x_post_estimated_covariance_dict[label]
+        x_kalman_gain = self.x_priori_estimated_covariance / (self.x_priori_estimated_covariance + self.x_P)  
+        output = self.x_estimated_value_dict[label] + x_kalman_gain * (
+                    current_value - self.x_estimated_value_dict[label])  
+        self.x_estimated_value_dict[label] = output
+        self.x_post_estimated_covariance_dict[label] = (1 - x_kalman_gain) * self.x_priori_estimated_covariance + self.x_Q
+        self.x_priori_estimated_covariance = self.x_post_estimated_covariance_dict[label]
+        return output  
+
+    def cal_Y(self, current_value, label):  
+        self.current_value = current_value
+        self.y_priori_estimated_covariance = self.y_post_estimated_covariance_dict[label]
+        y_kalman_gain = self.y_priori_estimated_covariance / (self.y_priori_estimated_covariance + self.y_P)  
+        output = self.y_estimated_value_dict[label] + y_kalman_gain * (
+                    current_value - self.y_estimated_value_dict[label])  
+        self.y_estimated_value_dict[label] = output
+        self.y_post_estimated_covariance_dict[label] = (1 - y_kalman_gain) * self.y_priori_estimated_covariance + self.y_Q
+        self.y_priori_estimated_covariance = self.y_post_estimated_covariance_dict[label]
+        return output
+
+    def cal_Z(self, current_value, label): 
+        self.current_value = current_value
+        self.z_priori_estimated_covariance = self.z_post_estimated_covariance_dict[label]
+        z_kalman_gain = self.z_priori_estimated_covariance / (self.z_priori_estimated_covariance + self.z_P)  
+        output = self.z_estimated_value_dict[label] + z_kalman_gain * (
+                    current_value - self.z_estimated_value_dict[label])  
+        self.z_estimated_value_dict[label] = output
+        self.z_post_estimated_covariance_dict[label] = (1 - z_kalman_gain) * self.z_priori_estimated_covariance + self.z_Q
+        self.z_priori_estimated_covariance = self.z_post_estimated_covariance_dict[label]
+        return output
+
+
+class KalmanProcess():
+    def __init__(self):
+        self.kalman_filter_X = KalmanFilter()
+        self.kalman_filter_Y = KalmanFilter()
+        self.kalman_filter_Z = KalmanFilter()
+
+    def reset_kalman_filter_X(self, P, Q):
+        self.kalman_filter_X.x_reset(P, Q)
+
+    def reset_kalman_filter_Y(self, P, Q):
+        self.kalman_filter_Y.y_reset(P, Q)
+
+    def reset_kalman_filter_Z(self, P, Q):
+        self.kalman_filter_Z.z_reset(P, Q)
+
+
+    def do_kalman_filter(self, X, Y, Z, label):
+        X_cal = self.kalman_filter_X.cal_X(X, label)
+        Y_cal = self.kalman_filter_Y.cal_Y(Y, label)
+        Z_cal = self.kalman_filter_Z.cal_Z(Z, label)
+        return X_cal, Y_cal, Z_cal
+      
+kalman_process = KalmanProcess()
+_dict = {'base': 0, 'pelvis_r': 0, 'thigh_r': 0, 'calf_r': 0, 'pelvis_l': 0, 
+         'thigh_l': 0, 'calf_l': 0, 'waist': 0, 'chest': 0, 
+         'neck': 0, 'head': 0, 'shoulder_l': 0, 'arm_l': 0, 
+         'forearm_l': 0, 'shoulder_r': 0, 'arm_r': 0, 'forearm_r': 0}
+
+list_dict = list(_dict.keys())   
+# получить координаты
+def lift_image(returned_val):
+    with open(returned_val) as f:
+         f = f.readlines()
+         ls = []         
+         for i in f:
+            ls.append(json.loads(i))
+         return ls
+         
+returned_val = "data_c.txt"
+coordinates = lift_image(returned_val)
+_file = open("data_c_kalman.txt","w")
+for i in coordinates:
+    coordinates = []
+    for iz, z in enumerate(i):
+        out_kalman_x, out_kalman_y, out_kalman_z = kalman_process.do_kalman_filter(z[0], z[1], z[2], list_dict[iz])
+        coordinates.append([out_kalman_x, out_kalman_y, out_kalman_z])
+    _file.write(str(coordinates)+"\n")  
+_file.close()     с фильтром Калмана  с фильтром Калмана https://github.com/naturalkind/natural-motion https://github.com/naturalkind/natural-motion https://github.com/ Простая и интересная задача, помогла лучше изучить механизмы работы Blender. Развитие цифровых вселенных, удивительная тенденция, сегодня переносим свой образ и движение в цифровой мир, завтра переносим сознание, если считаете что перенос сознания не возможен, докажите. ]]></text>
+</doc>

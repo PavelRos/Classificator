@@ -1,0 +1,358 @@
+<?xml version="1.0" ?>
+<doc>
+	<label auto="true" type="str" verify="true"><![CDATA[Develop]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[edeshina]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-12-08, 11:06]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/company/southbridge/blog/704208/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Как запускать RabbitMQ в Docker]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Блог компании Southbridge]]></item>
+		<item type="str"><![CDATA[Высокая производительность]]></item>
+		<item type="str"><![CDATA[Системное администрирование]]></item>
+		<item type="str"><![CDATA[Программирование]]></item>
+		<item type="str"><![CDATA[IT-инфраструктура]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[rabbitmq]]></item>
+		<item type="str"><![CDATA[rabbit]]></item>
+		<item type="str"><![CDATA[rabbit mq]]></item>
+		<item type="str"><![CDATA[rabbitmq tutorial]]></item>
+		<item type="str"><![CDATA[rabbitmq на русском]]></item>
+		<item type="str"><![CDATA[docker]]></item>
+		<item type="str"><![CDATA[docker-compose]]></item>
+		<item type="str"><![CDATA[кролик]]></item>
+		<item type="str"><![CDATA[отказоустойчивость]]></item>
+		<item type="str"><![CDATA[отказоустойчивые системы]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[Алексей Барабанов, IT-директор «Хлебница» и спикер курса «RabbitMQ для админов и разработчиков», подготовил конспект, который поможет научиться запускать и настраивать RabbitMQ в Docker. Вы поймёте, как конфигурировать параметры запуска, а также узнаете о возможностях управления через веб-интерфейс.
+Другие конспекты:
+RabbitMQ: терминология и базовые сущности
+Запуск в Docker
+Самый простой и быстрый способ запустить RabbitMQ:
+docker run --rm -p 15672:15672 rabbitmq:3.10.7-management
+После этого можно открыть веб-интерфейс RabbitMQ в браузере по ссылке http://127.0.0.1:15672/
+Запуск даже пустого RabbitMQ занимает до 15 секунд — немного подождите и обновите страницу, если увидите ошибку в браузере
+ После успешного запуска вы увидите окно авторизации
+Пока не будем авторизовываться. Такой способ запуска не очень подходит для продакшн-решений. Я рекомендую даже для локальной разработки использовать docker-compose для работы с окружениями.
+Создаём папку для окружения, например slurm_stand3:
+mkdir slurm_stand3
+cd slurm_stand3
+Создаём файл docker-compose.yml со следующим содержимым:
+version: "2.1"
+services:
+  rabbitmq:
+    image: rabbitmq:3.10.7-management
+    ports:
+      - 15672:15672
+Запускаем стенд командой:
+docker-compose up -d
+Попробуем открыть веб-интерфейс в браузере — результат аналогичен первому запуску через DockerRun. Теперь можем авторизоваться в веб-интерфейсе. Логин и пароль по умолчанию — guest/guest:
+После авторизации мы окажемся на главной странице веб-интерфейса — overview
+Обратите внимание на правый верхний угол:
+В поле Cluster значение после @ — имя сервера, автоматически назначенное Docker для контейнера. 
+Почему это плохо? RabbitMQ хранит стейт в папках, содержащих название сервера, а Docker при пересоздании контейнера даёт ему случайные названия. При каждом пересоздании контейнера RabbitMQ будет терять свой стейт и работать как новый, пустой.
+Содержимое папки со стейтом:
+MacBookPro:rabbitmq_slurm kilex$ docker-compose exec rabbitmq bash
+root@2b70a6ecf6d3:/# ls -la /var/lib/rabbitmq/mnesia/
+total 24
+drwxr-xr-x 4 rabbitmq rabbitmq 4096 Oct 10 05:41 .
+drwxrwxrwx 3 rabbitmq rabbitmq 4096 Oct 10 05:41 ..
+drwxr-xr-x 5 rabbitmq rabbitmq 4096 Oct 10 05:44 rabbit@2b70a6ecf6d3
+-rw-r--r-- 1 rabbitmq rabbitmq  194 Oct 10 05:41 rabbit@2b70a6ecf6d3-feature_flags
+drwxr-xr-x 2 rabbitmq rabbitmq 4096 Oct 10 05:41 rabbit@2b70a6ecf6d3-plugins-expand
+-rw-r--r-- 1 rabbitmq rabbitmq    2 Oct 10 05:41 rabbit@2b70a6ecf6d3.pid
+Использование авторизации по умолчанию (guest/guest) тоже не считается хорошим тоном. Исправим эти недочеты — внесём изменения в docker-compose.yml.
+Отключим стенд:
+docker-compose down
+Добавим несколько строк в файл docker-compose.yml:
+version: "2.1"
+services:
+  rabbitmq:
+    image: rabbitmq:3.10.7-management
+    hostname: rabbitmq
+    restart: always
+    environment:
+      - RABBITMQ_DEFAULT_USER=rmuser
+      - RABBITMQ_DEFAULT_PASS=rmpassword
+    ports:
+      - 15672:15672
+Мы добавили поле hostname, которое зафиксирует имя сервера и переменные окружения с указанием логина и пароля для авторизации (RABBITMQ_DEFAULT_USER и RABBITMQ_DEFAULT_PASS). После применения этих изменений авторизация под guest/guest будет невозможна.
+Также мы добавили строку restart: always — она даёт указание Docker автоматически перезагружать сервис в случае его внезапной остановки (полезно для прода, хотя на моей практике Rabbit падал только при неправильном конфигурировании).
+Для применения изменений введём ту же команду, и она автоматически пересоздаст контейнер:
+MacBookPro:rabbitmq_slurm kilex$ docker-compose up -d
+Recreating rabbitmq_slurm_rabbitmq_1 ... done
+Авторизуемся уже под новыми реквизитами (rmuser/rmpassword) и проверим правый верхний угол веб-интерфейса:
+ Теперь с авторизацией и именем сервера всё хорошо, идём дальше. Посмотрите на поле Disk space, в частности low watermark:
+Эта настройка говорит о том, что RabbitMQ перейдёт в защиту и перестанет писать в стейт при свободном месте менее 48 мбит, что очень мало — порог пробивается в 90% случаев. А если RabbitMQ попытается записать на диск, где нет места, это с 90% вероятностью уничтожит стейт без возможности восстановления. Поэтому я настоятельно рекомендую для прод инсталляций переопределять это значение на хотя бы 2 гигабита (2147483648 бит).
+«RabbitMQ для админов и разработчиков»
+Это делается через переменную окружения RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS и поле disk_free_limitdisk_free_limit:
+version: "2.1"
+services:
+  rabbitmq:
+    image: rabbitmq:3.10.7-management
+    hostname: rabbitmq
+    restart: always
+    environment:
+      - RABBITMQ_DEFAULT_USER=rmuser
+      - RABBITMQ_DEFAULT_PASS=rmpassword
+      - RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS=-rabbit disk_free_limit 2147483648
+    ports:
+      - 15672:15672
+Добавим volume для сохранения стейта RabbitMQ локально на диск, чтобы стейт хранился на сервере, а не только внутри контейнера:
+version: "2.1"
+services:
+  rabbitmq:
+    image: rabbitmq:3.10.7-management
+    hostname: rabbitmq
+    restart: always
+    environment:
+      - RABBITMQ_DEFAULT_USER=rmuser
+      - RABBITMQ_DEFAULT_PASS=rmpassword
+      - RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS=-rabbit disk_free_limit 2147483648
+    volumes:
+      - ./rabbitmq:/var/lib/rabbitmq
+    ports:
+      - 15672:15672
+./rabbitmq значит, что папка со стейтом будет находиться в том же каталоге, что и файл docker-compose.yml. Это удобно при переносе окружений на другой сервер — всё в одной папке.
+Применяем изменения:
+MacBookPro:rabbitmq_slurm kilex$ docker-compose up -d
+Recreating rabbitmq_slurm_rabbitmq_1 ... done
+Проверяем:
+Теперь хорошо
+Конечно, пороговое значение подбирается индивидуально в зависимости от параметров сервера и характера нагрузки, но для начала поставить 2 гигабита — уже в 100 раз лучше, чем значение по умолчанию.
+Ещё пара штрихов, и мы будем полностью готовы в продакшн-инсталляции:
+version: "2.1"
+services:
+  rabbitmq:
+    image: rabbitmq:3.10.7-management
+    hostname: rabbitmq
+    restart: always
+    environment:
+      - RABBITMQ_DEFAULT_USER=rmuser
+      - RABBITMQ_DEFAULT_PASS=rmpassword
+      - RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS=-rabbit log_levels [{connection,error},{default,error}] disk_free_limit 2147483648
+    volumes:
+      - ./rabbitmq:/var/lib/rabbitmq
+    ports:
+      - 15672:15672
+      - 5672:5672
+Тут мы открыли наружу AMQP порт 5672 и добавили уровень логирования error — по умолчанию там info, что слишком много для нагруженных систем. Отметим, что публиковать порт нужно не всегда. Если консьюмеры и паблишеры находятся внутри docker-compose или подключены к его сети, в этом нет необходимости. 
+Подробнее о каналах логирования
+Консольные команды
+Войдём в контейнер через RabbitMQ (чтобы выполнять команды Rabbit надо находиться на сервере с Rabbit):
+docker-compose exec rabbitmq bash
+rabbitmqctl — утилита, работающая без авторизации, но только локально рядом с RabbitMQ. Нужна для обслуживания сервера/кластера, в том числе для решения проблем.
+Основные кейсы использования:
+настройка кластера; 
+сброс авторизации. Например, если вы потеряли доступ к RabbitMQ, или он перешёл вам исторически и реквизиты доступа не передавали;
+принудительная очистка очередей. Если веб интерфейс/AMQP не отвечает из-за слишком большого количества сообщений в очередях.
+Можно посмотреть список очередей, exchanges:
+rabbitmqctl list_queues
+rabbitmqctl list_exchanges
+Вы можете удалить, почистить очередь. Но возможности создать очередь или удалить exchange нет.
+Список всех возможных команд:
+rabbitmqctl help
+rabbitmqadmin — утилита, работающая через протокол AMQP (требует авторизации, но предоставляет более полный спектр возможностей). Полезна для автоматизации, и если по какой-либо причине вам неудобно пользоваться веб-интерфейсом. 
+rabbitmqadmin help subcommands
+Примеры команд:
+rabbitmqadmin -urmuser -prmpassword declare queue name=console_queue
+rabbitmqadmin -urmuser -prmpassword declare exchange name=console_exchange type=direct
+rabbitmqadmin -urmuser -prmpassword declare binding source=console_exchange destination=console_queue routing_key=test
+rabbitmqadmin -urmuser -prmpassword publish routing_key=console_queue payload="test message from rabbitmqadmin"
+rabbitmqadmin -urmuser -prmpassword publish exchange=console_exchange routing_key=test payload="test message from rabbitmqadmin"
+rabbitmqadmin -urmuser -prmpassword get queue=console_queue count=10
+rabbitmqadmin -urmuser -prmpassword list queues
+rabbitmqadmin -urmuser -prmpassword list exchanges
+rabbitmqadmin -urmuser -prmpassword list bindings
+Для экспорта всех сущностей (кроме сообщений) можно использовать команду экспорт:
+rabbitmqadmin -urmuser -prmpassword export backup.json
+Аналогично с импортом:
+rabbitmqadmin -urmuser -prmpassword import backup.json
+Веб-интерфейс
+Overview
+Основная страница — Overview.
+Сверху справа — имя кластера@сервера, имя пользователя.
+Сверху — версия RabbitMQ и Erlang, чуть ниже вкладки/
+Overview — общие данные для всего кластера (в данном случае кластер из одной ноды);
+Connections — сведения о соединениях;
+Channels — сведения о каналах;
+Exchanges — сведения о exchanges;
+Queues — сведения о очередях;
+Admin — функции администрирования.
+Два верхних графика — общее количество сообщений во всех очередях в кластере.
+Queued messages — количественный показатель.
+Ready — сообщения, ожидающие обработки;
+Unacked — сообщения, переданные в консьюмер на обработку и ожидающие подтверждения.
+Total — сумма Reade+Unacked.
+Message rates — показатель скорости обработки.
+Publish — скорость записи сообщений в очереди;
+Consumer ack — скорость подтверждения обработки сообщений консьюмерами;
+Redelivered — скорость возвращения сообщений в очереди при неуспешной обработке (nack). 
+Connections
+Страница со списком соединений. На скриншоте два соединения: одно — от Publisher, второе — от Consumer. Внутри каждого соединения можно посмотреть индивидуальные графики и параметры. Также там можно принудительно завершить соединение. 
+Channels
+Страница со списком каналов. Всё аналогично списку соединений, только по сущности «канал». Тут проще отличить канал консьюминга от канала паблишинга.
+Внутри аналогично можно посмотреть подробности по каждому каналу.
+Exchanges
+Страница со списком exchanges. Здесь отражаются как служебные, так и созданные вручную exchanges. Также на этой странице есть возможность создать exchange. 
+Зайдя внутрь exchange, вы можете посмотреть нагрузку, посмотреть/создать/удалить биндинги до очередей:
+Также можете опубликовать сообщение в exchange, указав routing key. delivery_mode при такой публикации сообщений будет равен 2 — persistent.
+Queues
+Страница со списком очередей. Пожалуй, самая активно используемая на практике.
+Рекомендую добавить столбец Consumers, показывающий количество подключенных к очереди консьюмеров. Добавляется через кнопку +/-. 
+Внизу интерфейс создания новой очереди. Если зайти в саму очередь, вы увидите графики по количеству сообщений в конкретной очереди и по скорости публикации/обработки сообщений. 
+Также вы увидите список подключенных consumer и их prefetch_count. При нажатии на IP Consumer откроется страница его канала.
+Ниже вы увидите все биндинги в сторону этой очереди. Появится возможность создать новый биндинг/удалить действующий. 
+Вы можете опубликовать сообщение в очередь через служебный exchange. В отличие от публикации через exchange, есть возможность выбора Delivery mode.
+Также в интерфейсе очереди можно получить N свободных сообщений из очереди:
+Если выбрать automatic ack, сообщения отобразятся и автоматически подтвердятся из очереди. Это полезно, если нужно удалить одно проблемное сообщение из головы очереди.
+Полезные аргументы очереди
+При создании очереди вы можете задекларировать аргументы, влияющие на её поведение. Например, вы можете задать TTL (время жизни) сообщений в этой очереди. Оно задается аргументом x-message-ttl в миллисекундах. 
+Также есть x-max-length — он отвечает за максимальную длину очереди, и в зависимости от настройки x-overflow сообщения или будут отбрасываться с головы (drop-head, по умолчанию) или, как на скриншоте, будут отдавать ошибку publisher. 
+Policy
+Возможность добавлять атрибуты очереди/exchange без передекларирования.
+Скажем, вы хотите добавить максимальную длину и TTL на хранение сообщений для очереди inbox. Создаём такой policy (на вкладке admin):
+Не рекомендую использовать priority 0 — теряете возможность гибко создавать более и менее приоритетные policy. Обычно первую policy я создаю с приоритетом 5.
+Только одно policy может действовать одновременно на одну очередь. Мы можем создать одну общую policy для всех (удобно для кластера), но при создании более частных политик нужно делать им приоритет выше и перечислять все параметры, которые использовались для общего списка.
+Проверяем очередь, видим действующую политику:
+ Если у очереди уже есть действующие аналогичные политики, действовать будет та, которая наступит раньше (меньший TTL/меньшая длина очереди). 
+Admin
+Вкладка для администрирования некоторых параметров RabbitMQ, в частности:
+Users — управление пользователями и их правами;
+Virtual Hosts — управление виртуальными хостами (изолированые окружения внутри одного кластера);
+Feature Flags — отображение включенного функционала RabbitMQ;
+Policies — policy, описано выше;
+Limits — настройки ограничений;
+Cluster — параметры кластера (по факту только названия).
+«RabbitMQ для админов и разработчиков» Алексей Барабанов, IT-директор «Хлебница» и спикер курса «RabbitMQ для админов и разработчиков», подготовил конспект, который поможет научиться запускать и настраивать RabbitMQ в Docker. Вы поймёте, как конфигурировать параметры запуска, а также узнаете о возможностях управления через веб-интерфейс. RabbitMQ для админов и разработчиков RabbitMQ для админов и разработчиков   Другие конспекты: Другие конспекты: RabbitMQ: терминология и базовые сущности RabbitMQ: терминология и базовые сущности RabbitMQ: терминология и базовые сущности RabbitMQ: терминология и базовые сущности Запуск в Docker Самый простой и быстрый способ запустить RabbitMQ: docker run --rm -p 15672:15672 rabbitmq:3.10.7-management docker run --rm -p 15672:15672 rabbitmq:3.10.7-management После этого можно открыть веб-интерфейс RabbitMQ в браузере по ссылке http://127.0.0.1:15672/ http://127.0.0.1:15672/ http://127.0.0.1:15672/  Запуск даже пустого RabbitMQ занимает до 15 секунд — немного подождите и обновите страницу, если увидите ошибку в браузере    После успешного запуска вы увидите окно авторизации Пока не будем авторизовываться. Такой способ запуска не очень подходит для продакшн-решений. Я рекомендую даже для локальной разработки использовать docker-compose для работы с окружениями. Создаём папку для окружения, например slurm_stand3: slurm_stand3: mkdir slurm_stand3
+cd slurm_stand3 mkdir slurm_stand3
+cd slurm_stand3 Создаём файл docker-compose.yml со следующим содержимым: docker-compose.yml version: "2.1"
+services:
+  rabbitmq:
+    image: rabbitmq:3.10.7-management
+    ports:
+      - 15672:15672 version: "2.1"
+services:
+  rabbitmq:
+    image: rabbitmq:3.10.7-management
+    ports:
+      - 15672:15672 Запускаем стенд командой: docker-compose up -d docker-compose up -d Попробуем открыть веб-интерфейс в браузере — результат аналогичен первому запуску через DockerRun. Теперь можем авторизоваться в веб-интерфейсе. Логин и пароль по умолчанию — guest/guest:  После авторизации мы окажемся на главной странице веб-интерфейса — overview Обратите внимание на правый верхний угол:   В поле Cluster значение после @ — имя сервера, автоматически назначенное Docker для контейнера.  Почему это плохо? RabbitMQ хранит стейт в папках, содержащих название сервера, а Docker при пересоздании контейнера даёт ему случайные названия. При каждом пересоздании контейнера RabbitMQ будет терять свой стейт и работать как новый, пустой. Содержимое папки со стейтом: MacBookPro:rabbitmq_slurm kilex$ docker-compose exec rabbitmq bash
+root@2b70a6ecf6d3:/# ls -la /var/lib/rabbitmq/mnesia/
+total 24
+drwxr-xr-x 4 rabbitmq rabbitmq 4096 Oct 10 05:41 .
+drwxrwxrwx 3 rabbitmq rabbitmq 4096 Oct 10 05:41 ..
+drwxr-xr-x 5 rabbitmq rabbitmq 4096 Oct 10 05:44 rabbit@2b70a6ecf6d3
+-rw-r--r-- 1 rabbitmq rabbitmq  194 Oct 10 05:41 rabbit@2b70a6ecf6d3-feature_flags
+drwxr-xr-x 2 rabbitmq rabbitmq 4096 Oct 10 05:41 rabbit@2b70a6ecf6d3-plugins-expand
+-rw-r--r-- 1 rabbitmq rabbitmq    2 Oct 10 05:41 rabbit@2b70a6ecf6d3.pid MacBookPro:rabbitmq_slurm kilex$ docker-compose exec rabbitmq bash
+root@2b70a6ecf6d3:/# ls -la /var/lib/rabbitmq/mnesia/
+total 24
+drwxr-xr-x 4 rabbitmq rabbitmq 4096 Oct 10 05:41 .
+drwxrwxrwx 3 rabbitmq rabbitmq 4096 Oct 10 05:41 ..
+drwxr-xr-x 5 rabbitmq rabbitmq 4096 Oct 10 05:44 rabbit@2b70a6ecf6d3
+-rw-r--r-- 1 rabbitmq rabbitmq  194 Oct 10 05:41 rabbit@2b70a6ecf6d3-feature_flags
+drwxr-xr-x 2 rabbitmq rabbitmq 4096 Oct 10 05:41 rabbit@2b70a6ecf6d3-plugins-expand
+-rw-r--r-- 1 rabbitmq rabbitmq    2 Oct 10 05:41 rabbit@2b70a6ecf6d3.pid Использование авторизации по умолчанию (guest/guest) тоже не считается хорошим тоном. Исправим эти недочеты — внесём изменения в docker-compose.yml. Отключим стенд: docker-compose down docker-compose down Добавим несколько строк в файл docker-compose.yml: version: "2.1"
+services:
+  rabbitmq:
+    image: rabbitmq:3.10.7-management
+    hostname: rabbitmq
+    restart: always
+    environment:
+      - RABBITMQ_DEFAULT_USER=rmuser
+      - RABBITMQ_DEFAULT_PASS=rmpassword
+    ports:
+      - 15672:15672 version: "2.1"
+services:
+  rabbitmq:
+    image: rabbitmq:3.10.7-management
+    hostname: rabbitmq
+    restart: always
+    environment:
+      - RABBITMQ_DEFAULT_USER=rmuser
+      - RABBITMQ_DEFAULT_PASS=rmpassword
+    ports:
+      - 15672:15672 Мы добавили поле hostname, которое зафиксирует имя сервера и переменные окружения с указанием логина и пароля для авторизации (RABBITMQ_DEFAULT_USER и RABBITMQ_DEFAULT_PASS). После применения этих изменений авторизация под guest/guest будет невозможна. hostname RABBITMQ_DEFAULT_USER и RABBITMQ_DEFAULT_PASS Также мы добавили строку restart: always — она даёт указание Docker автоматически перезагружать сервис в случае его внезапной остановки (полезно для прода, хотя на моей практике Rabbit падал только при неправильном конфигурировании). restart: always Для применения изменений введём ту же команду, и она автоматически пересоздаст контейнер: MacBookPro:rabbitmq_slurm kilex$ docker-compose up -d
+Recreating rabbitmq_slurm_rabbitmq_1 ... done MacBookPro:rabbitmq_slurm kilex$ docker-compose up -d
+Recreating rabbitmq_slurm_rabbitmq_1 ... done Авторизуемся уже под новыми реквизитами (rmuser/rmpassword) и проверим правый верхний угол веб-интерфейса:     Теперь с авторизацией и именем сервера всё хорошо, идём дальше. Посмотрите на поле Disk space, в частности low watermark:   Эта настройка говорит о том, что RabbitMQ перейдёт в защиту и перестанет писать в стейт при свободном месте менее 48 мбит, что очень мало — порог пробивается в 90% случаев. А если RabbitMQ попытается записать на диск, где нет места, это с 90% вероятностью уничтожит стейт без возможности восстановления. Поэтому я настоятельно рекомендую для прод инсталляций переопределять это значение на хотя бы 2 гигабита (2147483648 бит).   «RabbitMQ для админов и разработчиков» «RabbitMQ для админов и разработчиков» Это делается через переменную окружения RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS и поле disk_free_limitdisk_free_limit: RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS disk_free_limitdisk_free_limit version: "2.1"
+services:
+  rabbitmq:
+    image: rabbitmq:3.10.7-management
+    hostname: rabbitmq
+    restart: always
+    environment:
+      - RABBITMQ_DEFAULT_USER=rmuser
+      - RABBITMQ_DEFAULT_PASS=rmpassword
+      - RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS=-rabbit disk_free_limit 2147483648
+    ports:
+      - 15672:15672 version: "2.1"
+services:
+  rabbitmq:
+    image: rabbitmq:3.10.7-management
+    hostname: rabbitmq
+    restart: always
+    environment:
+      - RABBITMQ_DEFAULT_USER=rmuser
+      - RABBITMQ_DEFAULT_PASS=rmpassword
+      - RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS=-rabbit disk_free_limit 2147483648
+    ports:
+      - 15672:15672 Добавим volume для сохранения стейта RabbitMQ локально на диск, чтобы стейт хранился на сервере, а не только внутри контейнера: version: "2.1"
+services:
+  rabbitmq:
+    image: rabbitmq:3.10.7-management
+    hostname: rabbitmq
+    restart: always
+    environment:
+      - RABBITMQ_DEFAULT_USER=rmuser
+      - RABBITMQ_DEFAULT_PASS=rmpassword
+      - RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS=-rabbit disk_free_limit 2147483648
+    volumes:
+      - ./rabbitmq:/var/lib/rabbitmq
+    ports:
+      - 15672:15672 version: "2.1"
+services:
+  rabbitmq:
+    image: rabbitmq:3.10.7-management
+    hostname: rabbitmq
+    restart: always
+    environment:
+      - RABBITMQ_DEFAULT_USER=rmuser
+      - RABBITMQ_DEFAULT_PASS=rmpassword
+      - RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS=-rabbit disk_free_limit 2147483648
+    volumes:
+      - ./rabbitmq:/var/lib/rabbitmq
+    ports:
+      - 15672:15672 ./rabbitmq значит, что папка со стейтом будет находиться в том же каталоге, что и файл docker-compose.yml. Это удобно при переносе окружений на другой сервер — всё в одной папке. ./rabbitmq Применяем изменения: MacBookPro:rabbitmq_slurm kilex$ docker-compose up -d
+Recreating rabbitmq_slurm_rabbitmq_1 ... done MacBookPro:rabbitmq_slurm kilex$ docker-compose up -d
+Recreating rabbitmq_slurm_rabbitmq_1 ... done Проверяем:  Теперь хорошо Конечно, пороговое значение подбирается индивидуально в зависимости от параметров сервера и характера нагрузки, но для начала поставить 2 гигабита — уже в 100 раз лучше, чем значение по умолчанию. Ещё пара штрихов, и мы будем полностью готовы в продакшн-инсталляции: version: "2.1"
+services:
+  rabbitmq:
+    image: rabbitmq:3.10.7-management
+    hostname: rabbitmq
+    restart: always
+    environment:
+      - RABBITMQ_DEFAULT_USER=rmuser
+      - RABBITMQ_DEFAULT_PASS=rmpassword
+      - RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS=-rabbit log_levels [{connection,error},{default,error}] disk_free_limit 2147483648
+    volumes:
+      - ./rabbitmq:/var/lib/rabbitmq
+    ports:
+      - 15672:15672
+      - 5672:5672 version: "2.1"
+services:
+  rabbitmq:
+    image: rabbitmq:3.10.7-management
+    hostname: rabbitmq
+    restart: always
+    environment:
+      - RABBITMQ_DEFAULT_USER=rmuser
+      - RABBITMQ_DEFAULT_PASS=rmpassword
+      - RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS=-rabbit log_levels [{connection,error},{default,error}] disk_free_limit 2147483648
+    volumes:
+      - ./rabbitmq:/var/lib/rabbitmq
+    ports:
+      - 15672:15672
+      - 5672:5672 Тут мы открыли наружу AMQP порт 5672 и добавили уровень логирования error — по умолчанию там info, что слишком много для нагруженных систем. Отметим, что публиковать порт нужно не всегда. Если консьюмеры и паблишеры находятся внутри docker-compose или подключены к его сети, в этом нет необходимости. ]]></text>
+</doc>

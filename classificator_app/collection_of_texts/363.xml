@@ -1,0 +1,410 @@
+<?xml version="1.0" ?>
+<doc>
+	<original_author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Brendon Gafford]]></item>
+	</original_author>
+	<label auto="true" type="str" verify="true"><![CDATA[Develop]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[askhat]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-12-06, 20:02]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/post/703922/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Функциональные аспекты Ruby]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Ruby]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[fp]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[Введение
+Если вы думаете о хаотичном океане скобочек, когда слышите термин «функциональное программирование», вы не одиноки. Функциональное программирование может показаться пугающим, чужим и ненужным, особенно если вы обладаете опытом в императивном или объектно-ориентированном языке, как C или Java. Возможно вы уже видели или даже использовали какую-нибудь имплементацию LISP, языка созданного почти 60 лет назад, без синтаксической роскоши более современных языков. Хорошие новости: после 1958 года мы узнали много нового о программировании, и функциональное программирование больше не должно никого пугать. На самом деле, если вы регулярно работаете с руби, вы наверняка уже пользовались функциональными аспектами языка, возможно даже не подозревая об этом.
+Оригинал этой заметки — Functional Aspects of Ruby — был опубликован в блоге «Handshake» 22 январь 2016, автор: Брендон Гаффорд.
+Что такое функциональное программирование?
+Прежде чем начинать, давайте закрепим понимание термина «функциональное программирование». В основе своей, функциональное программирование это организация кода вокруг функций, а не вокруг объектов. Чтобы это работало, функции должны рассматриваться как тип данных первого класса в рамках языка программирования. Это лишь модный способ сказать, что функции могут храниться в переменных, возвращаться из других функций, использоваться в качестве параметров, потенциально даже быть изменены, так же как любая другая часть программы. Вместо того чтобы погружаться глубже в теорию, давайте перейдём к примерам.
+Проки и блоки
+Наиболее широко известный функциональный аспект руби это функции итерирующие по спискам, как например each:
+array = ["Bob", "Jane", "Joe"]
+array.each do |name|
+  puts name
+end
+Если вы уже давно в руби, вы вероятно видели что-то подобное ранее и догадались что эта штука делает, довольно интуитивно. Это читается почти как псевдокод: «for each name in array, print that name.» Хотя то что происходит под капотом — одна из самых фундаментальных идей функционального программирования, с привкусом руби разумеется. Код между do и end — то что в руби называется блок, и он представляет собой литерал функции, также как 3 представляет литерал целого числа. Функция, определённая как блок, передаётся в качестве аргумента функции each — вот что происходит в коде выше. Для того чтобы блок мог рассматриваться как данные, он должен быть упакован в специальный руби класс, т.н. Proc. Proc принимает блок в качестве аргумента, точно также как each, и позволяет хранить и пользоваться блоком как любым другим руби объектом. Далее, чтобы запустить функцию, вызовем метод call на ней. Давайте разберём по блок частям, чтобы посмотреть как же он работает.
+people = ["Bob", "Jane", "Joe"]
+
+print_arg = Proc.new do |arg|
+  puts arg
+end
+
+# выводит Linda в консоль
+print_arg.call("Linda")
+
+# выводит Bob, Jane и Joe в консоль
+people.each(&print_arg)
+Блок был эксплицитно определён как Proc и назначен переменной. Теперь можно сказать, что блок это функция передаваемая в качестве аргумента методу each. Амперсанд (&) перед print_arg берёт Proc объект и распаковывает блок для каждой итерации — супротив тому что делает Proc.new. С помощью этого блока, eachпроходит каждый элемент массива, вызывая функцию и передавая ей элемент в качестве аргумента. Самое классное в Proc то, что т.к. они являются объектами, вы можете держать сколько угодно проков, назначать их переменным, и даже даже динамически выбирать какой именно использовать.
+people = ["Bob", "Jane", "Joe"]
+
+nice_greeting = Proc.new do |arg|
+  puts "Hey #{arg}!"
+end
+
+grumpy_greeting = Proc.new do |arg|
+  puts "I still need my coffee, #{arg}"
+end
+
+if Time.now.hour < 9
+  greet = grumpy_greeting
+else
+  greet = happy_greeting
+end
+
+people.each(&greet)
+Сначала мы определяем два разных прока и сохраняем их в переменные: nice_greeting и grumpy_greeting. Магия происходит внутри if, в зависимости от времени дня, один из этих Proc будет назначен переменной greet. Если ещё слишком рано, будет сохранён grumpy_greetig, если же нет —сохраняется nice_greeting. Обратите внимание, условие выполняется только один раз, а не для каждого элемента списка. Как только мы получили нужный прок, мы передаём его each в качестве параметра. Если последняя строка выполняется в обед, функция хранимая в nice_greeting будет запущена 3 раза, по разу для каждого имени в массиве people. Такое использование Proc вносит дополнительную гибкость в и без того гибкий руби.
+Функции как композиции
+Допустим вы создаёте клон Galaga (видеоигра в жанре фиксированного шутера, — прим. переводчика), и вам нужно разработать вражеский корабль. Корабль должен уметь двигаться взад и вперёд, и стрелять в игрока из лазерных пушек. Традиционная объектно ориентированная парадигма подразумевает представление корабля как класс Enemy, вероятно со свойством представляющем координаты, и методами движения и стрельбы. Всё это может выглядеть как-то так:
+class Enemy
+  attr_accessor :position
+  
+  def initialize(position)
+    @position = position
+    @direction = 1
+  end
+  
+  def move
+    @position[:x] += @direction
+    @direction = -@direction if @position[:x] <= LEFT_BOUND or @postion[:x] >= RIGHT_BOUND
+  end
+  
+  def shoot
+    Laser.new(@position)
+  end
+end
+Теперь враги могут двигаться в двух направлениях, и стрелять в игроков. Чтобы сделать игру посложнее, некоторые враги, в дополнение к двум направлениям, будут двигаться по диагонали. Т.к. враги разделяют базовый функционал класса Enemy, исключая движения, было бы логично расширить класс Enemy, назовём его DiagonalEnemy:
+class DiagonalEnemy < Enemy
+  def initialize(position)
+    super(position)
+  end
+  
+  def move
+    @position[:x] += @direction
+    @position[:y] += @direction
+    
+    @direction = -@direction if @position[:x] >= RIGHT_BOUND or @position[:x] <= LEFT_BOUND or @position[:y] <= TOP_BOUND or @position[:y] >= BOTTON_BOUND
+  end
+end
+В итоге игра всё равно слишком простая. Добавим корабли «боссы», которые будут стрелять самонаводящимися ракетами, вместо обычных лазеров. Опять же, базовый функционал в классе Enemy, кроме, на этот раз, стрельбы. Создадим новый класс:
+class MissleEnemy < Enemy
+  def initialize(position)
+    super(position)
+  end
+  
+  def shoot
+    Missle.new(@position)
+  end
+end
+Теперь это вполне достойная игра. Большая часть вражеских кораблей двигается взад и вперёд, стреляя из лазеров, некоторые двигаются по диагонали, а некоторые стреляют ракетами (однако двигаются только в двух направлениях). Можно продолжить добавлять новые классы расширяя поведение, однако скоро встанет вопрос «что если нужен корабль который умеет двигаться по диагонали и стрелять ракетами одновременно?» Традиционная иерархия классов не решит этой проблемы. Множественное наследование очень быстро превращается в кашу, и к тому моменту вы уже поймёте что это не лучшее решение. Можно создать класс расширяющий только DiagonalEnemy и скопировать метод shoot, или наооборот расширить MissleEnemy и скопировать метод move. Возможно вместо того чтобы мучаться выбором, лучше создать новый класс и скопировать оба метода в него. В любом случае, если вы воспользуетесь наследованием, вы получите дублированный код, а значит вам придётся поддерживать один тот же код в двух местах. Что требует больше усилий и увеличивает вероятность получить баг. Подумайте, несмотря на то что DiagonalEnemy, MissleEnemy и MissleDiagonalEnemy не описывают новых вещей имеющихся у врагов, они описывают вариации поведения, которым обладают обладают вражеские объекты. «Поведение» звучит ужасно похоже на «функцию». В сущности, новые классы лишь определяют функции, изменяющие поведение. Почему бы нам не разделить классы содержащие эти функции? Выясняется что и не нужно! Proc идеально подходят для описания этого поведения. Вот как может выглядеть ревизия нашей игры с проками:
+class Enemy
+  attr_accessor :position
+  
+  def initialize(position, move, shoot)
+    @position = position
+    @move = move
+    @shoot = shoot
+    @direction = 1
+  end
+  
+  def move
+    @position, @direction = @move.call(position, direction)
+  end
+  
+  def shoot
+    @shoot.call(@position)
+  end
+end
+
+move_back_and_forth = Proc.new do |position, direction|
+  position[:x] += direction
+  direction = -direction if position[:x] <= LEFT_BOUND or position[:x] >= RIGHT_BOUND
+  
+  [position, direction]
+end
+
+move_diagonally = Proc.new do |position, direction|
+  position[:x] += direction
+  position[:y] += direction
+  
+  direction = -direction if position[:x] >= RIGHT_BOUND or position[:x] <= LEFT_BOUND or position[:y] <= TOP_BOUND or position[:y] >= BOTTOM_BOUND
+  
+  [position, direction]
+end
+
+shoot_laser = Proc.new do |position|
+  Laser.new(position)
+end
+
+shoot_missle = Proc.new do |position|
+  Missle.new(position)
+end
+
+normal_enemy = Enemy.new({x: 0, y: 0}, move_back_and_forth, shoot_laser)
+diagonal_enemy = Enemy.new({x: 0, y: 0}, move_diagonally, shoot_laser)
+boss_enemy = Enemy.new({x:0, y: 0}, move_back_and_forth, shoot_missle)
+challenge_boss_enemy = Enemy.new({x: 0, y: 0}, move_diagonally, shoot_missle)
+Теперь класс Enemy получает желаемое поведение от передаваемых ему проков, просто вызывая их чтобы определить что делать. Проки определённые далее, используют ту же логику что и предыдущий пример, за исключением того что теперь они не опираются на классы и наследование чтобы хранить её. В конце приведены различные возможные поведения, для демонстрации той легкости с который их можно переиспользовать и комбинировать. Однако это ещё не всё. Эти поведения могут быть переиспользованы, для определения ещё более сложного поведения. Например если вы хотите чтобы враг мог стрелять как из лазера, так и ракетами, или стрелять из лазера во время движения, просто предайте Enemyпрок, комбинирующий эти базовые поведения:
+shoot_both = Proc.new do |position|
+  shoot_laser.call(position)
+  shoot_missle.call(position)
+end
+two_shot_enemy = Enemy.new({x: 0, y: 0}, move_back_and_forth, shoot_booth)
+
+shoot_and_move = Proc.new do |position, direction|
+  shoot_laser.call(postion)
+  move_back_and_forth.call(position, direction)
+end
+run_and_gun_enemy = Enemy.new({x: 0, y: 0}, shoot_and_move, shoot_laser)
+Если однажды вы решите изменить то чем сейчас является стрельба из лазера или ракетами, вам не нужно изменять это в каждом месте, где это происходит — нужно лишь изменить соответствующий метод.
+Резюме
+Пока функциональное программирование остаётся немного чужеродным, руби прекрасно справляется с задачей превращения его в органичную часть языка. Как только вы поймёте как оно работает, перед вами откроется множество новых способов решения проблем. Здесь мы только слегка оглядели поверхность этого огромного и прекрасного мира функционального программирования. Объектно ориентированное программирование полезно только с некоторыми типами абстракций, и не всегда является лучшей парадигмой. Однако, т.к. руби содержит и объектно ориентированные и функциональные возможности, вы всегда можете выбрать тот инструмент, который лучше всего подходит для решения вашей задачи. Введение Если вы думаете о хаотичном океане скобочек, когда слышите термин «функциональное программирование», вы не одиноки. Функциональное программирование может показаться пугающим, чужим и ненужным, особенно если вы обладаете опытом в императивном или объектно-ориентированном языке, как C или Java. Возможно вы уже видели или даже использовали какую-нибудь имплементацию LISP, языка созданного почти 60 лет назад, без синтаксической роскоши более современных языков. Хорошие новости: после 1958 года мы узнали много нового о программировании, и функциональное программирование больше не должно никого пугать. На самом деле, если вы регулярно работаете с руби, вы наверняка уже пользовались функциональными аспектами языка, возможно даже не подозревая об этом. Оригинал этой заметки — Functional Aspects of Ruby — был опубликован в блоге «Handshake» 22 январь 2016, автор: Брендон Гаффорд. Оригинал этой заметки — Functional Aspects of Ruby Functional Aspects of Ruby — был опубликован в блоге «Handshake» 22 январь 2016, автор: Брендон Гаффорд. Что такое функциональное программирование? Прежде чем начинать, давайте закрепим понимание термина «функциональное программирование». В основе своей, функциональное программирование это организация кода вокруг функций, а не вокруг объектов. Чтобы это работало, функции должны рассматриваться как тип данных первого класса в рамках языка программирования. Это лишь модный способ сказать, что функции могут храниться в переменных, возвращаться из других функций, использоваться в качестве параметров, потенциально даже быть изменены, так же как любая другая часть программы. Вместо того чтобы погружаться глубже в теорию, давайте перейдём к примерам. Проки и блоки Наиболее широко известный функциональный аспект руби это функции итерирующие по спискам, как например each: each array = ["Bob", "Jane", "Joe"]
+array.each do |name|
+  puts name
+end array = ["Bob", "Jane", "Joe"]
+array.each do |name|
+  puts name
+end Если вы уже давно в руби, вы вероятно видели что-то подобное ранее и догадались что эта штука делает, довольно интуитивно. Это читается почти как псевдокод: «for each name in array, print that name.» Хотя то что происходит под капотом — одна из самых фундаментальных идей функционального программирования, с привкусом руби разумеется. Код между do и end — то что в руби называется блок, и он представляет собой литерал функции, также как 3 представляет литерал целого числа. Функция, определённая как блок, передаётся в качестве аргумента функции each — вот что происходит в коде выше. Для того чтобы блок мог рассматриваться как данные, он должен быть упакован в специальный руби класс, т.н. Proc. Proc принимает блок в качестве аргумента, точно также как each, и позволяет хранить и пользоваться блоком как любым другим руби объектом. Далее, чтобы запустить функцию, вызовем метод call на ней. Давайте разберём по блок частям, чтобы посмотреть как же он работает. do end each Proc Proc each call people = ["Bob", "Jane", "Joe"]
+
+print_arg = Proc.new do |arg|
+  puts arg
+end
+
+# выводит Linda в консоль
+print_arg.call("Linda")
+
+# выводит Bob, Jane и Joe в консоль
+people.each(&print_arg) people = ["Bob", "Jane", "Joe"]
+
+print_arg = Proc.new do |arg|
+  puts arg
+end
+
+# выводит Linda в консоль
+print_arg.call("Linda")
+
+# выводит Bob, Jane и Joe в консоль
+people.each(&print_arg) Блок был эксплицитно определён как Proc и назначен переменной. Теперь можно сказать, что блок это функция передаваемая в качестве аргумента методу each. Амперсанд (&) перед print_arg берёт Proc объект и распаковывает блок для каждой итерации — супротив тому что делает Proc.new. С помощью этого блока, eachпроходит каждый элемент массива, вызывая функцию и передавая ей элемент в качестве аргумента. Самое классное в Proc то, что т.к. они являются объектами, вы можете держать сколько угодно проков, назначать их переменным, и даже даже динамически выбирать какой именно использовать. Proc each & print_arg Proc Proc.new each Proc people = ["Bob", "Jane", "Joe"]
+
+nice_greeting = Proc.new do |arg|
+  puts "Hey #{arg}!"
+end
+
+grumpy_greeting = Proc.new do |arg|
+  puts "I still need my coffee, #{arg}"
+end
+
+if Time.now.hour < 9
+  greet = grumpy_greeting
+else
+  greet = happy_greeting
+end
+
+people.each(&greet) people = ["Bob", "Jane", "Joe"]
+
+nice_greeting = Proc.new do |arg|
+  puts "Hey #{arg}!"
+end
+
+grumpy_greeting = Proc.new do |arg|
+  puts "I still need my coffee, #{arg}"
+end
+
+if Time.now.hour < 9
+  greet = grumpy_greeting
+else
+  greet = happy_greeting
+end
+
+people.each(&greet) Сначала мы определяем два разных прока и сохраняем их в переменные: nice_greeting и grumpy_greeting. Магия происходит внутри if, в зависимости от времени дня, один из этих Proc будет назначен переменной greet. Если ещё слишком рано, будет сохранён grumpy_greetig, если же нет —сохраняется nice_greeting. Обратите внимание, условие выполняется только один раз, а не для каждого элемента списка. Как только мы получили нужный прок, мы передаём его each в качестве параметра. Если последняя строка выполняется в обед, функция хранимая в nice_greeting будет запущена 3 раза, по разу для каждого имени в массиве people. Такое использование Proc вносит дополнительную гибкость в и без того гибкий руби. nice_greeting grumpy_greeting if Proc greet grumpy_greetig nice_greeting each nice_greeting people Proc Функции как композиции Допустим вы создаёте клон Galaga (видеоигра в жанре фиксированного шутера, — прим. переводчика), и вам нужно разработать вражеский корабль. Корабль должен уметь двигаться взад и вперёд, и стрелять в игрока из лазерных пушек. Традиционная объектно ориентированная парадигма подразумевает представление корабля как класс Enemy, вероятно со свойством представляющем координаты, и методами движения и стрельбы. Всё это может выглядеть как-то так: class Enemy
+  attr_accessor :position
+  
+  def initialize(position)
+    @position = position
+    @direction = 1
+  end
+  
+  def move
+    @position[:x] += @direction
+    @direction = -@direction if @position[:x] <= LEFT_BOUND or @postion[:x] >= RIGHT_BOUND
+  end
+  
+  def shoot
+    Laser.new(@position)
+  end
+end class Enemy
+  attr_accessor :position
+  
+  def initialize(position)
+    @position = position
+    @direction = 1
+  end
+  
+  def move
+    @position[:x] += @direction
+    @direction = -@direction if @position[:x] <= LEFT_BOUND or @postion[:x] >= RIGHT_BOUND
+  end
+  
+  def shoot
+    Laser.new(@position)
+  end
+end Теперь враги могут двигаться в двух направлениях, и стрелять в игроков. Чтобы сделать игру посложнее, некоторые враги, в дополнение к двум направлениям, будут двигаться по диагонали. Т.к. враги разделяют базовый функционал класса Enemy, исключая движения, было бы логично расширить класс Enemy, назовём его DiagonalEnemy: Enemy Enemy DiagonalEnemy class DiagonalEnemy < Enemy
+  def initialize(position)
+    super(position)
+  end
+  
+  def move
+    @position[:x] += @direction
+    @position[:y] += @direction
+    
+    @direction = -@direction if @position[:x] >= RIGHT_BOUND or @position[:x] <= LEFT_BOUND or @position[:y] <= TOP_BOUND or @position[:y] >= BOTTON_BOUND
+  end
+end
+В итоге игра всё равно слишком простая. Добавим корабли «боссы», которые будут стрелять самонаводящимися ракетами, вместо обычных лазеров. Опять же, базовый функционал в классе Enemy, кроме, на этот раз, стрельбы. Создадим новый класс:
+class MissleEnemy < Enemy
+  def initialize(position)
+    super(position)
+  end
+  
+  def shoot
+    Missle.new(@position)
+  end
+end class DiagonalEnemy < Enemy
+  def initialize(position)
+    super(position)
+  end
+  
+  def move
+    @position[:x] += @direction
+    @position[:y] += @direction
+    
+    @direction = -@direction if @position[:x] >= RIGHT_BOUND or @position[:x] <= LEFT_BOUND or @position[:y] <= TOP_BOUND or @position[:y] >= BOTTON_BOUND
+  end
+end
+В итоге игра всё равно слишком простая. Добавим корабли «боссы», которые будут стрелять самонаводящимися ракетами, вместо обычных лазеров. Опять же, базовый функционал в классе Enemy, кроме, на этот раз, стрельбы. Создадим новый класс:
+class MissleEnemy < Enemy
+  def initialize(position)
+    super(position)
+  end
+  
+  def shoot
+    Missle.new(@position)
+  end
+end Теперь это вполне достойная игра. Большая часть вражеских кораблей двигается взад и вперёд, стреляя из лазеров, некоторые двигаются по диагонали, а некоторые стреляют ракетами (однако двигаются только в двух направлениях). Можно продолжить добавлять новые классы расширяя поведение, однако скоро встанет вопрос «что если нужен корабль который умеет двигаться по диагонали и стрелять ракетами одновременно?» Традиционная иерархия классов не решит этой проблемы. Множественное наследование очень быстро превращается в кашу, и к тому моменту вы уже поймёте что это не лучшее решение. Можно создать класс расширяющий только DiagonalEnemy и скопировать метод shoot, или наооборот расширить MissleEnemy и скопировать метод move. Возможно вместо того чтобы мучаться выбором, лучше создать новый класс и скопировать оба метода в него. В любом случае, если вы воспользуетесь наследованием, вы получите дублированный код, а значит вам придётся поддерживать один тот же код в двух местах. Что требует больше усилий и увеличивает вероятность получить баг. Подумайте, несмотря на то что DiagonalEnemy, MissleEnemy и MissleDiagonalEnemy не описывают новых вещей имеющихся у врагов, они описывают вариации поведения, которым обладают обладают вражеские объекты. «Поведение» звучит ужасно похоже на «функцию». В сущности, новые классы лишь определяют функции, изменяющие поведение. Почему бы нам не разделить классы содержащие эти функции? Выясняется что и не нужно! Proc идеально подходят для описания этого поведения. Вот как может выглядеть ревизия нашей игры с проками: DiagonalEnemy shoot MissleEnemy move DiagonalEnemy MissleEnemy MissleDiagonalEnemy Proc class Enemy
+  attr_accessor :position
+  
+  def initialize(position, move, shoot)
+    @position = position
+    @move = move
+    @shoot = shoot
+    @direction = 1
+  end
+  
+  def move
+    @position, @direction = @move.call(position, direction)
+  end
+  
+  def shoot
+    @shoot.call(@position)
+  end
+end
+
+move_back_and_forth = Proc.new do |position, direction|
+  position[:x] += direction
+  direction = -direction if position[:x] <= LEFT_BOUND or position[:x] >= RIGHT_BOUND
+  
+  [position, direction]
+end
+
+move_diagonally = Proc.new do |position, direction|
+  position[:x] += direction
+  position[:y] += direction
+  
+  direction = -direction if position[:x] >= RIGHT_BOUND or position[:x] <= LEFT_BOUND or position[:y] <= TOP_BOUND or position[:y] >= BOTTOM_BOUND
+  
+  [position, direction]
+end
+
+shoot_laser = Proc.new do |position|
+  Laser.new(position)
+end
+
+shoot_missle = Proc.new do |position|
+  Missle.new(position)
+end
+
+normal_enemy = Enemy.new({x: 0, y: 0}, move_back_and_forth, shoot_laser)
+diagonal_enemy = Enemy.new({x: 0, y: 0}, move_diagonally, shoot_laser)
+boss_enemy = Enemy.new({x:0, y: 0}, move_back_and_forth, shoot_missle)
+challenge_boss_enemy = Enemy.new({x: 0, y: 0}, move_diagonally, shoot_missle) class Enemy
+  attr_accessor :position
+  
+  def initialize(position, move, shoot)
+    @position = position
+    @move = move
+    @shoot = shoot
+    @direction = 1
+  end
+  
+  def move
+    @position, @direction = @move.call(position, direction)
+  end
+  
+  def shoot
+    @shoot.call(@position)
+  end
+end
+
+move_back_and_forth = Proc.new do |position, direction|
+  position[:x] += direction
+  direction = -direction if position[:x] <= LEFT_BOUND or position[:x] >= RIGHT_BOUND
+  
+  [position, direction]
+end
+
+move_diagonally = Proc.new do |position, direction|
+  position[:x] += direction
+  position[:y] += direction
+  
+  direction = -direction if position[:x] >= RIGHT_BOUND or position[:x] <= LEFT_BOUND or position[:y] <= TOP_BOUND or position[:y] >= BOTTOM_BOUND
+  
+  [position, direction]
+end
+
+shoot_laser = Proc.new do |position|
+  Laser.new(position)
+end
+
+shoot_missle = Proc.new do |position|
+  Missle.new(position)
+end
+
+normal_enemy = Enemy.new({x: 0, y: 0}, move_back_and_forth, shoot_laser)
+diagonal_enemy = Enemy.new({x: 0, y: 0}, move_diagonally, shoot_laser)
+boss_enemy = Enemy.new({x:0, y: 0}, move_back_and_forth, shoot_missle)
+challenge_boss_enemy = Enemy.new({x: 0, y: 0}, move_diagonally, shoot_missle) Теперь класс Enemy получает желаемое поведение от передаваемых ему проков, просто вызывая их чтобы определить что делать. Проки определённые далее, используют ту же логику что и предыдущий пример, за исключением того что теперь они не опираются на классы и наследование чтобы хранить её. В конце приведены различные возможные поведения, для демонстрации той легкости с который их можно переиспользовать и комбинировать. Однако это ещё не всё. Эти поведения могут быть переиспользованы, для определения ещё более сложного поведения. Например если вы хотите чтобы враг мог стрелять как из лазера, так и ракетами, или стрелять из лазера во время движения, просто предайте Enemyпрок, комбинирующий эти базовые поведения: Enemy Enemy shoot_both = Proc.new do |position|
+  shoot_laser.call(position)
+  shoot_missle.call(position)
+end
+two_shot_enemy = Enemy.new({x: 0, y: 0}, move_back_and_forth, shoot_booth)
+
+shoot_and_move = Proc.new do |position, direction|
+  shoot_laser.call(postion)
+  move_back_and_forth.call(position, direction)
+end
+run_and_gun_enemy = Enemy.new({x: 0, y: 0}, shoot_and_move, shoot_laser) shoot_both = Proc.new do |position|
+  shoot_laser.call(position)
+  shoot_missle.call(position)
+end
+two_shot_enemy = Enemy.new({x: 0, y: 0}, move_back_and_forth, shoot_booth)
+
+shoot_and_move = Proc.new do |position, direction|
+  shoot_laser.call(postion)
+  move_back_and_forth.call(position, direction)
+end
+run_and_gun_enemy = Enemy.new({x: 0, y: 0}, shoot_and_move, shoot_laser) Если однажды вы решите изменить то чем сейчас является стрельба из лазера или ракетами, вам не нужно изменять это в каждом месте, где это происходит — нужно лишь изменить соответствующий метод. Резюме Пока функциональное программирование остаётся немного чужеродным, руби прекрасно справляется с задачей превращения его в органичную часть языка. Как только вы поймёте как оно работает, перед вами откроется множество новых способов решения проблем. Здесь мы только слегка оглядели поверхность этого огромного и прекрасного мира функционального программирования. Объектно ориентированное программирование полезно только с некоторыми типами абстракций, и не всегда является лучшей парадигмой. Однако, т.к. руби содержит и объектно ориентированные и функциональные возможности, вы всегда можете выбрать тот инструмент, который лучше всего подходит для решения вашей задачи. ]]></text>
+</doc>

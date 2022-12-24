@@ -1,0 +1,488 @@
+<?xml version="1.0" ?>
+<doc>
+	<label auto="true" type="str" verify="true"><![CDATA[Develop]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[tarmalonchik]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-12-12, 12:00]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/post/704802/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Проблема grpc-gateway и как ее можно решить]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Open source]]></item>
+		<item type="str"><![CDATA[Программирование]]></item>
+		<item type="str"><![CDATA[Go]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[golang]]></item>
+		<item type="str"><![CDATA[go]]></item>
+		<item type="str"><![CDATA[grpc]]></item>
+		<item type="str"><![CDATA[grpc-gateway]]></item>
+		<item type="str"><![CDATA[protoc-gen]]></item>
+		<item type="str"><![CDATA[middleware]]></item>
+		<item type="str"><![CDATA[interceptors]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[Всем привет) Те кому нравится использовать GRPC скорее всего с этой библиотекой уже знакомы. Это protoc plugin который читает *.proto файлы и генерит обратный прокси сервер который принимает HTTP и транслирует их в GRPC. Довольно полезная штука, когда у нас есть сервер к которому можно ходить как по GRPC так и HTTP.
+Но при использовании данного плагина я понял что невозможно нормально использовать middleware. Самым проблемным в этом плане оказалась JWT авторизация, ибо я хотел бы валидировать JWT токен, и после этого ID юзера запихивать в context запроса, чтобы на каждом шаге запроса знать кто именно делает данный запрос)
+
+При создании роутера c помощью grpc-gateway есть возможность задать некоторые опции, выглядит это примерно так:
+import "github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+
+g := runtime.NewServeMux(
+  runtime.WithMetadata(),
+  runtime.WithForwardResponseOption(response.HTTPResponseModifier),
+)
+В опции сюда можно прокинуть довольно много всего, но нет возможности прокинуть middleware, которая может модифицировать context и при этом может вернуть ошибку.
+После создания роутера надо зарегистрировать все методы которые объявлены в .proto файле. Для этого используется сгенерированная с помощью grpc-gateway функция. Пример использования этого метода:
+err = sdk.RegisterTestHandlerServer(ctx, g, handlers.grpcHandler)
+if err != nil {
+  return nil, fmt.Errorf("error while initing handlers %w", err)
+}
+Я решил модифицировать код, который генерирует grpc-gateway, для того чтобы иметь возможность прокинуть middleware внутрь функции RegisterTestHandlerServer.
+Middleware у меня будет иметь следующий интерфейс:
+func(
+  ctx context.Context, // тут можно модифицировать контекст
+  req interface{}, 
+  info *UnaryServerInfo, // отсюда мы можем узнать название вызванного метода
+  handler UnaryHandler,
+) 
+(resp interface{}, err error)
+Те кто шарят уже наверное поняли что это интерфейс UnaryServerInterceptor. Я решил использовать этот интерфейс по причине того, что его можно будет юзать как для GRPC запросов, так и для HTTP запросов. То есть можно написать один middleware и использовать его как для GRPC так и для HTTP вызовов.
+Для того чтобы вносить изменения в код который сгенерировал grpc-gateway я решил написать protoc плагин, который будет проходиться по *.pb.gw.go файлам(это файлы которые генерит grpc-gateway) и вносить изменения в функцию Register<ServiceName>HandlerServer
+Нам надо добавить тип UnaryServerInterceptor в аргументы функции.
+Далее нам надо где-то до вызова самого метода вызвать middleware.
+Сама функция Register<ServiceName>HandlerServer выглядит примерно так:
+func RegisterTestServiceHandlerServer(
+  ctx context.Context,
+  mux *runtime.ServeMux,
+  server TestServiceServer // я добавлю middleware после аргумента server
+) error {
+ mux.Handle("POST", pattern_TestService_MethodOne_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+  ctx, cancel := context.WithCancel(req.Context())
+  defer cancel()
+  var stream runtime.ServerTransportStream
+  ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
+  inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+  var err error
+  var annotatedContext context.Context
+  annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/sdk.TestService/MethodOne", runtime.WithHTTPPathPattern("/sdk.TestService/MethodOne"))
+  if err != nil {
+   runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+   return
+  }
+
+  // внутри функции local_request_TestService_MethodOne_0 вызывается уже сама
+        // бизнес логика, поэтому нам надо вызвать интерсептор до этого момента
+  resp, md, err := local_request_TestService_MethodOne_0(
+          annotatedContext,
+          inboundMarshaler,
+          server,
+          req,
+          pathParams,
+        )
+
+  md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
+  annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+  if err != nil {
+   runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+   return
+  }
+
+  forward_TestService_MethodOne_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+
+ })
+ return nil
+}
+После прохода написанного мной .proto платина я хочу увидеть что то такое:
+func RegisterTestServiceHandlerServer(
+  ctx context.Context,
+  mux *runtime.ServeMux,
+  server TestServiceServer,
+  interceptor grpc.UnaryServerInterceptor, // вот наша миддлваря
+) error {
+ mux.Handle("POST", pattern_TestService_MethodOne_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+  ctx, cancel := context.WithCancel(req.Context())
+  defer cancel()
+  var stream runtime.ServerTransportStream
+  ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
+  inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+  var err error
+  var annotatedContext context.Context
+  annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/sdk.TestService/MethodOne", runtime.WithHTTPPathPattern("/sdk.TestService/MethodOne"))
+  if err != nil {
+   runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+   return
+  }
+
+        // теперь тут новая функция, которая принимает внутрь себя интерсептор
+        md, resp, err := interceptor_local_request_TestService_MethodOne_0(
+          annotatedContext,
+          inboundMarshaler,
+          server,
+          interceptor,
+          req,
+          pathParams,
+        )
+
+  md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
+  annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+  if err != nil {
+   runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+   return
+  }
+
+  forward_TestService_MethodOne_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+
+ })
+ return nil
+}
+
+
+// данная функция затевалась всего лишь как обертка для 
+// local_request_TestService_MethodOne_0 которая внутри себя вызывает
+// инетресептор
+
+func interceptor_local_request_TestService_MethodOne_0(
+  annotatedContext context.Context,
+  inboundMarshaler runtime.Marshaler,
+  server UsersServiceServer,
+  interceptor grpc.UnaryServerInterceptor,
+  req *http.Request,
+  pathParams map[string]string) (md runtime.ServerMetadata, resp proto.Message, err error) {
+  
+ type handlerResponse struct {
+  md   runtime.ServerMetadata
+  resp proto.Message
+ }
+
+ handler := func(ctx context.Context, req any) (any, error) {
+  if req, ok := req.(*http.Request); ok {
+   resp, md, err := local_request_TestService_MethodOne_0(annotatedContext, inboundMarshaler, server, req, pathParams)
+   return handlerResponse{resp: resp, md: md}, err
+  }
+  return nil, fmt.Errorf("error converting req to *http.Request")
+ }
+
+ var handlerResponseItem any
+
+    // если интерсептор будет равен nil тогда выполняем все без него
+ if interceptor == nil {
+  handlerResponseItem, err = handler(annotatedContext, req)
+ } else {
+  handlerResponseItem, err = interceptor(annotatedContext, req, &grpc.UnaryServerInfo{Server: server, FullMethod: "/sdk.UsersService/GetRetoolUsersList"}, handler)
+ }
+ if err != nil {
+  return
+ }
+
+ data, ok := handlerResponseItem.(handlerResponse)
+ if !ok {
+  return
+ }
+
+ return data.md, data.resp, nil
+}
+После того как плагин поправит код, можно будет сделать так:
+err = sdk.RegisterTestHandlerServer(ctx, g, handlers.grpcHandler, middleware)
+if err != nil {
+  return nil, fmt.Errorf("error while initing handlers %w", err)
+}
+Теперь мы можем прокинуть middleware в RegisterTestHandlerServer и мы довольны)))
+В следующей статье я могу могу рассказать подробнее как можно модифицировать код с помощью acl.
+
+Код моего платина находится тут:
+https://github.com/tarmalonchik/protoc-gen-interceptors Всем привет) Те кому нравится использовать GRPC скорее всего с этой библиотекой уже знакомы. Это protoc plugin который читает *.proto файлы и генерит обратный прокси сервер который принимает HTTP и транслирует их в GRPC. Довольно полезная штука, когда у нас есть сервер к которому можно ходить как по GRPC так и HTTP. библиотекой Но при использовании данного плагина я понял что невозможно нормально использовать middleware. Самым проблемным в этом плане оказалась JWT авторизация, ибо я хотел бы валидировать JWT токен, и после этого ID юзера запихивать в context запроса, чтобы на каждом шаге запроса знать кто именно делает данный запрос)
+
+При создании роутера c помощью grpc-gateway есть возможность задать некоторые опции, выглядит это примерно так:   grpc-gateway import "github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+
+g := runtime.NewServeMux(
+  runtime.WithMetadata(),
+  runtime.WithForwardResponseOption(response.HTTPResponseModifier),
+) import "github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+
+g := runtime.NewServeMux(
+  runtime.WithMetadata(),
+  runtime.WithForwardResponseOption(response.HTTPResponseModifier),
+) В опции сюда можно прокинуть довольно много всего, но нет возможности прокинуть middleware, которая может модифицировать context и при этом может вернуть ошибку. После создания роутера надо зарегистрировать все методы которые объявлены в .proto файле. Для этого используется сгенерированная с помощью grpc-gateway функция. Пример использования этого метода: grpc-gateway err = sdk.RegisterTestHandlerServer(ctx, g, handlers.grpcHandler)
+if err != nil {
+  return nil, fmt.Errorf("error while initing handlers %w", err)
+} err = sdk.RegisterTestHandlerServer(ctx, g, handlers.grpcHandler)
+if err != nil {
+  return nil, fmt.Errorf("error while initing handlers %w", err)
+} Я решил модифицировать код, который генерирует grpc-gateway, для того чтобы иметь возможность прокинуть middleware внутрь функции RegisterTestHandlerServer. RegisterTestHandlerServer. Middleware у меня будет иметь следующий интерфейс: func(
+  ctx context.Context, // тут можно модифицировать контекст
+  req interface{}, 
+  info *UnaryServerInfo, // отсюда мы можем узнать название вызванного метода
+  handler UnaryHandler,
+) 
+(resp interface{}, err error) func(
+  ctx context.Context, // тут можно модифицировать контекст
+  req interface{}, 
+  info *UnaryServerInfo, // отсюда мы можем узнать название вызванного метода
+  handler UnaryHandler,
+) 
+(resp interface{}, err error) Те кто шарят уже наверное поняли что это интерфейс UnaryServerInterceptor. Я решил использовать этот интерфейс по причине того, что его можно будет юзать как для GRPC запросов, так и для HTTP запросов. То есть можно написать один middleware и использовать его как для GRPC так и для HTTP вызовов. Для того чтобы вносить изменения в код который сгенерировал grpc-gateway я решил написать protoc плагин, который будет проходиться по *.pb.gw.go файлам(это файлы которые генерит grpc-gateway) и вносить изменения в функцию Register<ServiceName>HandlerServer grpc-gateway grpc-gateway Нам надо добавить тип UnaryServerInterceptor в аргументы функции.
+Далее нам надо где-то до вызова самого метода вызвать middleware. Нам надо добавить тип UnaryServerInterceptor в аргументы функции. Нам надо добавить тип UnaryServerInterceptor в аргументы функции. Далее нам надо где-то до вызова самого метода вызвать middleware. Далее нам надо где-то до вызова самого метода вызвать middleware. Сама функция Register<ServiceName>HandlerServer выглядит примерно так: func RegisterTestServiceHandlerServer(
+  ctx context.Context,
+  mux *runtime.ServeMux,
+  server TestServiceServer // я добавлю middleware после аргумента server
+) error {
+ mux.Handle("POST", pattern_TestService_MethodOne_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+  ctx, cancel := context.WithCancel(req.Context())
+  defer cancel()
+  var stream runtime.ServerTransportStream
+  ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
+  inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+  var err error
+  var annotatedContext context.Context
+  annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/sdk.TestService/MethodOne", runtime.WithHTTPPathPattern("/sdk.TestService/MethodOne"))
+  if err != nil {
+   runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+   return
+  }
+
+  // внутри функции local_request_TestService_MethodOne_0 вызывается уже сама
+        // бизнес логика, поэтому нам надо вызвать интерсептор до этого момента
+  resp, md, err := local_request_TestService_MethodOne_0(
+          annotatedContext,
+          inboundMarshaler,
+          server,
+          req,
+          pathParams,
+        )
+
+  md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
+  annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+  if err != nil {
+   runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+   return
+  }
+
+  forward_TestService_MethodOne_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+
+ })
+ return nil
+} func RegisterTestServiceHandlerServer(
+  ctx context.Context,
+  mux *runtime.ServeMux,
+  server TestServiceServer // я добавлю middleware после аргумента server
+) error {
+ mux.Handle("POST", pattern_TestService_MethodOne_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+  ctx, cancel := context.WithCancel(req.Context())
+  defer cancel()
+  var stream runtime.ServerTransportStream
+  ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
+  inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+  var err error
+  var annotatedContext context.Context
+  annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/sdk.TestService/MethodOne", runtime.WithHTTPPathPattern("/sdk.TestService/MethodOne"))
+  if err != nil {
+   runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+   return
+  }
+
+  // внутри функции local_request_TestService_MethodOne_0 вызывается уже сама
+        // бизнес логика, поэтому нам надо вызвать интерсептор до этого момента
+  resp, md, err := local_request_TestService_MethodOne_0(
+          annotatedContext,
+          inboundMarshaler,
+          server,
+          req,
+          pathParams,
+        )
+
+  md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
+  annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+  if err != nil {
+   runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+   return
+  }
+
+  forward_TestService_MethodOne_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+
+ })
+ return nil
+} После прохода написанного мной .proto платина я хочу увидеть что то такое: func RegisterTestServiceHandlerServer(
+  ctx context.Context,
+  mux *runtime.ServeMux,
+  server TestServiceServer,
+  interceptor grpc.UnaryServerInterceptor, // вот наша миддлваря
+) error {
+ mux.Handle("POST", pattern_TestService_MethodOne_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+  ctx, cancel := context.WithCancel(req.Context())
+  defer cancel()
+  var stream runtime.ServerTransportStream
+  ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
+  inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+  var err error
+  var annotatedContext context.Context
+  annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/sdk.TestService/MethodOne", runtime.WithHTTPPathPattern("/sdk.TestService/MethodOne"))
+  if err != nil {
+   runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+   return
+  }
+
+        // теперь тут новая функция, которая принимает внутрь себя интерсептор
+        md, resp, err := interceptor_local_request_TestService_MethodOne_0(
+          annotatedContext,
+          inboundMarshaler,
+          server,
+          interceptor,
+          req,
+          pathParams,
+        )
+
+  md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
+  annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+  if err != nil {
+   runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+   return
+  }
+
+  forward_TestService_MethodOne_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+
+ })
+ return nil
+}
+
+
+// данная функция затевалась всего лишь как обертка для 
+// local_request_TestService_MethodOne_0 которая внутри себя вызывает
+// инетресептор
+
+func interceptor_local_request_TestService_MethodOne_0(
+  annotatedContext context.Context,
+  inboundMarshaler runtime.Marshaler,
+  server UsersServiceServer,
+  interceptor grpc.UnaryServerInterceptor,
+  req *http.Request,
+  pathParams map[string]string) (md runtime.ServerMetadata, resp proto.Message, err error) {
+  
+ type handlerResponse struct {
+  md   runtime.ServerMetadata
+  resp proto.Message
+ }
+
+ handler := func(ctx context.Context, req any) (any, error) {
+  if req, ok := req.(*http.Request); ok {
+   resp, md, err := local_request_TestService_MethodOne_0(annotatedContext, inboundMarshaler, server, req, pathParams)
+   return handlerResponse{resp: resp, md: md}, err
+  }
+  return nil, fmt.Errorf("error converting req to *http.Request")
+ }
+
+ var handlerResponseItem any
+
+    // если интерсептор будет равен nil тогда выполняем все без него
+ if interceptor == nil {
+  handlerResponseItem, err = handler(annotatedContext, req)
+ } else {
+  handlerResponseItem, err = interceptor(annotatedContext, req, &grpc.UnaryServerInfo{Server: server, FullMethod: "/sdk.UsersService/GetRetoolUsersList"}, handler)
+ }
+ if err != nil {
+  return
+ }
+
+ data, ok := handlerResponseItem.(handlerResponse)
+ if !ok {
+  return
+ }
+
+ return data.md, data.resp, nil
+} func RegisterTestServiceHandlerServer(
+  ctx context.Context,
+  mux *runtime.ServeMux,
+  server TestServiceServer,
+  interceptor grpc.UnaryServerInterceptor, // вот наша миддлваря
+) error {
+ mux.Handle("POST", pattern_TestService_MethodOne_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
+  ctx, cancel := context.WithCancel(req.Context())
+  defer cancel()
+  var stream runtime.ServerTransportStream
+  ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
+  inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+  var err error
+  var annotatedContext context.Context
+  annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/sdk.TestService/MethodOne", runtime.WithHTTPPathPattern("/sdk.TestService/MethodOne"))
+  if err != nil {
+   runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
+   return
+  }
+
+        // теперь тут новая функция, которая принимает внутрь себя интерсептор
+        md, resp, err := interceptor_local_request_TestService_MethodOne_0(
+          annotatedContext,
+          inboundMarshaler,
+          server,
+          interceptor,
+          req,
+          pathParams,
+        )
+
+  md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
+  annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
+  if err != nil {
+   runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
+   return
+  }
+
+  forward_TestService_MethodOne_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
+
+ })
+ return nil
+}
+
+
+// данная функция затевалась всего лишь как обертка для 
+// local_request_TestService_MethodOne_0 которая внутри себя вызывает
+// инетресептор
+
+func interceptor_local_request_TestService_MethodOne_0(
+  annotatedContext context.Context,
+  inboundMarshaler runtime.Marshaler,
+  server UsersServiceServer,
+  interceptor grpc.UnaryServerInterceptor,
+  req *http.Request,
+  pathParams map[string]string) (md runtime.ServerMetadata, resp proto.Message, err error) {
+  
+ type handlerResponse struct {
+  md   runtime.ServerMetadata
+  resp proto.Message
+ }
+
+ handler := func(ctx context.Context, req any) (any, error) {
+  if req, ok := req.(*http.Request); ok {
+   resp, md, err := local_request_TestService_MethodOne_0(annotatedContext, inboundMarshaler, server, req, pathParams)
+   return handlerResponse{resp: resp, md: md}, err
+  }
+  return nil, fmt.Errorf("error converting req to *http.Request")
+ }
+
+ var handlerResponseItem any
+
+    // если интерсептор будет равен nil тогда выполняем все без него
+ if interceptor == nil {
+  handlerResponseItem, err = handler(annotatedContext, req)
+ } else {
+  handlerResponseItem, err = interceptor(annotatedContext, req, &grpc.UnaryServerInfo{Server: server, FullMethod: "/sdk.UsersService/GetRetoolUsersList"}, handler)
+ }
+ if err != nil {
+  return
+ }
+
+ data, ok := handlerResponseItem.(handlerResponse)
+ if !ok {
+  return
+ }
+
+ return data.md, data.resp, nil
+} После того как плагин поправит код, можно будет сделать так: err = sdk.RegisterTestHandlerServer(ctx, g, handlers.grpcHandler, middleware)
+if err != nil {
+  return nil, fmt.Errorf("error while initing handlers %w", err)
+} err = sdk.RegisterTestHandlerServer(ctx, g, handlers.grpcHandler, middleware)
+if err != nil {
+  return nil, fmt.Errorf("error while initing handlers %w", err)
+} Теперь мы можем прокинуть middleware в RegisterTestHandlerServer и мы довольны))) В следующей статье я могу могу рассказать подробнее как можно модифицировать код с помощью acl.
+
+Код моего платина находится тут:
+https://github.com/tarmalonchik/protoc-gen-interceptors    https://github.com/tarmalonchik/protoc-gen-interceptors ]]></text>
+</doc>

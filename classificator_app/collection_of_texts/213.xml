@@ -1,0 +1,22 @@
+<?xml version="1.0" ?>
+<doc>
+	<label auto="true" type="str" verify="true"><![CDATA[Develop]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[monreve]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-12-12, 03:08]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/company/selectel/blog/704004/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Импортозамещение по-американски: как Тайвань планирует сохранить лидерство в отрасли производства современных чипов]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Блог компании Selectel]]></item>
+		<item type="str"><![CDATA[Исследования и прогнозы в IT]]></item>
+		<item type="str"><![CDATA[Производство и разработка электроники]]></item>
+		<item type="str"><![CDATA[IT-компании]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[ит-компании]]></item>
+		<item type="str"><![CDATA[tsmc]]></item>
+		<item type="str"><![CDATA[полупроводники]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[]]></text>
+</doc>

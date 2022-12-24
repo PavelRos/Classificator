@@ -1,0 +1,203 @@
+<?xml version="1.0" ?>
+<doc>
+	<label auto="true" type="str" verify="true"><![CDATA[Develop]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Story-teller]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-11-29, 01:02]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/post/702148/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Получаем статистику Telegram-канала при помощи api и python]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Python]]></item>
+		<item type="str"><![CDATA[API]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[telegram]]></item>
+		<item type="str"><![CDATA[telegram api]]></item>
+		<item type="str"><![CDATA[статистический анализ]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[В некоторых группах в Telegram доступна интересная и познавательная статистика, которую можно посмотреть не только со смартфона, но и нехитрых действий с api. А если каналов много, то вообще очень полезная вещь.
+Нам понадобится
+Пройти небольшой и увлекательный путь с TDLib.
+Залогиниться на https://my.telegram.org. Перейти в "API development tools" и заполнить форму (три поля: название приложение, платформа и описание)
+Получить api_id and api_hash, они нужны для авторизации.
+Почитать страшные предупреждения, что за использование api для флуда и прочих накруток ваш номер забанят навсегда.
+Итак, TDLib, кроссплатформенная, работает со всеми языками (питон тоже), написана на Си. С установкой библиотеки любезно помогает сам Телеграм по ссылке, можно выбрать язык, систему, и все команды вам напишут.
+Тут же предлагают рассмотреть решения от третьих лиц и стоит ссылка на конкретно alexander-akhmetov/python-telegram. Он, так он.
+Сразу получаем статистику (ну, почти)
+Импортируем всё нужное и логинемся по инструкции
+import json
+from telegram.client import Telegram
+import plotly.graph_objects as go
+
+tg = Telegram(
+    api_id='api_id',
+    api_hash='api_hash',
+    phone='+31611111111',  # you can pass 'bot_token' instead
+    database_encryption_key='changekey123',
+)
+tg.login()
+# if this is the first run, library needs to preload all chats
+# otherwise the message will not be sent
+result = tg.get_chats()
+result.wait()
+После выполнения 11 строчки, Tелеграм пришлёт код, который надо ввести. Потом нужно получить все чаты (14-15), а то чуда не произойдёт.
+Дальше всё очень просто, библиотека располагает прекрасной функцией call_method, которая вызывает всё что нужно из TDLib, а нужно нам удостовериться, что группе доступна статистика.
+params = {
+    'supergroup_id': 12324890 #id группы (без -100)
+}
+
+result = tg.call_method('getSupergroupFullInfo', params, block=True)
+if result.update['can_get_statistics']:
+    print('Можно продолжать')
+else:
+    print("что-то пошло не так")
+В библиотеке есть собственная функция по получению информации о группе, tg.get_supergroup_full_info(-100231243245), но если что-то идёт не так, возвращается None и сложно понять в чём дело, при вызове tg.call_method('getSupergroupFullInfo', params, block=True), можно указать block=True, и ошибка будет показываться.
+params = {
+    'supergroup_id': -10012324890
+}
+
+result = tg.call_method('getSupergroupFullInfo', params, block=True)
+>>Telegram error: {'@type': 'error', 'code': 400, 'message': 'Supergroup not found', '@extra': {'request_id': 'fd88892cac814b4c834973d80004d09a'}}
+В этом случае пишет, что нет такой группы.
+В общем, если есть заветный флажок can_get_statistics==True, можем наконец, переходить к главному, вызову метода getChatStatistics. Всего два параметра, айди чата, и темная или светлая тема.
+params = {
+    'chat_id': -10012324890, #тут надо -100
+    'is_dark': True
+}
+stat_resp = tg.call_method('getChatStatistics', params, block=True)
+stat = stat_resp.update
+В ответ получаем json со всей статистикой и наслаждаемся результатом.
+Количество подписчиков в динамике
+Подписалось/отписалось
+Включены уведомления
+Просмотры по часам
+Источники просмотров
+Активность
+Новые посты
+и тд
+Немного визуализации
+Например, можно результат визуализировать при помощи plotly
+# загружаем данные диаграммы в json
+member_count_graph=json.loads(stat['member_count_graph']['json_data'])
+
+# переводим unix timestamp в обычное время
+data_x = [
+    datetime.fromtimestamp(x / 1000).strftime("%m.%d")
+    for x in graph["columns"][0][1:]
+]
+
+#создаём визуализацию пользователей
+fig = go.Figure()
+fig.add_trace(go.Scatter(x=data_x, y=member_count_graph['columns'][1]))
+
+fig.show()
+Всем спасибо, надеюсь, будет полезно. В производство пока это всё не запускалось, поэтому насколько стабильно и уверенно всё работает, сказать не могу.
+Ноутбук с примером всего.
+Список классов TDLib Class Index
+Telegram Database Library
+Установка TDLib
+python-telegram В некоторых группах в Telegram доступна интересная и познавательная статистика, которую можно посмотреть не только со смартфона, но и нехитрых действий с api. А если каналов много, то вообще очень полезная вещь. Нам понадобится Пройти небольшой и увлекательный путь с TDLib. Залогиниться на https://my.telegram.org. Перейти в "API development tools" и заполнить форму (три поля: название приложение, платформа и описание)
+Получить api_id and api_hash, они нужны для авторизации.
+Почитать страшные предупреждения, что за использование api для флуда и прочих накруток ваш номер забанят навсегда. Залогиниться на https://my.telegram.org. Перейти в "API development tools" и заполнить форму (три поля: название приложение, платформа и описание) Залогиниться на https://my.telegram.org. Перейти в "API development tools" и заполнить форму (три поля: название приложение, платформа и описание) Залогиниться Получить api_id and api_hash, они нужны для авторизации. Получить api_id and api_hash, они нужны для авторизации. api_id api_hash Почитать страшные предупреждения, что за использование api для флуда и прочих накруток ваш номер забанят навсегда. Почитать страшные предупреждения, что за использование api для флуда и прочих накруток ваш номер забанят навсегда. Итак, TDLib, кроссплатформенная, работает со всеми языками (питон тоже), написана на Си. С установкой библиотеки любезно помогает сам Телеграм по ссылке, можно выбрать язык, систему, и все команды вам напишут. работает со всеми языками по ссылке   Тут же предлагают рассмотреть решения от третьих лиц и стоит ссылка на конкретно alexander-akhmetov/python-telegram. Он, так он. alexander-akhmetov/python-telegram Сразу получаем статистику (ну, почти) Импортируем всё нужное и логинемся по инструкции import json
+from telegram.client import Telegram
+import plotly.graph_objects as go
+
+tg = Telegram(
+    api_id='api_id',
+    api_hash='api_hash',
+    phone='+31611111111',  # you can pass 'bot_token' instead
+    database_encryption_key='changekey123',
+)
+tg.login()
+# if this is the first run, library needs to preload all chats
+# otherwise the message will not be sent
+result = tg.get_chats()
+result.wait() import json
+from telegram.client import Telegram
+import plotly.graph_objects as go
+
+tg = Telegram(
+    api_id='api_id',
+    api_hash='api_hash',
+    phone='+31611111111',  # you can pass 'bot_token' instead
+    database_encryption_key='changekey123',
+)
+tg.login()
+# if this is the first run, library needs to preload all chats
+# otherwise the message will not be sent
+result = tg.get_chats()
+result.wait() После выполнения 11 строчки, Tелеграм пришлёт код, который надо ввести. Потом нужно получить все чаты (14-15), а то чуда не произойдёт. Дальше всё очень просто, библиотека располагает прекрасной функцией call_method, которая вызывает всё что нужно из TDLib, а нужно нам удостовериться, что группе доступна статистика. params = {
+    'supergroup_id': 12324890 #id группы (без -100)
+}
+
+result = tg.call_method('getSupergroupFullInfo', params, block=True)
+if result.update['can_get_statistics']:
+    print('Можно продолжать')
+else:
+    print("что-то пошло не так") params = {
+    'supergroup_id': 12324890 #id группы (без -100)
+}
+
+result = tg.call_method('getSupergroupFullInfo', params, block=True)
+if result.update['can_get_statistics']:
+    print('Можно продолжать')
+else:
+    print("что-то пошло не так") В библиотеке есть собственная функция по получению информации о группе, tg.get_supergroup_full_info(-100231243245), но если что-то идёт не так, возвращается None и сложно понять в чём дело, при вызове tg.call_method('getSupergroupFullInfo', params, block=True), можно указать block=True, и ошибка будет показываться. params = {
+    'supergroup_id': -10012324890
+}
+
+result = tg.call_method('getSupergroupFullInfo', params, block=True)
+>>Telegram error: {'@type': 'error', 'code': 400, 'message': 'Supergroup not found', '@extra': {'request_id': 'fd88892cac814b4c834973d80004d09a'}} params = {
+    'supergroup_id': -10012324890
+}
+
+result = tg.call_method('getSupergroupFullInfo', params, block=True)
+>>Telegram error: {'@type': 'error', 'code': 400, 'message': 'Supergroup not found', '@extra': {'request_id': 'fd88892cac814b4c834973d80004d09a'}} В этом случае пишет, что нет такой группы. В общем, если есть заветный флажок can_get_statistics==True, можем наконец, переходить к главному, вызову метода getChatStatistics. Всего два параметра, айди чата, и темная или светлая тема. вызову метода getChatStatistics params = {
+    'chat_id': -10012324890, #тут надо -100
+    'is_dark': True
+}
+stat_resp = tg.call_method('getChatStatistics', params, block=True)
+stat = stat_resp.update params = {
+    'chat_id': -10012324890, #тут надо -100
+    'is_dark': True
+}
+stat_resp = tg.call_method('getChatStatistics', params, block=True)
+stat = stat_resp.update В ответ получаем json со всей статистикой и наслаждаемся результатом. со всей статистикой Количество подписчиков в динамике
+Подписалось/отписалось
+Включены уведомления
+Просмотры по часам
+Источники просмотров
+Активность
+Новые посты
+и тд Количество подписчиков в динамике Количество подписчиков в динамике Подписалось/отписалось Подписалось/отписалось Включены уведомления Включены уведомления Просмотры по часам Просмотры по часам Источники просмотров Источники просмотров Активность Активность Новые посты Новые посты и тд и тд и тд Немного визуализации Например, можно результат визуализировать при помощи plotly # загружаем данные диаграммы в json
+member_count_graph=json.loads(stat['member_count_graph']['json_data'])
+
+# переводим unix timestamp в обычное время
+data_x = [
+    datetime.fromtimestamp(x / 1000).strftime("%m.%d")
+    for x in graph["columns"][0][1:]
+]
+
+#создаём визуализацию пользователей
+fig = go.Figure()
+fig.add_trace(go.Scatter(x=data_x, y=member_count_graph['columns'][1]))
+
+fig.show() # загружаем данные диаграммы в json
+member_count_graph=json.loads(stat['member_count_graph']['json_data'])
+
+# переводим unix timestamp в обычное время
+data_x = [
+    datetime.fromtimestamp(x / 1000).strftime("%m.%d")
+    for x in graph["columns"][0][1:]
+]
+
+#создаём визуализацию пользователей
+fig = go.Figure()
+fig.add_trace(go.Scatter(x=data_x, y=member_count_graph['columns'][1]))
+
+fig.show()   Всем спасибо, надеюсь, будет полезно. В производство пока это всё не запускалось, поэтому насколько стабильно и уверенно всё работает, сказать не могу. Ноутбук с примером всего. Ноутбук с примером всего Список классов TDLib Class Index
+Telegram Database Library
+Установка TDLib
+python-telegram Список классов TDLib Class Index Список классов TDLib Class Index Список классов TDLib Class Index Telegram Database Library Telegram Database Library Telegram Database Library Установка TDLib Установка TDLib Установка TDLib python-telegram python-telegram python-telegram ]]></text>
+</doc>

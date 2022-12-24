@@ -1,0 +1,397 @@
+<?xml version="1.0" ?>
+<doc>
+	<label auto="true" type="str" verify="true"><![CDATA[Develop]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[AlexanderKurenev]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-12-12, 15:59]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/company/pvs-studio/blog/704972/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[PVS-Studio и RPCS3: лучшие предупреждения в один клик]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Блог компании PVS-Studio]]></item>
+		<item type="str"><![CDATA[C++]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[cpp]]></item>
+		<item type="str"><![CDATA[static analysis]]></item>
+		<item type="str"><![CDATA[feature]]></item>
+		<item type="str"><![CDATA[static analyzer]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[Best Warnings — режим анализатора, оставляющий в окне вывода 10 лучших предупреждений. Мы предлагаем вам ознакомиться с обновлённым режимом Best Warnings на примере проверки проекта RPCS3.
+Best Warnings — это специальный механизм для первого знакомства со статическим анализатором PVS-Studio. Полный лог анализатора может содержать тысячи предупреждений. Поэтому если вы хотите оценить работу анализатора и не тратить время и силы на просмотр большого отчёта, выданного ещё не настроенным анализатором, то вы как раз можете воспользоваться механизмом Best Warnings. Для этого откройте лог анализатора в плагине PVS-Studio для Visual Studio и включите Best Warnings:
+При использовании Best Warnings отображаются 10 лучших предупреждений анализатора. Вот так стало выглядеть окно вывода после включения Best Warnings:
+Второй проблемой были неинтересные предупреждения в окне вывода Best Warnings. Отчасти это вызвано тем, что мы сами забыли про свою собственную фичу и не добавляли веса для новых диагностик. Оказалось, что 15 новых диагностик просто не участвовали в режиме Best Warnings. Разумеется, мы это исправили. Также мы посмотрели, какие предупреждения выдаёт режим Best Warnings на различных Open Source проектах, и изменили старые веса диагностик, чтобы предупреждения стали интереснее.
+Третьей проблемой были "дубликаты". Не очень интересно видеть два и более предупреждений одного и того же диагностического правила в Best Warnings. Механизм для удаления дубликатов уже был — веса второго и последующих предупреждений диагностики пропорционально уменьшались. Мы увеличили штраф для повторных срабатываний, и теперь они появляются реже.
+Более подробно о Best Warnings можете прочитать здесь.
+Немного о RPCS3
+RPCS3 — это эмулятор консоли PS3. Мы уже проверяли этот проект ранее. Кодовая база проекта составляет 300 тысяч строк кода на C++, и этого вполне достаточно для демонстрации Best Warnings. Для проверки я зафиксировал проект на коммите e98b07d.
+Давайте перейдём к ошибкам.
+Лишние вычисления при постановке таймера
+V1064 The 'nsec' operand of the modulo operation is less than the '1000000000ull' operand. The result is always equal to the left operand. Thread.cpp 2359
+void thread_ctrl::wait_for(u64 usec, [[maybe_unused]] bool alert /* true */)
+{
+  // ....
+  if (!alert && usec > 0 && usec <= 1000 && fd_timer != -1)
+  {
+    struct itimerspec timeout;
+    u64 missed;
+    u64 nsec = usec * 1000ull;
+    timeout.it_value.tv_nsec = (nsec % 1000000000ull);
+    timeout.it_value.tv_sec = nsec / 1000000000ull;
+    timeout.it_interval.tv_sec = 0;
+    timeout.it_interval.tv_nsec = 0;
+    timerfd_settime(fd_timer, 0, &timeout, NULL);
+    // ....
+  }
+}
+Здесь механизм анализа потока данных смог выявить интересную аномалию. В данном фрагменте кода происходит следующее:
+проверяются несколько условий, в том числе usec <= 1000;
+переменной nsec присваивается значение usec * 1000;
+вычисляются выражения nsec / 1'000'000'000 и nsec % 1'000'000'000.
+Из первых двух пунктов получаем, что значение переменной nsec не превосходит 1'000'000, что меньше 1'000'000'000. Получается, что выражение nsec / 1'000'000'000 всегда равно 0, а выражение nsec % 1'000'000'000 равно nsec.
+Далее вычисленные значения используются для установки таймера при вызове функции timerfd_settime. В функцию wait_for передают количество миллисекунд, в течение которых нужно ждать. В переменную nsec записывается это же значение, только в наносекундах, поэтому умножаем на 1'000. Операции взятия остатка и деления на 1'000'000'000 — выделение дробной части и целого количества секунд соответственно. Скорее всего, в функцию wait_for должны приходить значения, не превосходящие 1'000 миллисекунд (т.е. меньше секунды), на это указывает проверка usec <= 1'000. Поэтому выделять целую и дробную часть бессмысленно, и это лишние вычисления.
+Исправленный код:
+void thread_ctrl::wait_for(u64 usec, [[maybe_unused]] bool alert /* true */)
+{
+  // ....
+  if (!alert && usec > 0 && usec <= 1000 && fd_timer != -1)
+  {
+    struct itimerspec timeout;
+    u64 missed;
+    u64 nsec = usec * 1000ull;
+    timeout.it_value.tv_nsec = nsec;
+    timeout.it_value.tv_sec = 0;
+    timeout.it_interval.tv_sec = 0;
+    timeout.it_interval.tv_nsec = 0;
+    timerfd_settime(fd_timer, 0, &timeout, NULL);
+    // ....
+  }
+}
+Противоречащие проверки
+V637 Two opposite conditions were encountered. The second condition is always false. Check lines: 385, 387. lv2_socket_p2ps.cpp 385
+bool lv2_socket_p2ps::handle_listening(p2ps_encapsulated_tcp* tcp_header,
+                                       [[maybe_unused]] u8* data,
+                                       ::sockaddr_storage* op_addr)
+{
+  // ....
+  if (   tcp_header->flags == p2ps_tcp_flags::SYN
+      && backlog.size() < max_backlog)
+  {
+    if (backlog.size() >= max_backlog)
+    {
+      // ....
+    }
+  }
+  // ....
+}
+Анализатор обнаружил два противоречащих друг другу условия, вложенных одно в другое. Действительно, условия backlog.size() < max_backlog и backlog.size() >= max_backlog не могут быть оба выполнены одновременно. Поэтому выражение вложенного условия всегда будет ложным. Скорее всего, эта ошибка возникла в результате рефакторинга.
+Забытая проверка указателя перед разыменованием
+V595 The 'm_finfo' pointer was utilized before it was verified against nullptr. Check lines: 5316, 5344. SPURecompiler.cpp 5316
+class spu_llvm_recompiler : public spu_recompiler_base
+                          , public cpu_translator
+{
+  // ....
+  function_info* m_finfo;
+  // ....
+  virtual spu_function_t compile(spu_program&& _func) override
+  {
+    // ....
+    const u32 src = m_finfo->fn ? bb.reg_origin_abs[i]
+                                : bb.reg_origin[i];
+    // ....
+    value = m_finfo && m_finfo->load[i] ? m_finfo->load[i]
+                                        : m_ir->CreateLoad(regptr);
+    // ....
+  }
+}
+В данном фрагменте кода указатель m_finfo сначала разыменовывается, а ниже по коду проверяется на равенство nullptr. В других местах указатель m_finfo проверяется перед разыменованием. Скорее всего, здесь забыли проверку. Исправленный код:
+class spu_llvm_recompiler : public spu_recompiler_base
+                          , public cpu_translator
+{
+  // ....
+  function_info* m_finfo;
+  // ....
+  virtual spu_function_t compile(spu_program&& _func) override
+  {
+    // ....
+    const u32 src = m_finfo && m_finfo->fn ? bb.reg_origin_abs[i]
+                                          : bb.reg_origin[i];
+    // ....
+    value = m_finfo && m_finfo->load[i] ? m_finfo->load[i]
+                                        : m_ir->CreateLoad(regptr);
+    // ....
+  }
+}
+Дубликат в std::unordered_map
+V766 An item with the same key '0x120' has already been added. evdev_joystick_handler.h 135
+class evdev_joystick_handler final : public PadHandlerBase
+{
+  const std::unordered_map<u32, std::string> button_list =
+  {
+    // ....
+    { 0x11d               , "0x11d"       },
+    { 0x11e               , "0x11e"       },
+    { 0x11f               , "0x11f"       },
+    { BTN_JOYSTICK        , "Joystick"    },
+    { BTN_TRIGGER         , "Trigger"     },
+    { BTN_THUMB           , "Thumb"       },
+    { BTN_THUMB2          , "Thumb 2"     },
+    { BTN_TOP             , "Top"         },
+    { BTN_TOP2            , "Top 2"       },
+    { BTN_PINKIE          , "Pinkie"      },
+    // ....
+  }
+}
+При первом взгляде на код непонятно, какие два ключа одинаковые. Оказывается, BTN_JOYSTICK и BTN_TRIGGER — это константы Linux API, равные 0x120. При этом BTN_JOYSTICK — это стартовое значение группы констант сигналов джойстика, а BTN_TRIGGER — самая первая константа в списке этой группы. Поэтому их значения совпадают.
+Забавно, что разработчики уже сталкивались с этой проблемой и некоторые значения были закомментированы. Буквально парой строк выше в той же хеш-таблице можно наблюдать следующее:
+// ....
+  // { BTN_MOUSE           , "Mouse"       }, same as BTN_LEFT
+  { BTN_LEFT            , "Left"        },
+// ....
+Небезопасный memset
+V597 The compiler could delete the 'memset' function call, which is used to flush 'tmpbuf' buffer. The memset_s() function should be used to erase the private data. sha1.cpp 371
+/*
+ * SHA-1 HMAC final digest
+ */
+void sha1_hmac_finish( sha1_context *ctx, unsigned char output[20] )
+{
+    unsigned char tmpbuf[20];
+
+    sha1_finish( ctx, tmpbuf );
+    sha1_starts( ctx );
+    sha1_update( ctx, ctx->opad, 64 );
+    sha1_update( ctx, tmpbuf, 20 );
+    sha1_finish( ctx, output );
+
+    memset( tmpbuf, 0, sizeof( tmpbuf ) );
+}
+Золотая классика. В этом фрагменте вызов функции memset будет удалён компилятором в результате оптимизаций, а данные останутся лежать в памяти. Сложно сказать, сможет ли злоумышленник воспользоваться этой потенциальной уязвимостью. Однако на всякий случай стоит использовать функцию memset_s, вызов которой компилятор не имеет права убирать. Есть и другие способы добиться безопасного очищения памяти\.
+Заключение
+Итак, мы рассмотрели несколько предупреждений в режиме Best Warnings. Какие из этого можно сделать выводы?
+Во-первых, ошибки допускают даже разработчики таких крутых проектов, как RPCS3. Причины могут быть разные: рефакторинг, копипаста, невнимательность.
+Во-вторых, Best Warnings оказался действительно удобным режимом. Полный лог проверки RPCS3 содержал более 700 предупреждений 1-го и 2-го уровней. На просмотр всех предупреждений мне пришлось бы потратить несколько часов. В режиме же Best Warnings я просмотрел всего 10 предупреждений примерно за полчаса — и уже набрал материала на статью! :)
+В-третьих, если вас заинтересовал анализатор PVS-Studio, скачайте его, запросите пробный ключ и попробуйте Best Warnings на своём проекте. Если анализатор вам понравится и вы захотите внедрить его для регулярных проверок, рекомендую эту статью. Обязательно расскажите нам о своём опыте! Безбажного вам кода :)
+Если хотите поделиться этой статьей с англоязычной аудиторией, то прошу использовать ссылку на перевод: Alexander Kurenev. PVS-Studio and RPCS3: the best warnings in one click. Best Warnings — режим анализатора, оставляющий в окне вывода 10 лучших предупреждений. Мы предлагаем вам ознакомиться с обновлённым режимом Best Warnings на примере проверки проекта RPCS3.   Best Warnings — это специальный механизм для первого знакомства со статическим анализатором PVS-Studio. Полный лог анализатора может содержать тысячи предупреждений. Поэтому если вы хотите оценить работу анализатора и не тратить время и силы на просмотр большого отчёта, выданного ещё не настроенным анализатором, то вы как раз можете воспользоваться механизмом Best Warnings. Для этого откройте лог анализатора в плагине PVS-Studio для Visual Studio и включите Best Warnings:   При использовании Best Warnings отображаются 10 лучших предупреждений анализатора. Вот так стало выглядеть окно вывода после включения Best Warnings:   Второй проблемой были неинтересные предупреждения в окне вывода Best Warnings. Отчасти это вызвано тем, что мы сами забыли про свою собственную фичу и не добавляли веса для новых диагностик. Оказалось, что 15 новых диагностик просто не участвовали в режиме Best Warnings. Разумеется, мы это исправили. Также мы посмотрели, какие предупреждения выдаёт режим Best Warnings на различных Open Source проектах, и изменили старые веса диагностик, чтобы предупреждения стали интереснее. Третьей проблемой были "дубликаты". Не очень интересно видеть два и более предупреждений одного и того же диагностического правила в Best Warnings. Механизм для удаления дубликатов уже был — веса второго и последующих предупреждений диагностики пропорционально уменьшались. Мы увеличили штраф для повторных срабатываний, и теперь они появляются реже. Более подробно о Best Warnings можете прочитать здесь. здесь Немного о RPCS3 RPCS3 — это эмулятор консоли PS3. Мы уже проверяли этот проект ранее. Кодовая база проекта составляет 300 тысяч строк кода на C++, и этого вполне достаточно для демонстрации Best Warnings. Для проверки я зафиксировал проект на коммите e98b07d. ранее e98b07d Давайте перейдём к ошибкам. Лишние вычисления при постановке таймера V1064 The 'nsec' operand of the modulo operation is less than the '1000000000ull' operand. The result is always equal to the left operand. Thread.cpp 2359 V1064 void thread_ctrl::wait_for(u64 usec, [[maybe_unused]] bool alert /* true */)
+{
+  // ....
+  if (!alert && usec > 0 && usec <= 1000 && fd_timer != -1)
+  {
+    struct itimerspec timeout;
+    u64 missed;
+    u64 nsec = usec * 1000ull;
+    timeout.it_value.tv_nsec = (nsec % 1000000000ull);
+    timeout.it_value.tv_sec = nsec / 1000000000ull;
+    timeout.it_interval.tv_sec = 0;
+    timeout.it_interval.tv_nsec = 0;
+    timerfd_settime(fd_timer, 0, &timeout, NULL);
+    // ....
+  }
+} void thread_ctrl::wait_for(u64 usec, [[maybe_unused]] bool alert /* true */)
+{
+  // ....
+  if (!alert && usec > 0 && usec <= 1000 && fd_timer != -1)
+  {
+    struct itimerspec timeout;
+    u64 missed;
+    u64 nsec = usec * 1000ull;
+    timeout.it_value.tv_nsec = (nsec % 1000000000ull);
+    timeout.it_value.tv_sec = nsec / 1000000000ull;
+    timeout.it_interval.tv_sec = 0;
+    timeout.it_interval.tv_nsec = 0;
+    timerfd_settime(fd_timer, 0, &timeout, NULL);
+    // ....
+  }
+} Здесь механизм анализа потока данных смог выявить интересную аномалию. В данном фрагменте кода происходит следующее: анализа потока данных проверяются несколько условий, в том числе usec <= 1000;
+переменной nsec присваивается значение usec * 1000;
+вычисляются выражения nsec / 1'000'000'000 и nsec % 1'000'000'000. проверяются несколько условий, в том числе usec <= 1000; проверяются несколько условий, в том числе usec <= 1000; usec <= 1000 переменной nsec присваивается значение usec * 1000; переменной nsec присваивается значение usec * 1000; nsec usec * 1000 вычисляются выражения nsec / 1'000'000'000 и nsec % 1'000'000'000. вычисляются выражения nsec / 1'000'000'000 и nsec % 1'000'000'000. nsec / 1'000'000'000 nsec % 1'000'000'000 Из первых двух пунктов получаем, что значение переменной nsec не превосходит 1'000'000, что меньше 1'000'000'000. Получается, что выражение nsec / 1'000'000'000 всегда равно 0, а выражение nsec % 1'000'000'000 равно nsec. nsec 1'000'000 1'000'000'000. nsec / 1'000'000'000 0 nsec % 1'000'000'000 равно nsec Далее вычисленные значения используются для установки таймера при вызове функции timerfd_settime. В функцию wait_for передают количество миллисекунд, в течение которых нужно ждать. В переменную nsec записывается это же значение, только в наносекундах, поэтому умножаем на 1'000. Операции взятия остатка и деления на 1'000'000'000 — выделение дробной части и целого количества секунд соответственно. Скорее всего, в функцию wait_for должны приходить значения, не превосходящие 1'000 миллисекунд (т.е. меньше секунды), на это указывает проверка usec <= 1'000. Поэтому выделять целую и дробную часть бессмысленно, и это лишние вычисления. timerfd_settime wait_for nsec 1'000 1'000'000'000 wait_for 1'000 usec <= 1'000 Исправленный код: void thread_ctrl::wait_for(u64 usec, [[maybe_unused]] bool alert /* true */)
+{
+  // ....
+  if (!alert && usec > 0 && usec <= 1000 && fd_timer != -1)
+  {
+    struct itimerspec timeout;
+    u64 missed;
+    u64 nsec = usec * 1000ull;
+    timeout.it_value.tv_nsec = nsec;
+    timeout.it_value.tv_sec = 0;
+    timeout.it_interval.tv_sec = 0;
+    timeout.it_interval.tv_nsec = 0;
+    timerfd_settime(fd_timer, 0, &timeout, NULL);
+    // ....
+  }
+} void thread_ctrl::wait_for(u64 usec, [[maybe_unused]] bool alert /* true */)
+{
+  // ....
+  if (!alert && usec > 0 && usec <= 1000 && fd_timer != -1)
+  {
+    struct itimerspec timeout;
+    u64 missed;
+    u64 nsec = usec * 1000ull;
+    timeout.it_value.tv_nsec = nsec;
+    timeout.it_value.tv_sec = 0;
+    timeout.it_interval.tv_sec = 0;
+    timeout.it_interval.tv_nsec = 0;
+    timerfd_settime(fd_timer, 0, &timeout, NULL);
+    // ....
+  }
+} Противоречащие проверки V637 Two opposite conditions were encountered. The second condition is always false. Check lines: 385, 387. lv2_socket_p2ps.cpp 385 V637 bool lv2_socket_p2ps::handle_listening(p2ps_encapsulated_tcp* tcp_header,
+                                       [[maybe_unused]] u8* data,
+                                       ::sockaddr_storage* op_addr)
+{
+  // ....
+  if (   tcp_header->flags == p2ps_tcp_flags::SYN
+      && backlog.size() < max_backlog)
+  {
+    if (backlog.size() >= max_backlog)
+    {
+      // ....
+    }
+  }
+  // ....
+} bool lv2_socket_p2ps::handle_listening(p2ps_encapsulated_tcp* tcp_header,
+                                       [[maybe_unused]] u8* data,
+                                       ::sockaddr_storage* op_addr)
+{
+  // ....
+  if (   tcp_header->flags == p2ps_tcp_flags::SYN
+      && backlog.size() < max_backlog)
+  {
+    if (backlog.size() >= max_backlog)
+    {
+      // ....
+    }
+  }
+  // ....
+} Анализатор обнаружил два противоречащих друг другу условия, вложенных одно в другое. Действительно, условия backlog.size() < max_backlog и backlog.size() >= max_backlog не могут быть оба выполнены одновременно. Поэтому выражение вложенного условия всегда будет ложным. Скорее всего, эта ошибка возникла в результате рефакторинга. backlog.size() < max_backlog backlog.size() >= max_backlog рефакторинга Забытая проверка указателя перед разыменованием V595 The 'm_finfo' pointer was utilized before it was verified against nullptr. Check lines: 5316, 5344. SPURecompiler.cpp 5316 V595 class spu_llvm_recompiler : public spu_recompiler_base
+                          , public cpu_translator
+{
+  // ....
+  function_info* m_finfo;
+  // ....
+  virtual spu_function_t compile(spu_program&& _func) override
+  {
+    // ....
+    const u32 src = m_finfo->fn ? bb.reg_origin_abs[i]
+                                : bb.reg_origin[i];
+    // ....
+    value = m_finfo && m_finfo->load[i] ? m_finfo->load[i]
+                                        : m_ir->CreateLoad(regptr);
+    // ....
+  }
+} class spu_llvm_recompiler : public spu_recompiler_base
+                          , public cpu_translator
+{
+  // ....
+  function_info* m_finfo;
+  // ....
+  virtual spu_function_t compile(spu_program&& _func) override
+  {
+    // ....
+    const u32 src = m_finfo->fn ? bb.reg_origin_abs[i]
+                                : bb.reg_origin[i];
+    // ....
+    value = m_finfo && m_finfo->load[i] ? m_finfo->load[i]
+                                        : m_ir->CreateLoad(regptr);
+    // ....
+  }
+} В данном фрагменте кода указатель m_finfo сначала разыменовывается, а ниже по коду проверяется на равенство nullptr. В других местах указатель m_finfo проверяется перед разыменованием. Скорее всего, здесь забыли проверку. Исправленный код: m_finfo nullptr m_finfo class spu_llvm_recompiler : public spu_recompiler_base
+                          , public cpu_translator
+{
+  // ....
+  function_info* m_finfo;
+  // ....
+  virtual spu_function_t compile(spu_program&& _func) override
+  {
+    // ....
+    const u32 src = m_finfo && m_finfo->fn ? bb.reg_origin_abs[i]
+                                          : bb.reg_origin[i];
+    // ....
+    value = m_finfo && m_finfo->load[i] ? m_finfo->load[i]
+                                        : m_ir->CreateLoad(regptr);
+    // ....
+  }
+} class spu_llvm_recompiler : public spu_recompiler_base
+                          , public cpu_translator
+{
+  // ....
+  function_info* m_finfo;
+  // ....
+  virtual spu_function_t compile(spu_program&& _func) override
+  {
+    // ....
+    const u32 src = m_finfo && m_finfo->fn ? bb.reg_origin_abs[i]
+                                          : bb.reg_origin[i];
+    // ....
+    value = m_finfo && m_finfo->load[i] ? m_finfo->load[i]
+                                        : m_ir->CreateLoad(regptr);
+    // ....
+  }
+} Дубликат в std::unordered_map V766 An item with the same key '0x120' has already been added. evdev_joystick_handler.h 135 V766 class evdev_joystick_handler final : public PadHandlerBase
+{
+  const std::unordered_map<u32, std::string> button_list =
+  {
+    // ....
+    { 0x11d               , "0x11d"       },
+    { 0x11e               , "0x11e"       },
+    { 0x11f               , "0x11f"       },
+    { BTN_JOYSTICK        , "Joystick"    },
+    { BTN_TRIGGER         , "Trigger"     },
+    { BTN_THUMB           , "Thumb"       },
+    { BTN_THUMB2          , "Thumb 2"     },
+    { BTN_TOP             , "Top"         },
+    { BTN_TOP2            , "Top 2"       },
+    { BTN_PINKIE          , "Pinkie"      },
+    // ....
+  }
+} class evdev_joystick_handler final : public PadHandlerBase
+{
+  const std::unordered_map<u32, std::string> button_list =
+  {
+    // ....
+    { 0x11d               , "0x11d"       },
+    { 0x11e               , "0x11e"       },
+    { 0x11f               , "0x11f"       },
+    { BTN_JOYSTICK        , "Joystick"    },
+    { BTN_TRIGGER         , "Trigger"     },
+    { BTN_THUMB           , "Thumb"       },
+    { BTN_THUMB2          , "Thumb 2"     },
+    { BTN_TOP             , "Top"         },
+    { BTN_TOP2            , "Top 2"       },
+    { BTN_PINKIE          , "Pinkie"      },
+    // ....
+  }
+} При первом взгляде на код непонятно, какие два ключа одинаковые. Оказывается, BTN_JOYSTICK и BTN_TRIGGER — это константы Linux API, равные 0x120. При этом BTN_JOYSTICK — это стартовое значение группы констант сигналов джойстика, а BTN_TRIGGER — самая первая константа в списке этой группы. Поэтому их значения совпадают. BTN_JOYSTICK BTN_TRIGGER равные 0x120 BTN_JOYSTICK BTN_TRIGGER Забавно, что разработчики уже сталкивались с этой проблемой и некоторые значения были закомментированы. Буквально парой строк выше в той же хеш-таблице можно наблюдать следующее: // ....
+  // { BTN_MOUSE           , "Mouse"       }, same as BTN_LEFT
+  { BTN_LEFT            , "Left"        },
+// .... // ....
+  // { BTN_MOUSE           , "Mouse"       }, same as BTN_LEFT
+  { BTN_LEFT            , "Left"        },
+// .... Небезопасный memset V597 The compiler could delete the 'memset' function call, which is used to flush 'tmpbuf' buffer. The memset_s() function should be used to erase the private data. sha1.cpp 371 V597 /*
+ * SHA-1 HMAC final digest
+ */
+void sha1_hmac_finish( sha1_context *ctx, unsigned char output[20] )
+{
+    unsigned char tmpbuf[20];
+
+    sha1_finish( ctx, tmpbuf );
+    sha1_starts( ctx );
+    sha1_update( ctx, ctx->opad, 64 );
+    sha1_update( ctx, tmpbuf, 20 );
+    sha1_finish( ctx, output );
+
+    memset( tmpbuf, 0, sizeof( tmpbuf ) );
+} /*
+ * SHA-1 HMAC final digest
+ */
+void sha1_hmac_finish( sha1_context *ctx, unsigned char output[20] )
+{
+    unsigned char tmpbuf[20];
+
+    sha1_finish( ctx, tmpbuf );
+    sha1_starts( ctx );
+    sha1_update( ctx, ctx->opad, 64 );
+    sha1_update( ctx, tmpbuf, 20 );
+    sha1_finish( ctx, output );
+
+    memset( tmpbuf, 0, sizeof( tmpbuf ) );
+} Золотая классика. В этом фрагменте вызов функции memset будет удалён компилятором в результате оптимизаций, а данные останутся лежать в памяти. Сложно сказать, сможет ли злоумышленник воспользоваться этой потенциальной уязвимостью. Однако на всякий случай стоит использовать функцию memset_s, вызов которой компилятор не имеет права убирать. Есть и другие способы добиться безопасного очищения памяти\. memset memset_s другие способы Заключение Итак, мы рассмотрели несколько предупреждений в режиме Best Warnings. Какие из этого можно сделать выводы? Во-первых, ошибки допускают даже разработчики таких крутых проектов, как RPCS3. Причины могут быть разные: рефакторинг, копипаста, невнимательность. Во-вторых, Best Warnings оказался действительно удобным режимом. Полный лог проверки RPCS3 содержал более 700 предупреждений 1-го и 2-го уровней. На просмотр всех предупреждений мне пришлось бы потратить несколько часов. В режиме же Best Warnings я просмотрел всего 10 предупреждений примерно за полчаса — и уже набрал материала на статью! :) В-третьих, если вас заинтересовал анализатор PVS-Studio, скачайте его, запросите пробный ключ и попробуйте Best Warnings на своём проекте. Если анализатор вам понравится и вы захотите внедрить его для регулярных проверок, рекомендую эту статью. Обязательно расскажите нам о своём опыте! Безбажного вам кода :) скачайте статью расскажите Если хотите поделиться этой статьей с англоязычной аудиторией, то прошу использовать ссылку на перевод: Alexander Kurenev. PVS-Studio and RPCS3: the best warnings in one click. PVS-Studio and RPCS3: the best warnings in one click ]]></text>
+</doc>

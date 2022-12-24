@@ -1,0 +1,495 @@
+<?xml version="1.0" ?>
+<doc>
+	<original_author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[John Tucker]]></item>
+	</original_author>
+	<label auto="true" type="str" verify="true"><![CDATA[Develop]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Anna_sokol22]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-12-09, 15:30]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/company/southbridge/blog/704502/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Argo Rollouts с примерами]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Блог компании Southbridge]]></item>
+		<item type="str"><![CDATA[IT-инфраструктура]]></item>
+		<item type="str"><![CDATA[Kubernetes]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[kubernetes]]></item>
+		<item type="str"><![CDATA[k8s]]></item>
+		<item type="str"><![CDATA[it-инфраструктура]]></item>
+		<item type="str"><![CDATA[devops]]></item>
+		<item type="str"><![CDATA[argo rollouts]]></item>
+		<item type="str"><![CDATA[образование в ит]]></item>
+		<item type="str"><![CDATA[карьера ит-специалиста]]></item>
+		<item type="str"><![CDATA[it-инфоструктура]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[Что такое Argo Rollouts? Это контроллер Kubernetes и набор CRD для дополнительных возможностей развёртывания — сине-зелёное, канареечное, прогрессивное, анализ канареечного развёртывания и экспериментирование.
+В этой статье поговорим о продвинутых возможностях развёртывания с кастомными ресурсами Kubernetes.
+Argo Rollouts
+Как мы увидим, Argo Rollouts предоставляет ресурс rollout в Kubernetes API, на который можно заменить встроенный ресурс deployment. Использование расширенных возможностей в виде ресурса Kubernetes API даёт несколько преимуществ:
+Знакомые методы работы — управляйте развёртываниями с помощью манифестов Kubernetes и kubectl CLI.
+Простота понимания — используйте знакомые возможности развёртывания.
+Аутентификация/авторизация — используйте имеющиеся в Kubernetes механизмы для аутентификации и авторизации.
+Привычная программируемость — используйте знакомый API для Argo Rollouts.
+Совместимость с любым решением для непрерывной поставки (CD) — Argo Rollouts развёртывается с помощью манифеста Kubernetes, поэтому может использоваться с любым решением CD.
+Другие популярные решения с расширенными возможностями развёртывания не дают этих преимуществ:
+Spinnaker: опенсорс-решение для непрерывной поставки.
+SASS для непрерывной интеграции: GitLab, GitHub Actions,CodeFresh и т. д.
+Все примеры кода и конфигураций, которые мы будем использовать в этой статье, можно скачать здесь.
+Кластер
+Примеры из этой статьи выполнялись в кластере Google Kubernetes Engine (GKE) версии 1.17.14-gke.1600, но должны работать в любом другом кластере Kubernetes. Лучше если это будет Kubernetes версии 1.15.x и выше.
+Итак, вам понадобится:
+Кластер Kubernetes версии 1.15.x и выше.
+kubectl CLI, совместимый с кластером.
+Установка контроллера Argo Rollouts в кластер.
+Установка плагина Argo Rollouts kubectl.
+Код рабочей нагрузки
+Рабочая нагрузка в этом примере представляет собой Express Hello World и клиент Prometheus для Node.js. У рабочей нагрузки есть две конечные точки: / возвращает Hello World!, а /metrics возвращает метрики в формате Prometheus. Помимо стандартных метрик Node.js конечная точка /metrics предоставляет две метрики, которые мы будем использовать в примерах:
+app_requests_total: общее число запросов, исключая конечную точку /metrics, обработанных рабочей нагрузкой.
+app_not_found_total: общее число запросов, которые не соответствовали двум конечным точкам; возвращается ошибка 404.
+Рабочая нагрузка встроена в образ контейнера и доступна в репозитории Docker Hub. В примере мы будем использовать три тега:
+0.2.0 и 0.3.0: образы, которые работают ожидаемо.
+0.3.1: повреждённый образ, у которого запросы к конечной точке / входят в метрику app_not_found_total.
+Манифесты Kubernetes для рабочей нагрузки
+В этой статье мы будем развёртывать разные вариации рабочей нагрузки для иллюстрации разных концепций. Развёртывать рабочие нагрузки мы будем с помощью манифестов Kubernetes в папках проекта. Их имена будут начинаться на k8s.
+Здесь мы её использовать не будем, но в проекте есть папка k8s с финальной работающей рабочей нагрузкой. Она используется в конфигурации Travis CI для иллюстрации простейшего процесса непрерывной поставки (в этой статье мы не будем его рассматривать).
+Загрузка манифестов Kubernetes
+В целях иллюстрации нам понадобится HTTP-трафик для рабочих нагрузок. В папке load проекта есть нужные манифесты Kubernetes для создания равномерного распределения запросов к конечной точке / (каждое задание создаёт один запрос в секунду) по всем pod’ам рабочей нагрузки.
+Prometheus и Grafana
+Чтобы использовать расширенные возможности анализа в Argo Rollouts, нам понадобится рабочая нагрузка Prometheus в кластере, которая скрейпит конечные точки сервисов, предоставляющие метрики в формате Prometheus. Для визуализации метрик, которые мы будем анализировать, мы также запустим в кластере Grafana.
+Для удобства в папке monitoring есть нужные манифесты Kubernetes для создания подходящих рабочих нагрузок Prometheus и Grafana. Больше об этих рабочих нагрузках см. в статьях с примерами Prometheus и с примерами Grafana.
+k8s-deployment-working
+Прежде чем приступить к использованию возможностей Argo Rollouts, давайте вспомним, как мы создаём канареечное развёртывание с помощью deployment. В первой вариации рабочей нагрузки, в изначально стабильном состоянии, у нас есть следующие ресурсы:
+Сервис app-1: предоставляет внутреннюю балансировку нагрузки для pod’ов в deployment’ах app-1 и app-1-canary.
+Deployment app-1: содержит пять pod’ов с рабочим образом, 0.3.0.
+Deployment app-1-canary: содержит один pod с рабочим образом, 0.3.0.
+Проверим все эти ресурсы следующей командой:
+$ kubectl get all
+NAME                                READY   STATUS    RESTARTS   AGE
+pod/app-1-6fbf6fb56f-4dshr          1/1     Running   0          16s
+pod/app-1-6fbf6fb56f-f8zxr          1/1     Running   0          16s
+pod/app-1-6fbf6fb56f-hclt9          1/1     Running   0          15s
+pod/app-1-6fbf6fb56f-jlc29          1/1     Running   0          16s
+pod/app-1-6fbf6fb56f-qq848          1/1     Running   0          16s
+pod/app-1-canary-6fbf6fb56f-9n9sg   1/1     Running   0          118s
+NAME                 TYPE        CLUSTER-IP    EXTERNAL-IP   PORT(S)   AGE
+service/app-1        ClusterIP   10.8.12.240   <none>        80/TCP    18m
+service/kubernetes   ClusterIP   10.8.0.1      <none>        443/TCP   2d8h
+NAME                           READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/app-1          5/5     5            5           16s
+deployment.apps/app-1-canary   1/1     1            1           118s
+NAME                                      DESIRED   CURRENT   READY   AGE
+replicaset.apps/app-1-6fbf6fb56f          5         5         5       17s
+replicaset.apps/app-1-canary-6fbf6fb56f   1         1         1       119s
+Итак, всё на месте. Теперь мы подаём нагрузку и видим, что средний процент запросов с ошибкой 404 равен 0.
+Напоминаю, что мы отслеживаем эти две метрики:
+app_requests_total: общее число запросов, исключая конечную точку /metrics, обработанных рабочей нагрузкой.
+app_not_found_total: общее число запросов, которые не соответствовали двум конечным точкам; возвращается ошибка 404.
+Вот метрика, которая визуализирована на схеме:
+avg(rate(app_not_founds_total{kubernetes_namespace="default", 
+kubernetes_name="app-1"}[$__interval])) /
+(avg(rate(app_requests_total{kubernetes_namespace="default",
+kubernetes_name="app-1"}[$__interval])) > 0) or
+avg(rate(app_requests_total{kubernetes_namespace="default", 
+kubernetes_name="app-1"}[$__interval]))
+Примечание: оператор or усложняет выражение, но зато мы видим значение 0, если средняя частота запросов равняется 0 (деление на ноль нам не мешает)
+k8s-deployment-broken
+Здесь мы добавим в deployment app-1-canary поломанный образ 0.3.1. На практике сначала всегда нужно обновлять канареечный deployment, чтобы заметить проблемы, пока они затрагивают только часть рабочей нагрузки.
+Пускаем трафик и видим, что примерно 1/6 (чуть больше 16%) запросов завершаются ошибкой 404, и все эти запросы от сломанного канареечного pod’а.
+Увидев эту проблему с канареечным deployment’ом, мы решили откатить app-1-canary.
+$ kubectl rollout undo deployment.v1.apps/app-1-canary
+deployment.apps/app-1-canary rolled back
+Давайте посмотрим на наши ресурсы после отката.
+$ kubectl get all
+...
+NAME                           READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/app-1          5/5     5            5           103s
+deployment.apps/app-1-canary   1/1     1            1           104s
+NAME                                      DESIRED   CURRENT   READY   AGE
+replicaset.apps/app-1-6fbf6fb56f          5         5         5       103s
+replicaset.apps/app-1-canary-597ff54bb6   0         0         0       70s
+replicaset.apps/app-1-canary-6fbf6fb56f   1         1         1       104s
+Обратите внимание:
+Тут почти всё то же самое, что было до того, как мы добавили в app-1-canary поломанный образ, только теперь у нас есть дополнительный набор реплик с 0 реплик — это он управлял проблемным pod’ом.
+Смотрим историю deployment’а:
+$ kubectl rollout history deployment.v1.apps/app-1-canary
+deployment.apps/app-1-canary 
+REVISION  CHANGE-CAUSE
+2         <none>
+3         <none>
+Обратите внимание:
+Версия 1 (уже не отображается) обозначала изначальное состояние с рабочим образом.
+Версия 2 соответствует deployment’у с поломанным образом.
+Версия 3 отражает текущее состояния после отката. Версии неизменяемы, так что откат создал новую версию.
+В выходных данных мало информации. Например, непонятно, как сопоставить версии с наборами реплик.
+k8s-rollout-manual-working
+Здесь мы реплицируем канареечную функцию с помощью Argo Rollouts. В этой вариации рабочей нагрузки мы начинаем с изначально стабильного состояния со следующими ресурсами:
+Сервис app-1: предоставляет внутреннюю балансировку нагрузки для pod’ов в rollout’е app-1.
+Rollout app-1: как и deployment до этого, он предоставляет пять pod’ов с рабочим образом, 0.3.0.
+Проверим ресурсы следующей командой:
+$ kubectl get all
+NAME                         READY   STATUS    RESTARTS   AGE
+pod/app-1-55c599b68f-fbwzd   1/1     Running   0          33s
+pod/app-1-55c599b68f-mlxxj   1/1     Running   0          33s
+pod/app-1-55c599b68f-n4lvg   1/1     Running   0          33s
+pod/app-1-55c599b68f-nntnq   1/1     Running   0          33s
+pod/app-1-55c599b68f-qg44l   1/1     Running   0          33s
+NAME                 TYPE        CLUSTER-IP    EXTERNAL-IP   PORT(S)   AGE
+service/app-1        ClusterIP   10.8.15.149   <none>        80/TCP    35s
+service/kubernetes   ClusterIP   10.8.0.1      <none>        443/TCP   3d9h
+NAME                               DESIRED   CURRENT   READY   AGE
+replicaset.apps/app-1-55c599b68f   5         5         5       34s
+Проверяем rollout:
+$ kubectl get rollout app-1
+NAME    DESIRED   CURRENT   UP-TO-DATE   AVAILABLE
+app-1   5         5         5            5
+Обратите внимание:
+rollout — это не deployment, так что в выходных данных команды kubectl get all мы его не видим.
+Rollout, как и deployment, управляет наборами реплик (которые, в свою очередь, управляют pod’ами).
+Выходные данные у rollout’а такие же, как у deployment’а, потому что у них один интерфейс API.
+Мы можем узнать больше о rollout’е следующей командой:
+$ kubectl argo rollouts get rollout app-1
+Name:            app-1
+Namespace:       default
+Status:          ✔ Healthy
+Strategy:        Canary
+  Step:          8/8
+  SetWeight:     100
+  ActualWeight:  100
+Images:          sckmkny/app-1:0.3.0 (stable)
+Replicas:
+  Desired:       5
+  Current:       5
+  Updated:       5
+  Ready:         5
+  Available:     5
+NAME                               KIND        STATUS     AGE  INFO
+⟳ app-1                            Rollout     ✔ Healthy  16m  
+└──# revision:1                                                
+   └──⧉ app-1-55c599b68f           ReplicaSet  ✔ Healthy  16m  stable
+      ├──□ app-1-55c599b68f-fbwzd  Pod         ✔ Running  16m  ready:1/1
+      ├──□ app-1-55c599b68f-mlxxj  Pod         ✔ Running  16m  ready:1/1
+      ├──□ app-1-55c599b68f-n4lvg  Pod         ✔ Running  16m  ready:1/1
+      ├──□ app-1-55c599b68f-nntnq  Pod         ✔ Running  16m  ready:1/1
+      └──□ app-1-55c599b68f-qg44l  Pod         ✔ Running  16m  ready:1/1
+Примечание. Дальше мы будем использовать только подробный вывод для rollout’а, потому что он гораздо интереснее. Пока мы говорили о сходствах rollout’а и deployment’а. Теперь поговорим о различиях.
+В примере с рабочим deployment’ом у нас было 0% запросов с ошибкой.
+k8s-rollout-manual-broken
+Теперь добавим в rollout app-1 поломанный образ 0.3.1. Здесь, в отличие от deployment’а, rollout обновил одну реплику и остановился.
+Давайте посмотрим поближе:
+$ kubectl argo rollouts get rollout app-1
+Name:            app-1
+Namespace:       default
+Status:          ॥ Paused
+Message:         CanaryPauseStep
+Strategy:        Canary
+  Step:          1/8
+  SetWeight:     20
+  ActualWeight:  20
+Images:          sckmkny/app-1:0.3.0 (stable)
+                 sckmkny/app-1:0.3.1 (canary)
+Replicas:
+  Desired:       5
+  Current:       5
+  Updated:       1
+  Ready:         5
+  Available:     5
+NAME                               KIND        STATUS     AGE   INFO
+⟳ app-1                            Rollout     ॥ Paused   23h   
+├──# revision:2                                                 
+│  └──⧉ app-1-57c5db7ccd           ReplicaSet  ✔ Healthy  113s  canary
+│     └──□ app-1-57c5db7ccd-9w7rz  Pod         ✔ Running  113s  ready:1/1
+└──# revision:1                                                 
+   └──⧉ app-1-55c599b68f           ReplicaSet  ✔ Healthy  23h   stable
+      ├──□ app-1-55c599b68f-fbwzd  Pod         ✔ Running  23h   ready:1/1
+      ├──□ app-1-55c599b68f-mlxxj  Pod         ✔ Running  23h   ready:1/1
+      ├──□ app-1-55c599b68f-n4lvg  Pod         ✔ Running  23h   ready:1/1
+      └──□ app-1-55c599b68f-nntnq  Pod         ✔ Running  23h   ready:1/1
+Обратите внимание:
+В отличие от deployment’а, rollout остановился, пока никто из pod’ов ещё не сообщил о проблеме. Deployment останавливается, только если кто-то из pod’ов не готов.
+Как видим, rollout тоже создал один канареечный pod.
+Давайте посмотрим на главное различие между настройкой deployment’а и rollout’а — блок strategy. Вот блок strategy для rollout’а app-1–01-rollout.yaml:
+strategy:
+  canary:
+    steps:
+    - setWeight: 20
+    - pause: {duration: 5m}
+    - analysis:
+        templates:
+        - templateName: not-found-percentage
+        args:
+        - name: service-name
+          value: app-1
+Обратите внимание:
+Эти восемь шагов (steps) соответствуют восьми шагам, указанным в подробных выходных данных rollout’а, причём там мы видим, что последним был выполнен шаг 1
+Weight — это процент от количества реплик, которые мы хотели обновить. На 20% процесс остановился, обновив одну реплику (5 * 0,2 = 1).
+Для паузы не указана длительность, а значит мы должны вручную разрешить или запретить продолжение операции.
+Этот пример немного надуманный, потому что шаги после первой паузы нам не нужны (приводятся здесь для иллюстрации).
+Если бы мы пустили трафик, то увидели бы, что примерно 1/5 (чуть больше 20%) запросов завершаются ошибкой 404, и все эти запросы поступают от сломанного канареечного pod’а.
+Увидев эту проблему, мы решили отменить rollout app-1.
+$ kubectl argo rollouts abort app-1
+rollout 'app-1' aborted
+В подробных выходных данных видно, что произошло:
+$ kubectl argo rollouts get rollout app-1
+Name:            app-1
+Namespace:       default
+Status:          ✖ Degraded
+Message:         RolloutAborted: Rollout is aborted
+Strategy:        Canary
+  Step:          0/8
+  SetWeight:     0
+  ActualWeight:  0
+Images:          sckmkny/app-1:0.3.0 (stable)
+Replicas:
+  Desired:       5
+  Current:       5
+  Updated:       0
+  Ready:         5
+  Available:     5
+NAME                               KIND        STATUS        AGE  INFO
+⟳ app-1                            Rollout     ✖ Degraded    23h  
+├──# revision:2                                                   
+│  └──⧉ app-1-57c5db7ccd           ReplicaSet  • ScaledDown  18m  canary
+└──# revision:1                                                   
+   └──⧉ app-1-55c599b68f           ReplicaSet  ✔ Healthy     23h  stable
+      ├──□ app-1-55c599b68f-fbwzd  Pod         ✔ Running     23h  ready:1/1
+      ├──□ app-1-55c599b68f-mlxxj  Pod         ✔ Running     23h  ready:1/1
+      ├──□ app-1-55c599b68f-n4lvg  Pod         ✔ Running     23h  ready:1/1
+      ├──□ app-1-55c599b68f-nntnq  Pod         ✔ Running     23h  ready:1/1
+      └──□ app-1-55c599b68f-rz92r  Pod         ✔ Running     92s  ready:1/1
+Обратите внимание:
+Здесь мы видим, что rollout находится в состоянии Degraded, потому что у последней версии (revision) нет реплик.
+Чтобы вернуть rollout в состояние Healthy, мы обновляем rollout app-1, взяв изначальный образ 0.3.0.
+Вот что у нас получится:
+$ kubectl argo rollouts get rollout app-1
+Name:            app-1
+Namespace:       default
+Status:          ✔ Healthy
+Strategy:        Canary
+  Step:          8/8
+  SetWeight:     100
+  ActualWeight:  100
+Images:          sckmkny/app-1:0.3.0 (stable)
+Replicas:
+  Desired:       5
+  Current:       5
+  Updated:       5
+  Ready:         5
+  Available:     5
+NAME                               KIND        STATUS        AGE    INFO
+⟳ app-1                            Rollout     ✔ Healthy     23h    
+├──# revision:3                                                     
+│  └──⧉ app-1-55c599b68f           ReplicaSet  ✔ Healthy     23h    stable
+│     ├──□ app-1-55c599b68f-fbwzd  Pod         ✔ Running     23h    ready:1/1
+│     ├──□ app-1-55c599b68f-mlxxj  Pod         ✔ Running     23h    ready:1/1
+│     ├──□ app-1-55c599b68f-n4lvg  Pod         ✔ Running     23h    ready:1/1
+│     ├──□ app-1-55c599b68f-nntnq  Pod         ✔ Running     23h    ready:1/1
+│     └──□ app-1-55c599b68f-rz92r  Pod         ✔ Running     4m18s  ready:1/1
+└──# revision:2                                                     
+   └──⧉ app-1-57c5db7ccd           ReplicaSet  • ScaledDown  21m
+Обратите внимание:
+В отличие от deployment’а, мы можем легко связать версию с набором реплик, например здесь у revision 3 тот же Replicaset, что и у revision 1 (из предыдущих выходных данных).
+k8s-rollout-analysis-initial
+Здесь мы посмотрим, как автоматизировать действия из предыдущих примеров. В этой вариации рабочей нагрузки мы начинаем с изначально стабильного состояния со следующими ресурсами:
+Сервис app-1: предоставляет внутреннюю балансировку нагрузки для pod’ов в rollout’е app-1 (тот же, что и раньше).
+Rollout app-1: rollout, который автоматизирует анализ канареечного pod’а, то есть на основе метрики выбирает — продолжить или отменить rollout.
+Шаблон анализа app-1: метрика и логика, которую использует rollout. В этом шаблоне мы видим те же шаги, которые делали вручную, когда смотрели на панель Grafana, чтобы узнать, всё ли в порядке с pod’ом.
+Давайте посмотрим на блок strategy для этого rollout’а.
+strategy:
+  canary:
+    steps:
+    - setWeight: 20
+    - pause: {duration: 5m}
+    - analysis:
+        templates:
+        - templateName: not-found-percentage
+        args:
+        - name: service-name
+          value: app-1
+Обратите внимание:
+На первом шаге мы выполняем один канаречный pod в течение пяти минут. Этого достаточно, чтобы Prometheus успел насобирать метрики.
+Здесь мы проиллюстрируем использование параметризованного шаблона и передадим в AnalysisTemplate service-name: app-1.
+Как видите, ничего особо не поменялось:
+$ kubectl argo rollouts get rollout app-1
+Name:            app-1
+Namespace:       default
+Status:          ✔ Healthy
+Strategy:        Canary
+  Step:          3/3
+  SetWeight:     100
+  ActualWeight:  100
+Images:          sckmkny/app-1:0.2.0 (stable)
+Replicas:
+  Desired:       5
+  Current:       5
+  Updated:       5
+  Ready:         5
+  Available:     5
+
+NAME                              KIND        STATUS     AGE  INFO
+⟳ app-1                           Rollout     ✔ Healthy  13s  
+└──# revision:1                                               
+   └──⧉ app-1-58dcdc8db           ReplicaSet  ✔ Healthy  13s  stable
+      ├──□ app-1-58dcdc8db-5tcsd  Pod         ✔ Running  13s  ready:1/1
+      ├──□ app-1-58dcdc8db-7vk29  Pod         ✔ Running  13s  ready:1/1
+      ├──□ app-1-58dcdc8db-gf4x4  Pod         ✔ Running  13s  ready:1/1
+      ├──□ app-1-58dcdc8db-hp9sl  Pod         ✔ Running  13s  ready:1/1
+      └──□ app-1-58dcdc8db-m4bz5  Pod         ✔ Running  13s  ready:1/1
+k8s-rollout-analysis-working
+Теперь добавим в rollout app-1 ещё один рабочий образ 0.3.0, чтобы показать автоматическое продолжение rollout’а. Через 5 минут проверяем, как дела:
+Обратите внимание:
+$ kubectl argo rollouts get rollout app-1
+Name:            app-1
+Namespace:       default
+Status:          ✔ Healthy
+Strategy:        Canary
+  Step:          3/3
+  SetWeight:     100
+  ActualWeight:  100
+Images:          sckmkny/app-1:0.3.0 (stable)
+Replicas:
+  Desired:       5
+  Current:       5
+  Updated:       5
+  Ready:         5
+  Available:     5
+
+NAME                               KIND         STATUS        AGE   INFO
+⟳ app-1                            Rollout      ✔ Healthy     22m   
+├──# revision:2                                                     
+│  ├──⧉ app-1-55c599b68f           ReplicaSet   ✔ Healthy     14m   stable
+│  │  ├──□ app-1-55c599b68f-6fx2z  Pod          ✔ Running     14m   ready:1/1
+│  │  ├──□ app-1-55c599b68f-lcj7r  Pod          ✔ Running     9m9s  ready:1/1
+│  │  ├──□ app-1-55c599b68f-qdl7k  Pod          ✔ Running     9m9s  ready:1/1
+│  │  ├──□ app-1-55c599b68f-fkvr6  Pod          ✔ Running     9m7s  ready:1/1
+│  │  └──□ app-1-55c599b68f-h2jmq  Pod          ✔ Running     9m7s  ready:1/1
+│  └──α app-1-55c599b68f-2-2       AnalysisRun  ✔ Successful  9m9s  ✔ 1
+└──# revision:1                                                     
+   └──⧉ app-1-58dcdc8db            ReplicaSet   • ScaledDown  22m
+Как видим, rollout автоматически переведён в версию 2
+Появился новый ресурс: успешный AnalysisRun.
+Давайте изучим его самую важную часть:
+$ kubectl describe analysisrun app-1-55c599b68f-2-2
+...
+Status:
+  Metric Results:
+    Count:  1
+    Measurements:
+      Finished At:  2021-02-13T15:21:50Z
+      Phase:        Successful
+      Started At:   2021-02-13T15:21:50Z
+      Value:        [0]
+    Name:           not-found-percentage
+    Phase:          Successful
+    Successful:     1
+  Phase:            Successful
+  Started At:       2021-02-13T15:21:50Z
+...
+Обратите внимание:
+Мы видим не только состояние Succesful, но и фактическое значение (здесь это 0), возвращённое запросом Prometheus.
+k8s-rollout-analysis-broken
+Теперь добавим в rollout app-1 поломанный образ 0.3.1., чтобы показать автоматическую отмену rollout’а. Через 5 минут проверяем, как дела:
+$ kubectl argo rollouts get rollout app-1
+Name:            app-1
+Namespace:       default
+Status:          ✖ Degraded
+Message:         RolloutAborted: metric "not-found-percentage" assessed Failed due to failed (1) > failureLimit (0)
+Strategy:        Canary
+  Step:          0/3
+  SetWeight:     0
+  ActualWeight:  0
+Images:          sckmkny/app-1:0.3.0 (stable)
+Replicas:
+  Desired:       5
+  Current:       5
+  Updated:       0
+  Ready:         5
+  Available:     5
+
+NAME                               KIND         STATUS        AGE  INFO
+⟳ app-1                            Rollout      ✖ Degraded    45m  
+├──# revision:3                                                    
+│  ├──⧉ app-1-57c5db7ccd           ReplicaSet   • ScaledDown  16m  canary
+│  └──α app-1-57c5db7ccd-3-2       AnalysisRun  ✖ Failed      11m  ✖ 1
+├──# revision:2                                                    
+│  ├──⧉ app-1-55c599b68f           ReplicaSet   ✔ Healthy     37m  stable
+│  │  ├──□ app-1-55c599b68f-6fx2z  Pod          ✔ Running     37m  ready:1/1
+│  │  ├──□ app-1-55c599b68f-lcj7r  Pod          ✔ Running     32m  ready:1/1
+│  │  ├──□ app-1-55c599b68f-qdl7k  Pod          ✔ Running     32m  ready:1/1
+│  │  ├──□ app-1-55c599b68f-h2jmq  Pod          ✔ Running     32m  ready:1/1
+│  │  └──□ app-1-55c599b68f-pw8kv  Pod          ✔ Running     11m  ready:1/1
+│  └──α app-1-55c599b68f-2-2       AnalysisRun  ✔ Successful  32m  ✔ 1
+└──# revision:1                                                    
+   └──⧉ app-1-58dcdc8db            ReplicaSet   • ScaledDown  45m  
+Часть AnalysisRun:
+kubectl describe analysisrun app-1-57c5db7ccd-3-2
+...
+Status:
+  Message:  metric "not-found-percentage" assessed Failed due to failed (1) > failureLimit (0)
+  Metric Results:
+    Count:   1
+    Failed:  1
+    Measurements:
+      Finished At:  2021-02-13T15:42:34Z
+      Phase:        Failed
+      Started At:   2021-02-13T15:42:34Z
+      Value:        [0.22925031610593755]
+    Name:           not-found-percentage
+    Phase:          Failed
+  Phase:            Failed
+  Started At:       2021-02-13T15:42:34Z
+...
+Обратите внимание:
+Значение превышает 0,1, то есть проверка не пройдена.
+Здесь rollout автоматически отменяется — как мы бы это сделали вручную.
+Чтобы вернуть rollout в состояние Healthy, мы обновляем rollout app-1, взяв рабочий образ 0.3.0.
+Заключение
+В конце концов всё сложилось, хотя пришлось потрудиться и перебрать разные варианты. Надеемся, вам это показалось полезным.
+Еще о продвинутых настройках Kubernetes   Что такое Argo Rollouts? Это контроллер Kubernetes и набор CRD для дополнительных возможностей развёртывания — сине-зелёное, канареечное, прогрессивное, анализ канареечного развёртывания и экспериментирование. В этой статье поговорим о продвинутых возможностях развёртывания с кастомными ресурсами Kubernetes. Argo Rollouts Как мы увидим, Argo Rollouts предоставляет ресурс rollout в Kubernetes API, на который можно заменить встроенный ресурс deployment. Использование расширенных возможностей в виде ресурса Kubernetes API даёт несколько преимуществ: Знакомые методы работы — управляйте развёртываниями с помощью манифестов Kubernetes и kubectl CLI.
+Простота понимания — используйте знакомые возможности развёртывания.
+Аутентификация/авторизация — используйте имеющиеся в Kubernetes механизмы для аутентификации и авторизации.
+Привычная программируемость — используйте знакомый API для Argo Rollouts.
+Совместимость с любым решением для непрерывной поставки (CD) — Argo Rollouts развёртывается с помощью манифеста Kubernetes, поэтому может использоваться с любым решением CD. Знакомые методы работы — управляйте развёртываниями с помощью манифестов Kubernetes и kubectl CLI. Знакомые методы работы — управляйте развёртываниями с помощью манифестов Kubernetes и kubectl CLI. kubectl Простота понимания — используйте знакомые возможности развёртывания. Простота понимания — используйте знакомые возможности развёртывания. Аутентификация/авторизация — используйте имеющиеся в Kubernetes механизмы для аутентификации и авторизации. Аутентификация/авторизация — используйте имеющиеся в Kubernetes механизмы для аутентификации и авторизации. Привычная программируемость — используйте знакомый API для Argo Rollouts. Привычная программируемость — используйте знакомый API для Argo Rollouts. Совместимость с любым решением для непрерывной поставки (CD) — Argo Rollouts развёртывается с помощью манифеста Kubernetes, поэтому может использоваться с любым решением CD. Совместимость с любым решением для непрерывной поставки (CD) — Argo Rollouts развёртывается с помощью манифеста Kubernetes, поэтому может использоваться с любым решением CD. Другие популярные решения с расширенными возможностями развёртывания не дают этих преимуществ: Spinnaker: опенсорс-решение для непрерывной поставки.
+SASS для непрерывной интеграции: GitLab, GitHub Actions,CodeFresh и т. д. Spinnaker: опенсорс-решение для непрерывной поставки. Spinnaker: опенсорс-решение для непрерывной поставки. Spinnaker Spinnaker SASS для непрерывной интеграции: GitLab, GitHub Actions,CodeFresh и т. д. SASS для непрерывной интеграции: GitLab, GitHub Actions,CodeFresh и т. д. GitLab GitLab GitHub Actions GitHub Actions CodeFresh CodeFresh Все примеры кода и конфигураций, которые мы будем использовать в этой статье, можно скачать здесь. скачать здесь скачать здесь Кластер Примеры из этой статьи выполнялись в кластере Google Kubernetes Engine (GKE) версии 1.17.14-gke.1600, но должны работать в любом другом кластере Kubernetes. Лучше если это будет Kubernetes версии 1.15.x и выше. 1.17.14-gke.1600 Итак, вам понадобится: Кластер Kubernetes версии 1.15.x и выше.
+kubectl CLI, совместимый с кластером.
+Установка контроллера Argo Rollouts в кластер.
+Установка плагина Argo Rollouts kubectl. Кластер Kubernetes версии 1.15.x и выше. Кластер Kubernetes версии 1.15.x и выше. kubectl CLI, совместимый с кластером. kubectl CLI, совместимый с кластером. Установка контроллера Argo Rollouts в кластер. Установка контроллера Argo Rollouts в кластер. Установка Установка Установка плагина Argo Rollouts kubectl. Установка плагина Argo Rollouts kubectl. Установка Установка Код рабочей нагрузки Рабочая нагрузка в этом примере представляет собой Express Hello World и клиент Prometheus для Node.js. У рабочей нагрузки есть две конечные точки: / возвращает Hello World!, а /metrics возвращает метрики в формате Prometheus. Помимо стандартных метрик Node.js конечная точка /metrics предоставляет две метрики, которые мы будем использовать в примерах: Рабочая нагрузка Рабочая нагрузка Hello World Hello World Hello World клиент Prometheus для Node.js клиент Prometheus для Node.js / /metrics /metrics app_requests_total: общее число запросов, исключая конечную точку /metrics, обработанных рабочей нагрузкой.
+app_not_found_total: общее число запросов, которые не соответствовали двум конечным точкам; возвращается ошибка 404. app_requests_total: общее число запросов, исключая конечную точку /metrics, обработанных рабочей нагрузкой. app_requests_total: общее число запросов, исключая конечную точку /metrics, обработанных рабочей нагрузкой. app_requests_total /metrics app_not_found_total: общее число запросов, которые не соответствовали двум конечным точкам; возвращается ошибка 404. app_not_found_total: общее число запросов, которые не соответствовали двум конечным точкам; возвращается ошибка 404. app_not_found_total 404 Рабочая нагрузка встроена в образ контейнера и доступна в репозитории Docker Hub. В примере мы будем использовать три тега: встроена встроена репозитории репозитории 0.2.0 и 0.3.0: образы, которые работают ожидаемо.
+0.3.1: повреждённый образ, у которого запросы к конечной точке / входят в метрику app_not_found_total. 0.2.0 и 0.3.0: образы, которые работают ожидаемо. 0.2.0 и 0.3.0: образы, которые работают ожидаемо. 0.2.0 и 0.3.0 0.3.1: повреждённый образ, у которого запросы к конечной точке / входят в метрику app_not_found_total. 0.3.1: повреждённый образ, у которого запросы к конечной точке / входят в метрику app_not_found_total. 0.3.1 / app_not_found_total Манифесты Kubernetes для рабочей нагрузки В этой статье мы будем развёртывать разные вариации рабочей нагрузки для иллюстрации разных концепций. Развёртывать рабочие нагрузки мы будем с помощью манифестов Kubernetes в папках проекта. Их имена будут начинаться на k8s. k8s Здесь мы её использовать не будем, но в проекте есть папка k8s с финальной работающей рабочей нагрузкой. Она используется в конфигурации Travis CI для иллюстрации простейшего процесса непрерывной поставки (в этой статье мы не будем его рассматривать). k8s k8s k8s Загрузка манифестов Kubernetes В целях иллюстрации нам понадобится HTTP-трафик для рабочих нагрузок. В папке load проекта есть нужные манифесты Kubernetes для создания равномерного распределения запросов к конечной точке / (каждое задание создаёт один запрос в секунду) по всем pod’ам рабочей нагрузки. load load load / Prometheus и Grafana Чтобы использовать расширенные возможности анализа в Argo Rollouts, нам понадобится рабочая нагрузка Prometheus в кластере, которая скрейпит конечные точки сервисов, предоставляющие метрики в формате Prometheus. Для визуализации метрик, которые мы будем анализировать, мы также запустим в кластере Grafana. Для удобства в папке monitoring есть нужные манифесты Kubernetes для создания подходящих рабочих нагрузок Prometheus и Grafana. Больше об этих рабочих нагрузках см. в статьях с примерами Prometheus и с примерами Grafana. monitoring monitoring с примерами Prometheus с примерами Prometheus с примерами Prometheus     с примерами Grafana с примерами Grafana с примерами Grafana . k8s-deployment-working Прежде чем приступить к использованию возможностей Argo Rollouts, давайте вспомним, как мы создаём канареечное развёртывание с помощью deployment. В первой вариации рабочей нагрузки, в изначально стабильном состоянии, у нас есть следующие ресурсы: Сервис app-1: предоставляет внутреннюю балансировку нагрузки для pod’ов в deployment’ах app-1 и app-1-canary.
+Deployment app-1: содержит пять pod’ов с рабочим образом, 0.3.0.
+Deployment app-1-canary: содержит один pod с рабочим образом, 0.3.0. Сервис app-1: предоставляет внутреннюю балансировку нагрузки для pod’ов в deployment’ах app-1 и app-1-canary. Сервис app-1: предоставляет внутреннюю балансировку нагрузки для pod’ов в deployment’ах app-1 и app-1-canary. Сервис app-1 Сервис app-1 Сервис app-1 app-1 app-1-canary Deployment app-1: содержит пять pod’ов с рабочим образом, 0.3.0. Deployment app-1: содержит пять pod’ов с рабочим образом, 0.3.0. Deployment app-1 Deployment app-1 Deployment app-1 0.3.0 Deployment app-1-canary: содержит один pod с рабочим образом, 0.3.0. Deployment app-1-canary: содержит один pod с рабочим образом, 0.3.0. Deployment app-1-canary Deployment app-1-canary Deployment app-1-canary 0.3.0 Проверим все эти ресурсы следующей командой: $ kubectl get all
+NAME                                READY   STATUS    RESTARTS   AGE
+pod/app-1-6fbf6fb56f-4dshr          1/1     Running   0          16s
+pod/app-1-6fbf6fb56f-f8zxr          1/1     Running   0          16s
+pod/app-1-6fbf6fb56f-hclt9          1/1     Running   0          15s
+pod/app-1-6fbf6fb56f-jlc29          1/1     Running   0          16s
+pod/app-1-6fbf6fb56f-qq848          1/1     Running   0          16s
+pod/app-1-canary-6fbf6fb56f-9n9sg   1/1     Running   0          118s
+NAME                 TYPE        CLUSTER-IP    EXTERNAL-IP   PORT(S)   AGE
+service/app-1        ClusterIP   10.8.12.240   <none>        80/TCP    18m
+service/kubernetes   ClusterIP   10.8.0.1      <none>        443/TCP   2d8h
+NAME                           READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/app-1          5/5     5            5           16s
+deployment.apps/app-1-canary   1/1     1            1           118s
+NAME                                      DESIRED   CURRENT   READY   AGE
+replicaset.apps/app-1-6fbf6fb56f          5         5         5       17s
+replicaset.apps/app-1-canary-6fbf6fb56f   1         1         1       119s $ kubectl get all
+NAME                                READY   STATUS    RESTARTS   AGE
+pod/app-1-6fbf6fb56f-4dshr          1/1     Running   0          16s
+pod/app-1-6fbf6fb56f-f8zxr          1/1     Running   0          16s
+pod/app-1-6fbf6fb56f-hclt9          1/1     Running   0          15s
+pod/app-1-6fbf6fb56f-jlc29          1/1     Running   0          16s
+pod/app-1-6fbf6fb56f-qq848          1/1     Running   0          16s
+pod/app-1-canary-6fbf6fb56f-9n9sg   1/1     Running   0          118s
+NAME                 TYPE        CLUSTER-IP    EXTERNAL-IP   PORT(S)   AGE
+service/app-1        ClusterIP   10.8.12.240   <none>        80/TCP    18m
+service/kubernetes   ClusterIP   10.8.0.1      <none>        443/TCP   2d8h
+NAME                           READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/app-1          5/5     5            5           16s
+deployment.apps/app-1-canary   1/1     1            1           118s
+NAME                                      DESIRED   CURRENT   READY   AGE
+replicaset.apps/app-1-6fbf6fb56f          5         5         5       17s
+replicaset.apps/app-1-canary-6fbf6fb56f   1         1         1       119s]]></text>
+</doc>

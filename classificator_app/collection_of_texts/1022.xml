@@ -1,0 +1,1505 @@
+<?xml version="1.0" ?>
+<doc>
+	<original_author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Thomas Dimnet]]></item>
+	</original_author>
+	<label auto="true" type="str" verify="true"><![CDATA[Other]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[ispmanager]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-09-02, 15:18]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/company/ispmanager/blog/686080/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Взлет и падение Bootstrap]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Блог компании Ispmanager]]></item>
+		<item type="str"><![CDATA[Веб-дизайн]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[веб-дизайн]]></item>
+		<item type="str"><![CDATA[веб-разработка]]></item>
+		<item type="str"><![CDATA[веб]]></item>
+		<item type="str"><![CDATA[верстка]]></item>
+		<item type="str"><![CDATA[css]]></item>
+		<item type="str"><![CDATA[css-фреймворк]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[Как Tailwind стал ведущим CSS-фреймворком
+
+Недавно мне довелось поработать с Bootstrap 5, и в сравнении с Tailwind это был сущий кошмар
+
+В последнее время я занялся созданием небольших учебных пособий для разработчиков. Цель состоит в том, чтобы показать младшим разработчикам, как размышляют их старшие коллеги в процессе работы с кодом. Например, как старшие разработчики изучают документацию или новые фреймворки, с которыми они еще не знакомы, и как можно обнаружить, что что-то идет не так.
+
+Примеры проектов я искал на Frontend Mentors, а код писал с использованием различных технологий. Например, один из первых проектов представлял собой интеграцию компонента карточки товара. Я решил написать решение с помощью чистого CSS, с использованием Tailwind и Bootstrap.
+
+
+
+Это оказалось интересно не только аудитории, но и мне самому. Я хотел проследить, как менялись Tailwind и Bootstrap в последние годы. Справедливости ради, я понимал, что работа с Tailwind окажется весьма приятной, но не подозревал, что общение с Bootstrap 5 будет настолько мучительным. Мой опыт оказался настолько ужасен, что я решил написать эту статью.
+Здесь вы найдете исторические факты (в основном о Bootstrap), мысли (о моем опыте разработчика) и фрагменты кода. Для начала поговорим об истории.
+
+Время, когда все использовали Bootstrap
+
+
+
+Еще несколько лет назад Bootstrap был повсюду. В 2016 году нельзя было встретить сайт, который не работал бы на Bootstrap. CSS Flexbox уже существовал, но CSS Grid еще не был широко известен и мало где поддерживался. Я помню, как в середине 2016 года я беседовал с одним разработчиком о CSS Grid и рассказал ему о возможностях Grid. Его ответ потряс меня до глубины души: сперва он решил, что я говорю об HTML-таблицах, ведь о CSS Grid он и вовсе ничего не слышал. В то время все работали на Bootstrap 3 и активно пользовались jQuery.
+
+Кроме Bootstrap, были и другие CSS-фреймворки. Вторым по известности был Foundations. Кроме как для создания шаблонов электронной почты, я им особо не пользовался. Возможно, он был лучше или хуже Bootstrap, отличался от него или, напротив, копировал. Я и правда знаком с ним слишком мало для того, чтобы делать выводы.
+
+Foundations заявляли (и, судя по их страницам на GitHub, до сих пор заявляют), что они «Самый продвинутый респонсивный фронтенд-фреймворк в мире». Однако при взгляде на официальную документацию и репозиторий проекта на GitHub, складывается впечатление, что он скорее мертв, чем жив. Не хотелось бы тратить слишком много времени на исторические справки, поэтому я пройдусь только по верхам.
+
+
+
+Прежде всего, Bootstrap был разработан инженерами Twitter, и они проделали отличную работу. Twitter до сих пор работает на Bootstrap, как и многие другие сайты. В большинстве случаев можно запросто определить, работает ли сайт на Bootstrap или нет, даже не будучи опытным разработчиком. На мой взгляд, это не всегда хорошо. Дело в том, что Bootstrap-сайты, как правило, выглядят однотипно.
+
+Для некоторых сайтов это может быть преимуществом, потому что пользователям не придется переучивать паттерны и способы навигации. К примеру, они уже знают, как выглядят ссылка или кнопка submit. Но на каком-то этапе сайт из-за этого теряет свою идентичность. Вторая сильная сторона Bootstrap заключается в том, что в Bootstrap 5 было принято решение избавиться от jQuery. Не уверен, хорошее это было решение или плохое. В настоящее время jQuery пользуется меньшей популярностью, чем другие фронтенд-фреймворки, и все реже используется разработчиками, так что, в некотором смысле, это решение имело смысл.
+
+Однако удаление jQuery увеличило объем работы, с которым пришлось столкнуться разработчикам, к тому же пришлось попрощаться с рядом инструментов совместимости со старыми браузерами. Если вы хотите узнать подробности, то вот отличная статья на эту тему.
+
+Наконец, я просто благодарен Bootstrap за хорошую работу. Команда Bootstrap 4 крайне много сделала для доступности веб-сайтов и приложений. Она внедрила множество концепций, связанных с атрибутами aria, и привела конкретные примеры и образцы кода, которыми можно пользоваться. На мой вкус, Bootstrap 4 был великолепен! К сожалению, Bootstrap 5 таковым больше не является.
+
+Tailwind: Как он переосмыслил способ работы с CSS
+
+
+
+Как и многие другие, я открыл для себя термин «Utility-first CSS» благодаря Tailwind. До этого я пытался ориентироваться на BEM. Не знаю, как вы, но я всегда чувствовал себя с BEM неловко. Я понимаю концепцию модификаторов, но иногда испытываю трудности, когда приходится использовать либо блок, либо элемент. Если Вы не знакомы с BEM, я советую ознакомиться с этим ресурсом. Резюмируя всё вышесказанное, BEM можно расценивать как способ структурирования CSS-кода.
+
+На бумаге такое структурирование CSS кажется разумной идеей. Тем не менее, на практике это приводит к ухудшению читабельности HTML и нарушению принципов разделения ответственности. Вот отличный материал об этих концепциях.
+
+Вернемся к Tailwind. Почему создание «Utility-first» CSS фреймворка оказалось такой удачной идеей? Если вы уже прочитали статью, которой я поделился в последней ссылке, вы уже должны знать ответ. Вместо того, чтобы полагаться на компоненты которые применяют множество стилей одновременно, как в Bootstrap, вы добавляете классы, которые отвечают только за что-то одно. Другими словами, вы оперируете классами, которые можно комбинировать как угодно для построения любого дизайна: один класс отвечает за padding, другой — за размер шрифта и т.д.
+Давайте рассмотрим пример.
+
+Вот как можно написать компонент карточки с помощью Bootstrap:
+
+<div class="card" style="width: 18rem;">
+  <img src="..." class="card-img-top" alt="...">
+  <div class="card-body">
+    <h5 class="card-title">Card title</h5>
+    <p class="card-text">Some quick example text to build on the card title and make up the bulk of the card's content.</p>
+    <a href="#" class="btn btn-primary">Go somewhere</a>
+  </div>
+</div>
+
+
+И вот результат:
+
+
+Источник: Официальная документация Bootstrap
+
+Вот как можно написать компонент карточки с помощью Tailwind:
+
+<figure class="md:flex bg-slate-100 rounded-xl p-8 md:p-0 dark:bg-slate-800">
+  <img class="w-24 h-24 md:w-48 md:h-auto md:rounded-none rounded-full mx-auto" src="/sarah-dayan.jpg" alt="" width="384" height="512">
+  <div class="pt-6 md:p-8 text-center md:text-left space-y-4">
+    <blockquote>
+      <p class="text-lg font-medium">
+        “Tailwind CSS is the only framework that I've seen scale
+        on large teams. It’s easy to customize, adapts to any design,
+        and the build size is tiny.”
+      </p>
+    </blockquote>
+    <figcaption class="font-medium">
+      <div class="text-sky-500 dark:text-sky-400">
+        Sarah Dayan
+      </div>
+      <div class="text-slate-700 dark:text-slate-500">
+        Staff Engineer, Algolia
+      </div>
+    </figcaption>
+  </div>
+</figure>
+
+
+И вот результат:
+
+
+Источник: Официальная документация Tailwind
+
+Эти две карточки выглядят по-разному, но я хочу, чтобы вы посмотрели на код. В Bootstrap компоненты карточек могут отличаться по размерам и цветам, но в итоге они выглядят более или менее одинаково. Помните, что я говорил вам в начале этой статьи? Легко можно определить, что на сайте используется Bootstrap.
+
+Однако с помощью Tailwind можно добавить собственные стили практически ко всем элементам. Почему это так важно, спросите вы? Во-первых, потому что это позволяет оформить сайт так, как вам хочется, это отличная возможность, особенно для дизайнеров! Во-вторых, потому что это помогает вам, как разработчику, максимально приблизиться к макету, не нарушая разделение ответственности между HTML-разметкой и CSS.
+
+С Tailwind больше не нужно полагаться на BEM. Для меня это действительно хорошая новость!
+
+Опыт разработчика и документация
+
+
+Источник: pixabay.com
+
+Tailwind: легко настроить и использовать
+
+Это был один из моих первых опытов с Tailwind. То есть, я знал этот проект раньше и уже читал документацию, но у меня не было случая использовать его на деле. Для своего проекта я решил не пользоваться CLI или PostCSS.
+
+Вместо этого я решил попробовать использовать Tailwind с CDN. Я понимаю, что это не лучший вариант для «боевого» сайта, однако моим тестовым целям это отвечало на 100%. Даже с CDN я был поражен тем, насколько просто настроить Tailwind, просто добавив пользовательские цвета и шрифты.
+
+По сравнению с Tailwind, API Bootstrap — это полный бардак. И в документации, и в примерах кода нелегко разобраться, особенно если вы еще не знакомы с пятой версией.
+
+Вот как я настраиваю Tailwind в своем проекте:
+
+<script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            viridian: 'hsl(158, 36%, 37%)',
+            dawnPink: 'hsl(30, 38%, 92%)',
+            white: 'hsl(0, 0%, 100%)',
+            ebonyClay: 'hsl(212, 21%, 14%)',
+            stormGray: 'hsl(228, 12%, 48%)'
+          },
+          fontFamily: {
+            montserrat: ['Montserrat', 'sans-serif'],
+            fraunces: ['Fraunces', 'serif']
+          }
+        }
+      }
+    }
+  </script>
+
+
+В приведенном выше примере кода я добавил новые цвета и новые семейства шрифтов внутрь tailwind.config.
+
+А вот как я использую его в своем коде:
+
+<p class="font-montserrat font-medium text-xs tracking-[.5em] uppercase
+text-stormGray mb-3">
+  Perfume
+</p>
+<h1 class="font-fraunces text-3xl font-bold text-ebonyClay mb-4">
+  Gabrielle Essence Eau de Parfum
+</h1>
+<p class="font-montserrat font-medium text-sm text-stormGray mb-6">
+  A floral, solar and voluptuous interpretation composed by Olivier Polge,
+  Perfumer-Creator for the House of CHANEL.
+</p>
+
+
+Посмотрите, как это просто! Мне не нужно писать пользовательский CSS или Sass-код. Достаточно только вызвать нужные классы. Это очень, очень просто и в то же время мощно!
+
+Tailwind: какая замечательная документация!
+
+Это подводит нас ко второму преимуществу Tailwind: его документации. Я разработчик (думаю, и вы тоже). Чаще всего, когда мы торопимся с проектом, у нас нет времени читать всю документацию. Нам нужны простые, но конкретные примеры, которые мы можем использовать и повторить.
+
+Мы хотим быстро понять, подходит нам этот инструмент или нет. В последние годы я заинтересовался Developer Experience, сокращенно DX. Вот определение, которое я нашел в интернете:
+
+Опыт разработчика (Developer Experience) — это каждое взаимодействие разработчика с API или самим инструментом.
+Источник: everydeveloper.com/developer-experience
+
+Говоря о взаимодействии, помните не только о комментариях к коду, красивых именах переменных или следовании соглашениям.
+
+Подумайте также и о документации и о том, насколько легко работать с библиотекой или фреймворком.
+
+Например, я считаю, что опыт разработчика в Symfony и Angular великолепен. Они предоставляют туториал, отличную документацию и примеры кода. Но есть и кое-что еще! Начиная пользоваться ими, вы косвенно узнаете и другие концепции. Например, документация Symfony объясняет принципы Entity и Repository Pattern. Angular знакомит вас с Promises и Observables.
+
+А вот документация по React, напротив, не слишком хороша. В течение долгого времени там не объяснялось, как писать эффективные тесты. Даже по Hooks информации код наплакал. Чаще всего, когда я обсуждаю с коллегами React Hooks, они не понимают, как это работает. Короче говоря, DX очень важен. Важнее, чем кажется. Он может сделать проект успешным, а может и завалить. С Tailwind я справился с проектом всего за один день. Документацию легко читать и использовать, как и сам фреймворк. А что насчет Bootstrap 5?
+
+Bootstrap: гремучая смесь компонентов и утилит
+
+С самого начала своего существования Bootstrap был полностью сосредоточен на компонентах. Существуют компоненты для форм, каруселей (даже если карусель вам не нужна), хлебных крошек, модальных окон и т.д. Это и есть (или была?) самая сильная сторона Bootstrap.
+
+Что, если мне нужно создать заголовок? Я загляну на страницу «Типографика» и найду информацию о классах заголовков и их отображении.
+
+Отлично! Но как насчет страницы «Текст» в разделе «Утилиты», в частности, подраздел «Размеры шрифтов»? О, это еще один способ изменить размер шрифта. Но какой из них лучше использовать? Могу ли я комбинировать оба способа? Что фреймворк хочет, чтобы я сделал? Именно такие вопросы я задаю себе, когда пишу код.
+
+Мое впечатление таково, что Bootstrap сейчас находится между двух стульев, и не знает, на какой из них сесть. С одной стороны, они хотят, чтобы вы придерживались Bootstrap и его библиотеки компонентов. Именно сюда команда разработки вложила так много времени и усилий. С другой стороны, появились утилиты и их API. Но опять же, примеров в документации раз, два, и обчелся.
+
+API утилит Bootstrap: мне потребовалось время, чтобы разобраться в нем
+
+Несколько дней назад я писал решение на Bootstrap для задачи о компоненте продукта и создавал новые классы, которые не использовали утилиты Bootstrap.
+
+Я хотел добавить элементу ширину 90%. Я просмотрел документацию и нашел страницу Sizing в разделе Utilities. По умолчанию ширина была 25, 50, 75 и 100%. Сначала я создал пользовательский класс w-90, который обозначал 90%, но что-то здесь явно было не так.
+
+Код, честно говоря, начал припахивать! Я посмотрел на страницу Utility API, быстро прочитал ее (как это делают многие разработчики) и решил, что все понял. Чтобы использовать этот API с npm, нужно было установить в проект Sass и Bootstrap.
+
+Вполне справедливо! Я установил их.
+
+Затем я перешел на страницу Sass в разделе Customize и оказался перед выбором: либо импортировать всё без разбора и не иметь возможности изменять утилиты, либо импортировать нужное вручную.
+
+// Custom.scss
+// Option B: Include parts of Bootstrap
+
+// 1. Include functions first (so you can manipulate colors, SVGs, calc, etc)
+@import "../node_modules/bootstrap/scss/functions";
+
+// 2. Include any default variable overrides here
+
+// 3. Include remainder of required Bootstrap stylesheets
+@import "../node_modules/bootstrap/scss/variables";
+
+// 4. Include any default map overrides here
+
+// 5. Include remainder of required parts
+@import "../node_modules/bootstrap/scss/maps";
+@import "../node_modules/bootstrap/scss/mixins";
+@import "../node_modules/bootstrap/scss/root";
+
+// 6. Optionally include any other parts as needed
+@import "../node_modules/bootstrap/scss/utilities";
+@import "../node_modules/bootstrap/scss/reboot";
+@import "../node_modules/bootstrap/scss/type";
+@import "../node_modules/bootstrap/scss/images";
+@import "../node_modules/bootstrap/scss/containers";
+@import "../node_modules/bootstrap/scss/grid";
+@import "../node_modules/bootstrap/scss/helpers";
+
+// 7. Optionally include utilities API last to generate classes based on the Sass map in `_utilities.scss`
+@import "../node_modules/bootstrap/scss/utilities/api";
+
+// 8. Add additional custom code here
+
+
+После этого я изменил утилиты (я покажу ниже, как это сделать) и скомпилировал Sass в CSS. В первом приближении казалось, что все работает, но я быстро обнаружил, что мои кнопки лишились стилей. Почему, спросите вы? Потому что я забыл импортировать некоторые фрагменты Bootstrap. Посмотрите на пункт 6. Здесь говорится: «Опционально включите любые другие части Boostrap по мере необходимости», но я новичок в Bootstrap 5. Я не знаю, какие части нужны, а какие нет. Помните, что я говорил о DX? По мне, так это очень плохой DX!
+
+Вот что я бы добавил, чтобы заставить его работать:
+
+// Include any default variable overrides here (though functions won't be available)
+// Custom variables
+$viridian: hsl(158, 36%, 37%);
+$dawn-pink: hsl(30, 38%, 92%);
+$white: hsl(0, 0%, 100%);
+$ebony-clay: hsl(212, 21%, 14%);
+$storm-gray: hsl(228, 12%, 48%);
+
+$font-montserrat: 'Montserrat', sans-serif;
+$font-fraunces: 'Fraunces', serif;
+
+// Configuration
+@import "../node_modules/bootstrap/scss/functions";
+
+
+// 2. Include any default variable overrides here
+$body-bg: $dawn-pink;
+$font-weight-normal: 500;
+
+
+@import "../node_modules/bootstrap/scss/variables";
+
+// 4. Include any default map overrides here
+$custom-colors: (
+  "viridian": $viridian,
+  "dawn-pink": $dawn-pink,
+  "white": $white,
+  "ebony-clay": $ebony-clay,
+  "storm-gray": $storm-gray
+);
+
+// Merge the maps
+$theme-colors: map-merge($theme-colors, $custom-colors);
+
+
+@import "../node_modules/bootstrap/scss/maps";
+@import "../node_modules/bootstrap/scss/mixins";
+@import "../node_modules/bootstrap/scss/utilities";
+
+// Layout & components
+@import "../node_modules/bootstrap/scss/root";
+@import "../node_modules/bootstrap/scss/reboot";
+@import "../node_modules/bootstrap/scss/type";
+@import "../node_modules/bootstrap/scss/images";
+@import "../node_modules/bootstrap/scss/containers";
+@import "../node_modules/bootstrap/scss/grid";
+@import "../node_modules/bootstrap/scss/buttons";
+
+
+// Import we don't need
+@import "../node_modules/bootstrap/scss/tables";
+@import "../node_modules/bootstrap/scss/forms";
+@import "../node_modules/bootstrap/scss/transitions";
+@import "../node_modules/bootstrap/scss/dropdown";
+@import "../node_modules/bootstrap/scss/button-group";
+@import "../node_modules/bootstrap/scss/nav";
+@import "../node_modules/bootstrap/scss/navbar";
+@import "../node_modules/bootstrap/scss/card";
+@import "../node_modules/bootstrap/scss/accordion";
+@import "../node_modules/bootstrap/scss/breadcrumb";
+@import "../node_modules/bootstrap/scss/pagination";
+@import "../node_modules/bootstrap/scss/badge";
+@import "../node_modules/bootstrap/scss/alert";
+@import "../node_modules/bootstrap/scss/progress";
+@import "../node_modules/bootstrap/scss/list-group";
+@import "../node_modules/bootstrap/scss/close";
+@import "../node_modules/bootstrap/scss/toasts";
+@import "../node_modules/bootstrap/scss/modal";
+@import "../node_modules/bootstrap/scss/tooltip";
+@import "../node_modules/bootstrap/scss/popover";
+@import "../node_modules/bootstrap/scss/carousel";
+@import "../node_modules/bootstrap/scss/spinners";
+@import "../node_modules/bootstrap/scss/offcanvas";
+@import "../node_modules/bootstrap/scss/placeholders";
+
+// Helpers
+@import "../node_modules/bootstrap/scss/helpers";
+$utilities: map-merge(
+  $utilities,
+  (
+    "width": map-merge(
+      map-get($utilities, "width"),
+      (
+        values: map-merge(
+          map-get(map-get($utilities, "width"), "values"),
+          (90: 90%),
+        ),
+      ),
+    ),
+    "max-width": map-merge(
+      map-get($utilities, "max-width"),
+      (
+        values: map-merge(
+          map-get(map-get($utilities, "max-width"), "values"),
+          (600: 680px),
+        ),
+      ),
+    ),
+    "font-family": map-merge(
+      map-get($utilities, "font-family"),
+      (
+        values: map-merge(
+          map-get(map-get($utilities, "font-family"), "values"),
+          (
+            montserrat: $font-montserrat,
+            fraunces: $font-fraunces
+          ),
+        ),
+      ),
+    ),
+    "letter-spacing": (
+      property: letter-spacing,
+      class: lt,
+      responsive: true,
+      values: (
+        0: 0px,
+        5: 5px,
+        10: 10px
+      )
+    )
+  )
+);
+
+// Utilities
+@import "../node_modules/bootstrap/scss/utilities/api";
+
+.max-w {
+  max-width: 300px;
+}
+
+
+Как импортировать пользовательский шрифт
+
+C помощью Tailwind
+
+Сначала импортируйте шрифты. Я использую Google Fonts.
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,700&family=Montserrat:wght@500;700&display=swap"
+rel="stylesheet">
+
+
+Затем импортируйте Tailwind с CDN и обновите tailwind config. Я добавляю запасные шрифты, а также новые цвета.
+
+<script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            viridian: 'hsl(158, 36%, 37%)',
+            dawnPink: 'hsl(30, 38%, 92%)',
+            white: 'hsl(0, 0%, 100%)',
+            ebonyClay: 'hsl(212, 21%, 14%)',
+            stormGray: 'hsl(228, 12%, 48%)'
+          },
+          fontFamily: {
+            montserrat: ['Montserrat', 'sans-serif'],
+            fraunces: ['Fraunces', 'serif']
+          }
+        }
+      }
+    }
+  </script>
+
+
+И всё, можно ими пользоваться!
+
+<span class="text-white font-montserrat font-bold text-sm">
+  Add to Cart
+</span>
+
+
+Все просто, не так ли?
+
+C помощью Bootstrap
+
+Установите Sass с помощью Npm:
+
+{
+  "dependencies": {
+    "bootstrap": "^5.2.0",
+    "sass": "^1.53.0"
+  },
+  "scripts": {
+    "sass": "node_modules/.bin/sass scss/main.scss css/main.css --watch"
+  }
+}
+
+
+Добавьте Bootstrap через Sass и импортируйте все части Bootstrap.
+
+Затем можно будет удалить те части, которые вам не нужны.
+
+Между строками 9 и 10 я определил свои переменные Sass. Между строками 102 и 113 я обновляю свои утилиты font-family.
+
+// Include any default variable overrides here (though functions won't be available)
+// Custom variables
+$viridian: hsl(158, 36%, 37%);
+$dawn-pink: hsl(30, 38%, 92%);
+$white: hsl(0, 0%, 100%);
+$ebony-clay: hsl(212, 21%, 14%);
+$storm-gray: hsl(228, 12%, 48%);
+
+$font-montserrat: 'Montserrat', sans-serif;
+$font-fraunces: 'Fraunces', serif;
+
+// Configuration
+@import "../node_modules/bootstrap/scss/functions";
+
+
+// 2. Include any default variable overrides here
+$body-bg: $dawn-pink;
+$font-weight-normal: 500;
+
+
+@import "../node_modules/bootstrap/scss/variables";
+
+// 4. Include any default map overrides here
+$custom-colors: (
+  "viridian": $viridian,
+  "dawn-pink": $dawn-pink,
+  "white": $white,
+  "ebony-clay": $ebony-clay,
+  "storm-gray": $storm-gray
+);
+
+// Merge the maps
+$theme-colors: map-merge($theme-colors, $custom-colors);
+
+
+@import "../node_modules/bootstrap/scss/maps";
+@import "../node_modules/bootstrap/scss/mixins";
+@import "../node_modules/bootstrap/scss/utilities";
+
+// Layout & components
+@import "../node_modules/bootstrap/scss/root";
+@import "../node_modules/bootstrap/scss/reboot";
+@import "../node_modules/bootstrap/scss/type";
+@import "../node_modules/bootstrap/scss/images";
+@import "../node_modules/bootstrap/scss/containers";
+@import "../node_modules/bootstrap/scss/grid";
+@import "../node_modules/bootstrap/scss/buttons";
+
+
+// Import we don't need
+import "../node_modules/bootstrap/scss/tables";
+@import "../node_modules/bootstrap/scss/forms";
+@import "../node_modules/bootstrap/scss/transitions";
+@import "../node_modules/bootstrap/scss/dropdown";
+@import "../node_modules/bootstrap/scss/button-group";
+@import "../node_modules/bootstrap/scss/nav";
+@import "../node_modules/bootstrap/scss/navbar";
+@import "../node_modules/bootstrap/scss/card";
+@import "../node_modules/bootstrap/scss/accordion";
+@import "../node_modules/bootstrap/scss/breadcrumb";
+@import "../node_modules/bootstrap/scss/pagination";
+@import "../node_modules/bootstrap/scss/badge";
+@import "../node_modules/bootstrap/scss/alert";
+@import "../node_modules/bootstrap/scss/progress";
+@import "../node_modules/bootstrap/scss/list-group";
+@import "../node_modules/bootstrap/scss/close";
+@import "../node_modules/bootstrap/scss/toasts";
+@import "../node_modules/bootstrap/scss/modal";
+@import "../node_modules/bootstrap/scss/tooltip";
+@import "../node_modules/bootstrap/scss/popover";
+@import "../node_modules/bootstrap/scss/carousel";
+@import "../node_modules/bootstrap/scss/spinners";
+@import "../node_modules/bootstrap/scss/offcanvas";
+@import "../node_modules/bootstrap/scss/placeholders";
+
+// Helpers
+@import "../node_modules/bootstrap/scss/helpers";
+
+$utilities: map-merge(
+  $utilities,
+  (
+    "width": map-merge(
+      map-get($utilities, "width"),
+      (
+        values: map-merge(
+          map-get(map-get($utilities, "width"), "values"),
+          (90: 90%),
+        ),
+      ),
+    ),
+    "max-width": map-merge(
+      map-get($utilities, "max-width"),
+      (
+        values: map-merge(
+          map-get(map-get($utilities, "max-width"), "values"),
+          (600: 680px),
+        ),
+      ),
+    ),
+    "font-family": map-merge(
+      map-get($utilities, "font-family"),
+      (
+        values: map-merge(
+          map-get(map-get($utilities, "font-family"), "values"),
+          (
+            montserrat: $font-montserrat,
+            fraunces: $font-fraunces
+          ),
+        ),
+      ),
+    ),
+    "letter-spacing": (
+      property: letter-spacing,
+      class: lt,
+      responsive: true,
+      values: (
+        0: 0px,
+        5: 5px,
+        10: 10px
+      )
+    )
+  )
+);
+
+// Utilities
+@import "../node_modules/bootstrap/scss/utilities/api";
+
+.max-w {
+  max-width: 300px;
+}
+
+
+Затем я использую их внутри HTML файла:
+
+<p class="text-uppercase text-storm-gray font-montserrat fw-normal lt-5">Perfume</p>
+
+
+Как добавить межбуквенные интервалы
+
+C помощью Tailwind
+
+Импортируйте Tailwind с помощью этого кода:
+
+<script src="https://cdn.tailwindcss.com"></script>
+
+
+Используйте пользовательский класс tailwind. Посмотрите на tracking-[.5em].
+
+<p class="font-montserrat font-medium text-xs tracking-[.5em] uppercase text-stormGray mb-3">Perfume</p>
+
+
+Да, вот так просто!
+
+C помощью Bootstrap
+
+Все так же, как и выше. Я устанавливаю Bootstrap и Sass через Npm.
+
+Затем я обновляю свои утилиты, добавляя новую. Посмотрите на строку 34. Я создаю новую утилиту; она использует класс lt и имеет три значения.
+
+$utilities: map-merge(
+  $utilities,
+  (
+    "width": map-merge(
+      map-get($utilities, "width"),
+      (
+        values: map-merge(
+          map-get(map-get($utilities, "width"), "values"),
+          (90: 90%),
+        ),
+      ),
+    ),
+    "max-width": map-merge(
+      map-get($utilities, "max-width"),
+      (
+        values: map-merge(
+          map-get(map-get($utilities, "max-width"), "values"),
+          (600: 680px),
+        ),
+      ),
+    ),
+    "font-family": map-merge(
+      map-get($utilities, "font-family"),
+      (
+        values: map-merge(
+          map-get(map-get($utilities, "font-family"), "values"),
+          (
+            montserrat: $font-montserrat,
+            fraunces: $font-fraunces
+          ),
+        ),
+      ),
+    ),
+    "letter-spacing": (
+      property: letter-spacing,
+      class: lt,
+      responsive: true,
+      values: (
+        0: 0px,
+        5: 5px,
+        10: 10px
+      )
+    )
+  )
+);
+
+
+Наконец, я использую ее:
+
+<p class="text-uppercase text-storm-gray font-montserrat fw-normal lt-5">Perfume</p>
+
+
+Фух, это была длинная статья! Длиннее, чем я ожидал, когда начинал ее писать. Прежде чем попрощаться, я хочу сказать несколько слов о Bootstrap. Bootstrap 5 не слишком хорош. Bootstrap 3 и 4 были гораздо лучше. Особенно в плане документации и DX.
+
+Мое впечатление таково, что Bootstrap идет на спад. Он еще не умирает, но кажется, что основная команда потеряла видение проекта и не знает, куда двигаться дальше. Может, я ошибаюсь, но Bootstrap был создан до появления React и полноценных SPA.
+
+Он хорошо работал и продолжает хорошо работать с fullstack-фреймворками, ну, кроме React. По крайней мере, мне так кажется. Возможно, через несколько лет мы вернемся к Bootstrap, но на сегодняшний день я не готов его кому-то советовать…
+
+Вот полный код задачи с Bootstrap и Tailwind. Как Tailwind стал ведущим CSS-фреймворком   Недавно мне довелось поработать с Bootstrap 5, и в сравнении с Tailwind это был сущий кошмар             Время, когда все использовали Bootstrap                      Tailwind: Как он переосмыслил способ работы с CSS              <div class="card" style="width: 18rem;">
+  <img src="..." class="card-img-top" alt="...">
+  <div class="card-body">
+    <h5 class="card-title">Card title</h5>
+    <p class="card-text">Some quick example text to build on the card title and make up the bulk of the card's content.</p>
+    <a href="#" class="btn btn-primary">Go somewhere</a>
+  </div>
+</div> <div class="card" style="width: 18rem;">
+  <img src="..." class="card-img-top" alt="...">
+  <div class="card-body">
+    <h5 class="card-title">Card title</h5>
+    <p class="card-text">Some quick example text to build on the card title and make up the bulk of the card's content.</p>
+    <a href="#" class="btn btn-primary">Go somewhere</a>
+  </div>
+</div>       Источник: Официальная документация Bootstrap     <figure class="md:flex bg-slate-100 rounded-xl p-8 md:p-0 dark:bg-slate-800">
+  <img class="w-24 h-24 md:w-48 md:h-auto md:rounded-none rounded-full mx-auto" src="/sarah-dayan.jpg" alt="" width="384" height="512">
+  <div class="pt-6 md:p-8 text-center md:text-left space-y-4">
+    <blockquote>
+      <p class="text-lg font-medium">
+        “Tailwind CSS is the only framework that I've seen scale
+        on large teams. It’s easy to customize, adapts to any design,
+        and the build size is tiny.”
+      </p>
+    </blockquote>
+    <figcaption class="font-medium">
+      <div class="text-sky-500 dark:text-sky-400">
+        Sarah Dayan
+      </div>
+      <div class="text-slate-700 dark:text-slate-500">
+        Staff Engineer, Algolia
+      </div>
+    </figcaption>
+  </div>
+</figure> <figure class="md:flex bg-slate-100 rounded-xl p-8 md:p-0 dark:bg-slate-800">
+  <img class="w-24 h-24 md:w-48 md:h-auto md:rounded-none rounded-full mx-auto" src="/sarah-dayan.jpg" alt="" width="384" height="512">
+  <div class="pt-6 md:p-8 text-center md:text-left space-y-4">
+    <blockquote>
+      <p class="text-lg font-medium">
+        “Tailwind CSS is the only framework that I've seen scale
+        on large teams. It’s easy to customize, adapts to any design,
+        and the build size is tiny.”
+      </p>
+    </blockquote>
+    <figcaption class="font-medium">
+      <div class="text-sky-500 dark:text-sky-400">
+        Sarah Dayan
+      </div>
+      <div class="text-slate-700 dark:text-slate-500">
+        Staff Engineer, Algolia
+      </div>
+    </figcaption>
+  </div>
+</figure>       Источник: Официальная документация Tailwind         Опыт разработчика и документация    Источник: pixabay.com   Tailwind: легко настроить и использовать          <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            viridian: 'hsl(158, 36%, 37%)',
+            dawnPink: 'hsl(30, 38%, 92%)',
+            white: 'hsl(0, 0%, 100%)',
+            ebonyClay: 'hsl(212, 21%, 14%)',
+            stormGray: 'hsl(228, 12%, 48%)'
+          },
+          fontFamily: {
+            montserrat: ['Montserrat', 'sans-serif'],
+            fraunces: ['Fraunces', 'serif']
+          }
+        }
+      }
+    }
+  </script> <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            viridian: 'hsl(158, 36%, 37%)',
+            dawnPink: 'hsl(30, 38%, 92%)',
+            white: 'hsl(0, 0%, 100%)',
+            ebonyClay: 'hsl(212, 21%, 14%)',
+            stormGray: 'hsl(228, 12%, 48%)'
+          },
+          fontFamily: {
+            montserrat: ['Montserrat', 'sans-serif'],
+            fraunces: ['Fraunces', 'serif']
+          }
+        }
+      }
+    }
+  </script>       <p class="font-montserrat font-medium text-xs tracking-[.5em] uppercase
+text-stormGray mb-3">
+  Perfume
+</p>
+<h1 class="font-fraunces text-3xl font-bold text-ebonyClay mb-4">
+  Gabrielle Essence Eau de Parfum
+</h1>
+<p class="font-montserrat font-medium text-sm text-stormGray mb-6">
+  A floral, solar and voluptuous interpretation composed by Olivier Polge,
+  Perfumer-Creator for the House of CHANEL.
+</p> <p class="font-montserrat font-medium text-xs tracking-[.5em] uppercase
+text-stormGray mb-3">
+  Perfume
+</p>
+<h1 class="font-fraunces text-3xl font-bold text-ebonyClay mb-4">
+  Gabrielle Essence Eau de Parfum
+</h1>
+<p class="font-montserrat font-medium text-sm text-stormGray mb-6">
+  A floral, solar and voluptuous interpretation composed by Olivier Polge,
+  Perfumer-Creator for the House of CHANEL.
+</p>     Tailwind: какая замечательная документация!      Опыт разработчика (Developer Experience) — это каждое взаимодействие разработчика с API или самим инструментом.
+Источник: everydeveloper.com/developer-experience  everydeveloper.com/developer-experience          Bootstrap: гремучая смесь компонентов и утилит          API утилит Bootstrap: мне потребовалось время, чтобы разобраться в нем            // Custom.scss
+// Option B: Include parts of Bootstrap
+
+// 1. Include functions first (so you can manipulate colors, SVGs, calc, etc)
+@import "../node_modules/bootstrap/scss/functions";
+
+// 2. Include any default variable overrides here
+
+// 3. Include remainder of required Bootstrap stylesheets
+@import "../node_modules/bootstrap/scss/variables";
+
+// 4. Include any default map overrides here
+
+// 5. Include remainder of required parts
+@import "../node_modules/bootstrap/scss/maps";
+@import "../node_modules/bootstrap/scss/mixins";
+@import "../node_modules/bootstrap/scss/root";
+
+// 6. Optionally include any other parts as needed
+@import "../node_modules/bootstrap/scss/utilities";
+@import "../node_modules/bootstrap/scss/reboot";
+@import "../node_modules/bootstrap/scss/type";
+@import "../node_modules/bootstrap/scss/images";
+@import "../node_modules/bootstrap/scss/containers";
+@import "../node_modules/bootstrap/scss/grid";
+@import "../node_modules/bootstrap/scss/helpers";
+
+// 7. Optionally include utilities API last to generate classes based on the Sass map in `_utilities.scss`
+@import "../node_modules/bootstrap/scss/utilities/api";
+
+// 8. Add additional custom code here // Custom.scss
+// Option B: Include parts of Bootstrap
+
+// 1. Include functions first (so you can manipulate colors, SVGs, calc, etc)
+@import "../node_modules/bootstrap/scss/functions";
+
+// 2. Include any default variable overrides here
+
+// 3. Include remainder of required Bootstrap stylesheets
+@import "../node_modules/bootstrap/scss/variables";
+
+// 4. Include any default map overrides here
+
+// 5. Include remainder of required parts
+@import "../node_modules/bootstrap/scss/maps";
+@import "../node_modules/bootstrap/scss/mixins";
+@import "../node_modules/bootstrap/scss/root";
+
+// 6. Optionally include any other parts as needed
+@import "../node_modules/bootstrap/scss/utilities";
+@import "../node_modules/bootstrap/scss/reboot";
+@import "../node_modules/bootstrap/scss/type";
+@import "../node_modules/bootstrap/scss/images";
+@import "../node_modules/bootstrap/scss/containers";
+@import "../node_modules/bootstrap/scss/grid";
+@import "../node_modules/bootstrap/scss/helpers";
+
+// 7. Optionally include utilities API last to generate classes based on the Sass map in `_utilities.scss`
+@import "../node_modules/bootstrap/scss/utilities/api";
+
+// 8. Add additional custom code here       // Include any default variable overrides here (though functions won't be available)
+// Custom variables
+$viridian: hsl(158, 36%, 37%);
+$dawn-pink: hsl(30, 38%, 92%);
+$white: hsl(0, 0%, 100%);
+$ebony-clay: hsl(212, 21%, 14%);
+$storm-gray: hsl(228, 12%, 48%);
+
+$font-montserrat: 'Montserrat', sans-serif;
+$font-fraunces: 'Fraunces', serif;
+
+// Configuration
+@import "../node_modules/bootstrap/scss/functions";
+
+
+// 2. Include any default variable overrides here
+$body-bg: $dawn-pink;
+$font-weight-normal: 500;
+
+
+@import "../node_modules/bootstrap/scss/variables";
+
+// 4. Include any default map overrides here
+$custom-colors: (
+  "viridian": $viridian,
+  "dawn-pink": $dawn-pink,
+  "white": $white,
+  "ebony-clay": $ebony-clay,
+  "storm-gray": $storm-gray
+);
+
+// Merge the maps
+$theme-colors: map-merge($theme-colors, $custom-colors);
+
+
+@import "../node_modules/bootstrap/scss/maps";
+@import "../node_modules/bootstrap/scss/mixins";
+@import "../node_modules/bootstrap/scss/utilities";
+
+// Layout & components
+@import "../node_modules/bootstrap/scss/root";
+@import "../node_modules/bootstrap/scss/reboot";
+@import "../node_modules/bootstrap/scss/type";
+@import "../node_modules/bootstrap/scss/images";
+@import "../node_modules/bootstrap/scss/containers";
+@import "../node_modules/bootstrap/scss/grid";
+@import "../node_modules/bootstrap/scss/buttons";
+
+
+// Import we don't need
+@import "../node_modules/bootstrap/scss/tables";
+@import "../node_modules/bootstrap/scss/forms";
+@import "../node_modules/bootstrap/scss/transitions";
+@import "../node_modules/bootstrap/scss/dropdown";
+@import "../node_modules/bootstrap/scss/button-group";
+@import "../node_modules/bootstrap/scss/nav";
+@import "../node_modules/bootstrap/scss/navbar";
+@import "../node_modules/bootstrap/scss/card";
+@import "../node_modules/bootstrap/scss/accordion";
+@import "../node_modules/bootstrap/scss/breadcrumb";
+@import "../node_modules/bootstrap/scss/pagination";
+@import "../node_modules/bootstrap/scss/badge";
+@import "../node_modules/bootstrap/scss/alert";
+@import "../node_modules/bootstrap/scss/progress";
+@import "../node_modules/bootstrap/scss/list-group";
+@import "../node_modules/bootstrap/scss/close";
+@import "../node_modules/bootstrap/scss/toasts";
+@import "../node_modules/bootstrap/scss/modal";
+@import "../node_modules/bootstrap/scss/tooltip";
+@import "../node_modules/bootstrap/scss/popover";
+@import "../node_modules/bootstrap/scss/carousel";
+@import "../node_modules/bootstrap/scss/spinners";
+@import "../node_modules/bootstrap/scss/offcanvas";
+@import "../node_modules/bootstrap/scss/placeholders";
+
+// Helpers
+@import "../node_modules/bootstrap/scss/helpers";
+$utilities: map-merge(
+  $utilities,
+  (
+    "width": map-merge(
+      map-get($utilities, "width"),
+      (
+        values: map-merge(
+          map-get(map-get($utilities, "width"), "values"),
+          (90: 90%),
+        ),
+      ),
+    ),
+    "max-width": map-merge(
+      map-get($utilities, "max-width"),
+      (
+        values: map-merge(
+          map-get(map-get($utilities, "max-width"), "values"),
+          (600: 680px),
+        ),
+      ),
+    ),
+    "font-family": map-merge(
+      map-get($utilities, "font-family"),
+      (
+        values: map-merge(
+          map-get(map-get($utilities, "font-family"), "values"),
+          (
+            montserrat: $font-montserrat,
+            fraunces: $font-fraunces
+          ),
+        ),
+      ),
+    ),
+    "letter-spacing": (
+      property: letter-spacing,
+      class: lt,
+      responsive: true,
+      values: (
+        0: 0px,
+        5: 5px,
+        10: 10px
+      )
+    )
+  )
+);
+
+// Utilities
+@import "../node_modules/bootstrap/scss/utilities/api";
+
+.max-w {
+  max-width: 300px;
+} // Include any default variable overrides here (though functions won't be available)
+// Custom variables
+$viridian: hsl(158, 36%, 37%);
+$dawn-pink: hsl(30, 38%, 92%);
+$white: hsl(0, 0%, 100%);
+$ebony-clay: hsl(212, 21%, 14%);
+$storm-gray: hsl(228, 12%, 48%);
+
+$font-montserrat: 'Montserrat', sans-serif;
+$font-fraunces: 'Fraunces', serif;
+
+// Configuration
+@import "../node_modules/bootstrap/scss/functions";
+
+
+// 2. Include any default variable overrides here
+$body-bg: $dawn-pink;
+$font-weight-normal: 500;
+
+
+@import "../node_modules/bootstrap/scss/variables";
+
+// 4. Include any default map overrides here
+$custom-colors: (
+  "viridian": $viridian,
+  "dawn-pink": $dawn-pink,
+  "white": $white,
+  "ebony-clay": $ebony-clay,
+  "storm-gray": $storm-gray
+);
+
+// Merge the maps
+$theme-colors: map-merge($theme-colors, $custom-colors);
+
+
+@import "../node_modules/bootstrap/scss/maps";
+@import "../node_modules/bootstrap/scss/mixins";
+@import "../node_modules/bootstrap/scss/utilities";
+
+// Layout & components
+@import "../node_modules/bootstrap/scss/root";
+@import "../node_modules/bootstrap/scss/reboot";
+@import "../node_modules/bootstrap/scss/type";
+@import "../node_modules/bootstrap/scss/images";
+@import "../node_modules/bootstrap/scss/containers";
+@import "../node_modules/bootstrap/scss/grid";
+@import "../node_modules/bootstrap/scss/buttons";
+
+
+// Import we don't need
+@import "../node_modules/bootstrap/scss/tables";
+@import "../node_modules/bootstrap/scss/forms";
+@import "../node_modules/bootstrap/scss/transitions";
+@import "../node_modules/bootstrap/scss/dropdown";
+@import "../node_modules/bootstrap/scss/button-group";
+@import "../node_modules/bootstrap/scss/nav";
+@import "../node_modules/bootstrap/scss/navbar";
+@import "../node_modules/bootstrap/scss/card";
+@import "../node_modules/bootstrap/scss/accordion";
+@import "../node_modules/bootstrap/scss/breadcrumb";
+@import "../node_modules/bootstrap/scss/pagination";
+@import "../node_modules/bootstrap/scss/badge";
+@import "../node_modules/bootstrap/scss/alert";
+@import "../node_modules/bootstrap/scss/progress";
+@import "../node_modules/bootstrap/scss/list-group";
+@import "../node_modules/bootstrap/scss/close";
+@import "../node_modules/bootstrap/scss/toasts";
+@import "../node_modules/bootstrap/scss/modal";
+@import "../node_modules/bootstrap/scss/tooltip";
+@import "../node_modules/bootstrap/scss/popover";
+@import "../node_modules/bootstrap/scss/carousel";
+@import "../node_modules/bootstrap/scss/spinners";
+@import "../node_modules/bootstrap/scss/offcanvas";
+@import "../node_modules/bootstrap/scss/placeholders";
+
+// Helpers
+@import "../node_modules/bootstrap/scss/helpers";
+$utilities: map-merge(
+  $utilities,
+  (
+    "width": map-merge(
+      map-get($utilities, "width"),
+      (
+        values: map-merge(
+          map-get(map-get($utilities, "width"), "values"),
+          (90: 90%),
+        ),
+      ),
+    ),
+    "max-width": map-merge(
+      map-get($utilities, "max-width"),
+      (
+        values: map-merge(
+          map-get(map-get($utilities, "max-width"), "values"),
+          (600: 680px),
+        ),
+      ),
+    ),
+    "font-family": map-merge(
+      map-get($utilities, "font-family"),
+      (
+        values: map-merge(
+          map-get(map-get($utilities, "font-family"), "values"),
+          (
+            montserrat: $font-montserrat,
+            fraunces: $font-fraunces
+          ),
+        ),
+      ),
+    ),
+    "letter-spacing": (
+      property: letter-spacing,
+      class: lt,
+      responsive: true,
+      values: (
+        0: 0px,
+        5: 5px,
+        10: 10px
+      )
+    )
+  )
+);
+
+// Utilities
+@import "../node_modules/bootstrap/scss/utilities/api";
+
+.max-w {
+  max-width: 300px;
+}   Как импортировать пользовательский шрифт  C помощью Tailwind    <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,700&family=Montserrat:wght@500;700&display=swap"
+rel="stylesheet"> <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,700&family=Montserrat:wght@500;700&display=swap"
+rel="stylesheet">     <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            viridian: 'hsl(158, 36%, 37%)',
+            dawnPink: 'hsl(30, 38%, 92%)',
+            white: 'hsl(0, 0%, 100%)',
+            ebonyClay: 'hsl(212, 21%, 14%)',
+            stormGray: 'hsl(228, 12%, 48%)'
+          },
+          fontFamily: {
+            montserrat: ['Montserrat', 'sans-serif'],
+            fraunces: ['Fraunces', 'serif']
+          }
+        }
+      }
+    }
+  </script> <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            viridian: 'hsl(158, 36%, 37%)',
+            dawnPink: 'hsl(30, 38%, 92%)',
+            white: 'hsl(0, 0%, 100%)',
+            ebonyClay: 'hsl(212, 21%, 14%)',
+            stormGray: 'hsl(228, 12%, 48%)'
+          },
+          fontFamily: {
+            montserrat: ['Montserrat', 'sans-serif'],
+            fraunces: ['Fraunces', 'serif']
+          }
+        }
+      }
+    }
+  </script>     <span class="text-white font-montserrat font-bold text-sm">
+  Add to Cart
+</span> <span class="text-white font-montserrat font-bold text-sm">
+  Add to Cart
+</span>     C помощью Bootstrap    {
+  "dependencies": {
+    "bootstrap": "^5.2.0",
+    "sass": "^1.53.0"
+  },
+  "scripts": {
+    "sass": "node_modules/.bin/sass scss/main.scss css/main.css --watch"
+  }
+} {
+  "dependencies": {
+    "bootstrap": "^5.2.0",
+    "sass": "^1.53.0"
+  },
+  "scripts": {
+    "sass": "node_modules/.bin/sass scss/main.scss css/main.css --watch"
+  }
+}         // Include any default variable overrides here (though functions won't be available)
+// Custom variables
+$viridian: hsl(158, 36%, 37%);
+$dawn-pink: hsl(30, 38%, 92%);
+$white: hsl(0, 0%, 100%);
+$ebony-clay: hsl(212, 21%, 14%);
+$storm-gray: hsl(228, 12%, 48%);
+
+$font-montserrat: 'Montserrat', sans-serif;
+$font-fraunces: 'Fraunces', serif;
+
+// Configuration
+@import "../node_modules/bootstrap/scss/functions";
+
+
+// 2. Include any default variable overrides here
+$body-bg: $dawn-pink;
+$font-weight-normal: 500;
+
+
+@import "../node_modules/bootstrap/scss/variables";
+
+// 4. Include any default map overrides here
+$custom-colors: (
+  "viridian": $viridian,
+  "dawn-pink": $dawn-pink,
+  "white": $white,
+  "ebony-clay": $ebony-clay,
+  "storm-gray": $storm-gray
+);
+
+// Merge the maps
+$theme-colors: map-merge($theme-colors, $custom-colors);
+
+
+@import "../node_modules/bootstrap/scss/maps";
+@import "../node_modules/bootstrap/scss/mixins";
+@import "../node_modules/bootstrap/scss/utilities";
+
+// Layout & components
+@import "../node_modules/bootstrap/scss/root";
+@import "../node_modules/bootstrap/scss/reboot";
+@import "../node_modules/bootstrap/scss/type";
+@import "../node_modules/bootstrap/scss/images";
+@import "../node_modules/bootstrap/scss/containers";
+@import "../node_modules/bootstrap/scss/grid";
+@import "../node_modules/bootstrap/scss/buttons";
+
+
+// Import we don't need
+import "../node_modules/bootstrap/scss/tables";
+@import "../node_modules/bootstrap/scss/forms";
+@import "../node_modules/bootstrap/scss/transitions";
+@import "../node_modules/bootstrap/scss/dropdown";
+@import "../node_modules/bootstrap/scss/button-group";
+@import "../node_modules/bootstrap/scss/nav";
+@import "../node_modules/bootstrap/scss/navbar";
+@import "../node_modules/bootstrap/scss/card";
+@import "../node_modules/bootstrap/scss/accordion";
+@import "../node_modules/bootstrap/scss/breadcrumb";
+@import "../node_modules/bootstrap/scss/pagination";
+@import "../node_modules/bootstrap/scss/badge";
+@import "../node_modules/bootstrap/scss/alert";
+@import "../node_modules/bootstrap/scss/progress";
+@import "../node_modules/bootstrap/scss/list-group";
+@import "../node_modules/bootstrap/scss/close";
+@import "../node_modules/bootstrap/scss/toasts";
+@import "../node_modules/bootstrap/scss/modal";
+@import "../node_modules/bootstrap/scss/tooltip";
+@import "../node_modules/bootstrap/scss/popover";
+@import "../node_modules/bootstrap/scss/carousel";
+@import "../node_modules/bootstrap/scss/spinners";
+@import "../node_modules/bootstrap/scss/offcanvas";
+@import "../node_modules/bootstrap/scss/placeholders";
+
+// Helpers
+@import "../node_modules/bootstrap/scss/helpers";
+
+$utilities: map-merge(
+  $utilities,
+  (
+    "width": map-merge(
+      map-get($utilities, "width"),
+      (
+        values: map-merge(
+          map-get(map-get($utilities, "width"), "values"),
+          (90: 90%),
+        ),
+      ),
+    ),
+    "max-width": map-merge(
+      map-get($utilities, "max-width"),
+      (
+        values: map-merge(
+          map-get(map-get($utilities, "max-width"), "values"),
+          (600: 680px),
+        ),
+      ),
+    ),
+    "font-family": map-merge(
+      map-get($utilities, "font-family"),
+      (
+        values: map-merge(
+          map-get(map-get($utilities, "font-family"), "values"),
+          (
+            montserrat: $font-montserrat,
+            fraunces: $font-fraunces
+          ),
+        ),
+      ),
+    ),
+    "letter-spacing": (
+      property: letter-spacing,
+      class: lt,
+      responsive: true,
+      values: (
+        0: 0px,
+        5: 5px,
+        10: 10px
+      )
+    )
+  )
+);
+
+// Utilities
+@import "../node_modules/bootstrap/scss/utilities/api";
+
+.max-w {
+  max-width: 300px;
+} // Include any default variable overrides here (though functions won't be available)
+// Custom variables
+$viridian: hsl(158, 36%, 37%);
+$dawn-pink: hsl(30, 38%, 92%);
+$white: hsl(0, 0%, 100%);
+$ebony-clay: hsl(212, 21%, 14%);
+$storm-gray: hsl(228, 12%, 48%);
+
+$font-montserrat: 'Montserrat', sans-serif;
+$font-fraunces: 'Fraunces', serif;
+
+// Configuration
+@import "../node_modules/bootstrap/scss/functions";
+
+
+// 2. Include any default variable overrides here
+$body-bg: $dawn-pink;
+$font-weight-normal: 500;
+
+
+@import "../node_modules/bootstrap/scss/variables";
+
+// 4. Include any default map overrides here
+$custom-colors: (
+  "viridian": $viridian,
+  "dawn-pink": $dawn-pink,
+  "white": $white,
+  "ebony-clay": $ebony-clay,
+  "storm-gray": $storm-gray
+);
+
+// Merge the maps
+$theme-colors: map-merge($theme-colors, $custom-colors);
+
+
+@import "../node_modules/bootstrap/scss/maps";
+@import "../node_modules/bootstrap/scss/mixins";
+@import "../node_modules/bootstrap/scss/utilities";
+
+// Layout & components
+@import "../node_modules/bootstrap/scss/root";
+@import "../node_modules/bootstrap/scss/reboot";
+@import "../node_modules/bootstrap/scss/type";
+@import "../node_modules/bootstrap/scss/images";
+@import "../node_modules/bootstrap/scss/containers";
+@import "../node_modules/bootstrap/scss/grid";
+@import "../node_modules/bootstrap/scss/buttons";
+
+
+// Import we don't need
+import "../node_modules/bootstrap/scss/tables";
+@import "../node_modules/bootstrap/scss/forms";
+@import "../node_modules/bootstrap/scss/transitions";
+@import "../node_modules/bootstrap/scss/dropdown";
+@import "../node_modules/bootstrap/scss/button-group";
+@import "../node_modules/bootstrap/scss/nav";
+@import "../node_modules/bootstrap/scss/navbar";
+@import "../node_modules/bootstrap/scss/card";
+@import "../node_modules/bootstrap/scss/accordion";
+@import "../node_modules/bootstrap/scss/breadcrumb";
+@import "../node_modules/bootstrap/scss/pagination";
+@import "../node_modules/bootstrap/scss/badge";
+@import "../node_modules/bootstrap/scss/alert";
+@import "../node_modules/bootstrap/scss/progress";
+@import "../node_modules/bootstrap/scss/list-group";
+@import "../node_modules/bootstrap/scss/close";
+@import "../node_modules/bootstrap/scss/toasts";
+@import "../node_modules/bootstrap/scss/modal";
+@import "../node_modules/bootstrap/scss/tooltip";
+@import "../node_modules/bootstrap/scss/popover";
+@import "../node_modules/bootstrap/scss/carousel";
+@import "../node_modules/bootstrap/scss/spinners";
+@import "../node_modules/bootstrap/scss/offcanvas";
+@import "../node_modules/bootstrap/scss/placeholders";
+
+// Helpers
+@import "../node_modules/bootstrap/scss/helpers";
+
+$utilities: map-merge(
+  $utilities,
+  (
+    "width": map-merge(
+      map-get($utilities, "width"),
+      (
+        values: map-merge(
+          map-get(map-get($utilities, "width"), "values"),
+          (90: 90%),
+        ),
+      ),
+    ),
+    "max-width": map-merge(
+      map-get($utilities, "max-width"),
+      (
+        values: map-merge(
+          map-get(map-get($utilities, "max-width"), "values"),
+          (600: 680px),
+        ),
+      ),
+    ),
+    "font-family": map-merge(
+      map-get($utilities, "font-family"),
+      (
+        values: map-merge(
+          map-get(map-get($utilities, "font-family"), "values"),
+          (
+            montserrat: $font-montserrat,
+            fraunces: $font-fraunces
+          ),
+        ),
+      ),
+    ),
+    "letter-spacing": (
+      property: letter-spacing,
+      class: lt,
+      responsive: true,
+      values: (
+        0: 0px,
+        5: 5px,
+        10: 10px
+      )
+    )
+  )
+);
+
+// Utilities
+@import "../node_modules/bootstrap/scss/utilities/api";
+
+.max-w {
+  max-width: 300px;
+}     <p class="text-uppercase text-storm-gray font-montserrat fw-normal lt-5">Perfume</p> <p class="text-uppercase text-storm-gray font-montserrat fw-normal lt-5">Perfume</p>   Как добавить межбуквенные интервалы  C помощью Tailwind    <script src="https://cdn.tailwindcss.com"></script> <script src="https://cdn.tailwindcss.com"></script>     <p class="font-montserrat font-medium text-xs tracking-[.5em] uppercase text-stormGray mb-3">Perfume</p> <p class="font-montserrat font-medium text-xs tracking-[.5em] uppercase text-stormGray mb-3">Perfume</p>     C помощью Bootstrap      $utilities: map-merge(
+  $utilities,
+  (
+    "width": map-merge(
+      map-get($utilities, "width"),
+      (
+        values: map-merge(
+          map-get(map-get($utilities, "width"), "values"),
+          (90: 90%),
+        ),
+      ),
+    ),
+    "max-width": map-merge(
+      map-get($utilities, "max-width"),
+      (
+        values: map-merge(
+          map-get(map-get($utilities, "max-width"), "values"),
+          (600: 680px),
+        ),
+      ),
+    ),
+    "font-family": map-merge(
+      map-get($utilities, "font-family"),
+      (
+        values: map-merge(
+          map-get(map-get($utilities, "font-family"), "values"),
+          (
+            montserrat: $font-montserrat,
+            fraunces: $font-fraunces
+          ),
+        ),
+      ),
+    ),
+    "letter-spacing": (
+      property: letter-spacing,
+      class: lt,
+      responsive: true,
+      values: (
+        0: 0px,
+        5: 5px,
+        10: 10px
+      )
+    )
+  )
+); $utilities: map-merge(
+  $utilities,
+  (
+    "width": map-merge(
+      map-get($utilities, "width"),
+      (
+        values: map-merge(
+          map-get(map-get($utilities, "width"), "values"),
+          (90: 90%),
+        ),
+      ),
+    ),
+    "max-width": map-merge(
+      map-get($utilities, "max-width"),
+      (
+        values: map-merge(
+          map-get(map-get($utilities, "max-width"), "values"),
+          (600: 680px),
+        ),
+      ),
+    ),
+    "font-family": map-merge(
+      map-get($utilities, "font-family"),
+      (
+        values: map-merge(
+          map-get(map-get($utilities, "font-family"), "values"),
+          (
+            montserrat: $font-montserrat,
+            fraunces: $font-fraunces
+          ),
+        ),
+      ),
+    ),
+    "letter-spacing": (
+      property: letter-spacing,
+      class: lt,
+      responsive: true,
+      values: (
+        0: 0px,
+        5: 5px,
+        10: 10px
+      )
+    )
+  )
+);     <p class="text-uppercase text-storm-gray font-montserrat fw-normal lt-5">Perfume</p> <p class="text-uppercase text-storm-gray font-montserrat fw-normal lt-5">Perfume</p>         полный код    ]]></text>
+</doc>

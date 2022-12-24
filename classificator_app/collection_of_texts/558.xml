@@ -1,0 +1,203 @@
+<?xml version="1.0" ?>
+<doc>
+	<label auto="true" type="str" verify="true"><![CDATA[Develop]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[avidclam]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-11-30, 16:55]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/post/702626/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Группируем текстовые записи с помощью Python и CountVectorizer]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Python]]></item>
+		<item type="str"><![CDATA[Natural Language Processing]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[python]]></item>
+		<item type="str"><![CDATA[pandas]]></item>
+		<item type="str"><![CDATA[sklearn]]></item>
+		<item type="str"><![CDATA[очистка данных]]></item>
+		<item type="str"><![CDATA[фармбизнес]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[Исходные данные и постановка задачи
+Данные для анализа были взяты из сводной базы ICTRP (International Clinical Trials Registry Platform — Платформа международного реестра клинических исследований) Всемирной организации здравоохранения. Для целей данной статьи нужна не полная база, а только одно поле Primary_sponsor, которое содержит название главной заинтересованной в исследовании организации — «спонсора».
+Наша задача — провести группировку записей этого поля по содержимому таким образом, чтобы каждой записи, относящейся к одной из ведущих фармкомпаний, сопоставить метку, по которой далее уже можно будет провести сводный анализ.
+В очередной полной выгрузке от 18.11.2022 содержится 824883 записи, в поле спонсора 160139 уникальных значений. Правда, более половины записей относятся к академическим организациям — университетам, больницам, исследовательским центрам и т.п.— но оставшейся части вполне хватает для экспериментов.
+Сложность задачи заключается не только в количестве записей, но и в исторических особенностях отрасли. Компании не всегда просто различить по ключевым словам. Например, компанию Merck & Co., Inc., известную за пределами США и Канады как Merck Sharp & Dohme (MSD), нельзя путать с Merck Group (Merck KGaA), и нужно иметь в виду, что Schering-Plough Corporation, ставшая частью Merck & Co., Inc. в 2009 году, была когда-то американским подразделением немецкой Schering AG, которая стала частью Bayer. Некоторые исследования проводятся совместными усилиями нескольких фармкомпаний либо спонсируются через совместные предприятия. Например, до 2017 года существовал проект Sanofi Pasteur MSD по разработке вакцин в Европе. Его нужно уметь отделить и от «Sanofi», и от «MSD».
+Загружая CountVectorizer, мы вступаем на территорию NLP (Natural Language Processing), а значит, можем использовать терминологию этой области.
+Эксперименты с CountVectorizer
+Подготовка
+Исходные данные загружены в pandas Series.
+# primary_sponsor.describe()
+count              824883
+unique             160139
+top       GlaxoSmithKline
+freq                 3583
+Name: primary_sponsor, dtype: object
+С помощью CountVectorizer получаем матрицу «документ — термин». На это Google Colab тратит около 20 секунд.
+# Немного подчистим HTML-символы перед обработкой
+corpus = primary_sponsor.apply(html.unescape)
+stop_words=['the', 'an', 'and', 'for', 'of', 'to', 'as', 'or', 'by', 'from']
+vectorizer = CountVectorizer(analyzer='word', stop_words=stop_words,
+                             strip_accents='unicode', ngram_range=(1, 3),
+                             lowercase=True, binary=True)
+doc_term = vectorizer.fit_transform(corpus)
+На что тут можно обратить внимание? Важна настройка binary=True. По умолчанию CountVectorizer считает количество вхождений термина в документ, и именно это число мы видим на пересечении соответствующих строки и столбца матрицы «документ — термин». Но нам для нашей задачи важен только факт присутствия термина, а количество вхождений только будет мешать (почему — станет понятно далее).
+<824883x469143 sparse matrix of type '<class 'numpy.int64'>'
+ with 6958341 stored elements in Compressed Sparse Row format>
+На выходе получили матрицу эпического размера «824883 документа на 470734 термина», в которой 6969513 единиц, а все остальные нули. Такие объекты принято хранить в «разреженных матрицах», в данном случае типа scipy.sparse.csr.csr_matrix.
+Эксперимент 1. Наивный
+Подход применим такой же, как в поисковых машинах. Задается несколько поисковых фраз, которые прогоняются через векторизатор. Полученная матрица «фраза — термин» транспонируется, и перемножение матриц «документ — термин» и «термин — фраза» дает матрицу «документ — фраза», значения в которой показывают, сколько терминов из документа каждой фразе удалось «зацепить». Фраза, зацепившая больше всего терминов документа, «находит» документ. А поскольку за каждой поисковой фразой стоит метка, получается, что мы «пометили» документ, что нам и требовалось. Кстати, теперь понятно, почему векторизатор нужно использовать с binary=True. В противном случае частота термина в документах начинает влиять на результат.
+Попробуем разобраться в Мерках. Выберем для эксперимента несколько фраз и зададим соответствующие метки.
+phrase = np.array(['MSD', 'Merck Sharp Dohme', 'Merck KGaA', 'Merck Serono'])
+tag = np.array(['Merck (MSD)', 'Merck (MSD)', 'Merck (KGaA)', 'Merck (KGaA)'])
+phrase_term = vectorizer.transform(phrase)
+doc_phrase = doc_term.dot(phrase_term.transpose())  # 824883x4 sparse matrix
+tag_resolver = np.r_[pd.NA, tag]
+doc_phrase_score = doc_phrase
+tag_idx = np.array(doc_phrase_score.argmax(axis=1).flat)
+na_shift = np.sign(doc_phrase_score.sum(axis=1).flat)
+doc_tag = tag_resolver[tag_idx + na_shift]
+series_tag = pd.Series(doc_tag, index=corpus.index)
+Несколько комментариев к коду:
+Операции над scipy.sparse.csr.csr_matrix возвращают np.matrix, работать с которой не совсем удобно, лучше сразу приводить её к np.array и «уплощать».
+Метод argmax работает так, что если две фразы набрали одинаковое максимальное количество «очков», он укажет на первую из них, поэтому порядок следования фраз важен: фразы идущие в начале списка, отбирают результат у последующих.
+Если ни одна фраза не сработала, и в матрице «документ — фраза» вся строчка заполнена нулями, то этот случай нужно обработать, чтобы отличить его от выбора метки под нулевым индексом.
+Сразу выясняется, что наши фразы наотмечали кое-что лишнее. Попадются строчки, которые включают KGaA, но не имеют отношения к Merck. Например, «Bristol-Myers Squibb GmbH & Co. KGaA» или «Drägerwerk AG & Co. KGaA». Термин KGaA означает одну из форм организации юридического лица в Германии (в данном случае не важно, какую именно).
+Что с этим делать? Мы можем «экранировать» KGaA, добавив фразы «Bristol Myers Squibb», и «Drägerwerk AG» в список фраз до «Merck KGaA». В реальной жизни так не делают. База обновится, наш фильтр опять захватит лишнее, и снова придется менять список фраз. Нужно ограничить «чувствительность» фразы.
+Эксперимент 2. Основной
+Добавим параметр минимального количества терминов, который фраза должна обнаружить в документе для того, чтобы документ считался ассоциированным с фразой (и соответственно, с меткой).
+min_terms = np.array([1, 4, 3, 3])
+
+phrase_term = vectorizer.transform(phrase)
+doc_phrase = doc_term.dot(phrase_term.transpose())
+tag_resolver = np.r_[pd.NA, tag]
+
+d_min_terms = scipy.sparse.diags(min_terms - 1, dtype=int)
+doc_phrase_score = doc_phrase - doc_phrase.sign().dot(d_min_terms)
+doc_phrase_score.data.clip(0, out=doc_phrase_score.data)
+doc_phrase_score.eliminate_zeros()
+
+tag_idx = np.array(doc_phrase_score.argmax(axis=1).flat)
+na_shift = np.sign(doc_phrase_score.sum(axis=1).flat)
+doc_tag = tag_resolver[tag_idx + na_shift]
+series_tag = pd.Series(doc_tag, index=corpus.index)
+Стало лучше. Строчки, включающие KGaA, но не включающие Merck, пропали.
+Комментарии к коду:
+Работа с разреженными матрицами имеет особенности. Многие привычные операции возвращают обычную «плотную» матрицу, а этого всячески нужно избегать, иначе может не хватить памяти. Поэтому код выглядит слегка странно. Например, мы могли бы просто вычесть min_terms из матрицы doc_phrase, и это сработало бы корректно, каждая строка doc_phrase уменьшилась бы на значение вектора min_terms, но в результате мы бы потеряли разреженность.
+К значениям разреженной матрицы можно получить доступ напрямую через атрибут .data, чем можно воспользоваться, если метод не реализован для матрицы, но есть в numpy (в данном случае, метод clip пригодился для того, чтобы убрать отрицательные значения).
+Эксперимент 3. С обнулением
+Минимальный уровень срабатывания — не панацея. Что делать, например, чтобы фраза «MSD» не захватывала вот такую строку: «World Health Organization (WHO)/The Department of Mental Health and Substance Abuse (MSD) (Switzerland)»? Можно добавить метку для World Health Organization, и она захватит нужную строку раньше, чем MSD, но нас в данном проекте интересуют только исследования, спонсированные фармкомпаниями.
+Добавим функциональность «обнуляторов». Это специальные «отрицательные» фразы. Если отрицательная фраза находит документ, то этот документ исключается из поиска по основной фразе.
+В нашем примере если добавить отрицательную фразу «WHO» к положительной «MSD», то строчки, содержащие «WHO», не будут помечены «MSD», независимо от того, есть в них «MSD» или нет. Во всём остальном алгоритм будет работать аналогично.
+nullifiers = ['WHO', '', '', '']
+
+phrase_term = vectorizer.transform(phrase)
+doc_phrase = doc_term.dot(phrase_term.transpose())
+tag_resolver = np.r_[pd.NA, tag]
+
+d_min_terms = scipy.sparse.diags(min_terms - 1, dtype=int)
+doc_phrase_score = doc_phrase - doc_phrase.sign().dot(d_min_terms)
+doc_phrase_score.data.clip(0, out=doc_phrase_score.data)
+doc_phrase_score.eliminate_zeros()
+
+nullifier_term = vectorizer.transform(nullifier)
+doc_nullifier = doc_term.dot(nullifier_term.transpose())
+# Единицы только там, где сработала и фраза, и обнулятор:
+null_score_mark = doc_phrase_score.sign().multiply(doc_nullifier.sign())
+doc_phrase_score -= doc_phrase_score.multiply(null_score_mark)
+
+tag_idx = np.array(doc_phrase_score.argmax(axis=1).flat)
+na_shift = np.sign(doc_phrase_score.sum(axis=1).flat)
+doc_tag = tag_resolver[tag_idx + na_shift]
+series_tag = pd.Series(doc_tag, index=corpus.index)
+Рабочий вариант
+Код, сопровождающий статью, доступен полностью в виде ноутбука Google Colab.
+В него добавлена функциональность дополнительных слов. Их предназначение проще понять на примере.
+Допустим, у нас фраза «Merck Co Inc». Векторизатор разобьёт её на 6 терминов: «Merck», «Co», «Inc», «Merck Co», «Co Inc» и «Merck Co Inc», и в матрице «документ — фраза» на пересечении документа «Merck & Co., Inc.» и фразы «Merck Co Inc» будет стоять цифра 6. В правиле нам следует выбрать min_terms как минимум равным 4, чтобы помечались нужные документы, а документы, содержащие «Co» и «Inc», но не содержащие «Merck», не помечались. Но вот проблема: документ с опечаткой «Merck & Co., Ink.» наберет по данной фразе только 3 «очка», и будет проигнорирован.
+С этим можно успешно бороться, если считать «Co» и «Inc» дополнительными словами, которые работают только в сочетании с основным термином «Merck». Реализовать функциональность дополнительных слов можно следующим образом:
+Договоримся, что фраза включает дополнительные слова со знаком «+», вот так: «Merck +Co +Inс».
+Для каждой основной создадим фразу дополнительных слов add_on_phrase, которая отличается от основной тем, что основные термины в ней заменены на несловарное (Out-of-Vocabulary) слово.
+Пропустим через векторизатор основные фразы и фразы дополнительных слов, и из «основной» матрицы «фраза — термин» вычтем «дополнительную».
+Как результат, фраза «Merck +Co +Inс» будет разбита на «Merck», «Merck Co» и «Merck Co Inc», а документы, содержащие «Co» и «Inc» без «Merck», помечаться не будут.
+В результате отрабоки правил, включающих и требование минимального количества терминов, и дополнительные слова, и «обнуляторы», получен результат.
+Вот Top 20 фармкомпаний по количеству записей в базе (что не равно количеству исследований, но это уже другая тема).
+Всего размечено записей: 117016
+-------------------------------
+Novartis                 11085
+GSK                       7774
+Pfizer                    7771
+AstraZeneca               7184
+Roche                     6676
+Merck (MSD)               6259
+Johnson & Johnson         5963
+Sanofi                    5185
+Bristol Myers Squibb      5115
+Boehringer Ingelheim      4394
+Eli Lilly and Company     4146
+Bayer                     3711
+AbbVie                    3604
+Takeda                    3490
+Amgen                     2892
+Teva                      2605
+Novo Nordisk              2538
+Astellas                  1945
+Gilead Sciences           1818
+Abbott                    1715
+Стоит обратить внимание, что обработка восьмисот с лишним тысяч строк с получением более ста тысяч ненулевых меток по правилам, записанным почти на ста строчках, заняла всего полторы секунды. Понятно, что если учесть время, затраченное на первоначальную работу CountVectorizer, результат не впечатлит, но здесь важно другое. Процесс написания и отладки правил ручной и довольно нудный, и очень удобно, если аналитик может быстро увидеть результат очередной редакции. Подход с применением CountVectorizer на некоторых задачах оказывается предпочтительнее обоймы из регулярных выражений. Кроме того, правила понятны специалисту предметной области без знания python, и можно организовать командную работу для разбора слабо структурированных текстовых баз. Исходные данные и постановка задачи Данные для анализа были взяты из сводной базы ICTRP (International Clinical Trials Registry Platform — Платформа международного реестра клинических исследований) Всемирной организации здравоохранения. Для целей данной статьи нужна не полная база, а только одно поле Primary_sponsor, которое содержит название главной заинтересованной в исследовании организации — «спонсора». ICTRP Primary_sponsor Наша задача — провести группировку записей этого поля по содержимому таким образом, чтобы каждой записи, относящейся к одной из ведущих фармкомпаний, сопоставить метку, по которой далее уже можно будет провести сводный анализ. В очередной полной выгрузке от 18.11.2022 содержится 824883 записи, в поле спонсора 160139 уникальных значений. Правда, более половины записей относятся к академическим организациям — университетам, больницам, исследовательским центрам и т.п.— но оставшейся части вполне хватает для экспериментов. Сложность задачи заключается не только в количестве записей, но и в исторических особенностях отрасли. Компании не всегда просто различить по ключевым словам. Например, компанию Merck & Co., Inc., известную за пределами США и Канады как Merck Sharp & Dohme (MSD), нельзя путать с Merck Group (Merck KGaA), и нужно иметь в виду, что Schering-Plough Corporation, ставшая частью Merck & Co., Inc. в 2009 году, была когда-то американским подразделением немецкой Schering AG, которая стала частью Bayer. Некоторые исследования проводятся совместными усилиями нескольких фармкомпаний либо спонсируются через совместные предприятия. Например, до 2017 года существовал проект Sanofi Pasteur MSD по разработке вакцин в Европе. Его нужно уметь отделить и от «Sanofi», и от «MSD». Загружая CountVectorizer, мы вступаем на территорию NLP (Natural Language Processing), а значит, можем использовать терминологию этой области. Загружая CountVectorizer, мы вступаем на территорию NLP (Natural Language Processing), а значит, можем использовать терминологию этой области.    Эксперименты с CountVectorizer Подготовка Исходные данные загружены в pandas Series. # primary_sponsor.describe()
+count              824883
+unique             160139
+top       GlaxoSmithKline
+freq                 3583
+Name: primary_sponsor, dtype: object # primary_sponsor.describe()
+count              824883
+unique             160139
+top       GlaxoSmithKline
+freq                 3583
+Name: primary_sponsor, dtype: object С помощью CountVectorizer получаем матрицу «документ — термин». На это Google Colab тратит около 20 секунд. # Немного подчистим HTML-символы перед обработкой
+corpus = primary_sponsor.apply(html.unescape)
+stop_words=['the', 'an', 'and', 'for', 'of', 'to', 'as', 'or', 'by', 'from']
+vectorizer = CountVectorizer(analyzer='word', stop_words=stop_words,
+                             strip_accents='unicode', ngram_range=(1, 3),
+                             lowercase=True, binary=True)
+doc_term = vectorizer.fit_transform(corpus) # Немного подчистим HTML-символы перед обработкой
+corpus = primary_sponsor.apply(html.unescape)
+stop_words=['the', 'an', 'and', 'for', 'of', 'to', 'as', 'or', 'by', 'from']
+vectorizer = CountVectorizer(analyzer='word', stop_words=stop_words,
+                             strip_accents='unicode', ngram_range=(1, 3),
+                             lowercase=True, binary=True)
+doc_term = vectorizer.fit_transform(corpus) На что тут можно обратить внимание? Важна настройка binary=True. По умолчанию CountVectorizer считает количество вхождений термина в документ, и именно это число мы видим на пересечении соответствующих строки и столбца матрицы «документ — термин». Но нам для нашей задачи важен только факт присутствия термина, а количество вхождений только будет мешать (почему — станет понятно далее). binary=True <824883x469143 sparse matrix of type '<class 'numpy.int64'>'
+ with 6958341 stored elements in Compressed Sparse Row format> <824883x469143 sparse matrix of type '<class 'numpy.int64'>'
+ with 6958341 stored elements in Compressed Sparse Row format> На выходе получили матрицу эпического размера «824883 документа на 470734 термина», в которой 6969513 единиц, а все остальные нули. Такие объекты принято хранить в «разреженных матрицах», в данном случае типа scipy.sparse.csr.csr_matrix. scipy.sparse.csr.csr_matrix Эксперимент 1. Наивный Подход применим такой же, как в поисковых машинах. Задается несколько поисковых фраз, которые прогоняются через векторизатор. Полученная матрица «фраза — термин» транспонируется, и перемножение матриц «документ — термин» и «термин — фраза» дает матрицу «документ — фраза», значения в которой показывают, сколько терминов из документа каждой фразе удалось «зацепить». Фраза, зацепившая больше всего терминов документа, «находит» документ. А поскольку за каждой поисковой фразой стоит метка, получается, что мы «пометили» документ, что нам и требовалось. Кстати, теперь понятно, почему векторизатор нужно использовать с binary=True. В противном случае частота термина в документах начинает влиять на результат. binary=True Попробуем разобраться в Мерках. Выберем для эксперимента несколько фраз и зададим соответствующие метки. phrase = np.array(['MSD', 'Merck Sharp Dohme', 'Merck KGaA', 'Merck Serono'])
+tag = np.array(['Merck (MSD)', 'Merck (MSD)', 'Merck (KGaA)', 'Merck (KGaA)'])
+phrase_term = vectorizer.transform(phrase)
+doc_phrase = doc_term.dot(phrase_term.transpose())  # 824883x4 sparse matrix phrase = np.array(['MSD', 'Merck Sharp Dohme', 'Merck KGaA', 'Merck Serono'])
+tag = np.array(['Merck (MSD)', 'Merck (MSD)', 'Merck (KGaA)', 'Merck (KGaA)'])
+phrase_term = vectorizer.transform(phrase)
+doc_phrase = doc_term.dot(phrase_term.transpose())  # 824883x4 sparse matrix tag_resolver = np.r_[pd.NA, tag]
+doc_phrase_score = doc_phrase
+tag_idx = np.array(doc_phrase_score.argmax(axis=1).flat)
+na_shift = np.sign(doc_phrase_score.sum(axis=1).flat)
+doc_tag = tag_resolver[tag_idx + na_shift]
+series_tag = pd.Series(doc_tag, index=corpus.index) tag_resolver = np.r_[pd.NA, tag]
+doc_phrase_score = doc_phrase
+tag_idx = np.array(doc_phrase_score.argmax(axis=1).flat)
+na_shift = np.sign(doc_phrase_score.sum(axis=1).flat)
+doc_tag = tag_resolver[tag_idx + na_shift]
+series_tag = pd.Series(doc_tag, index=corpus.index) Несколько комментариев к коду: Операции над scipy.sparse.csr.csr_matrix возвращают np.matrix, работать с которой не совсем удобно, лучше сразу приводить её к np.array и «уплощать».
+Метод argmax работает так, что если две фразы набрали одинаковое максимальное количество «очков», он укажет на первую из них, поэтому порядок следования фраз важен: фразы идущие в начале списка, отбирают результат у последующих.
+Если ни одна фраза не сработала, и в матрице «документ — фраза» вся строчка заполнена нулями, то этот случай нужно обработать, чтобы отличить его от выбора метки под нулевым индексом. Операции над scipy.sparse.csr.csr_matrix возвращают np.matrix, работать с которой не совсем удобно, лучше сразу приводить её к np.array и «уплощать». Операции над scipy.sparse.csr.csr_matrix возвращают np.matrix, работать с которой не совсем удобно, лучше сразу приводить её к np.array и «уплощать». scipy.sparse.csr.csr_matrix np.matrix np.array Метод argmax работает так, что если две фразы набрали одинаковое максимальное количество «очков», он укажет на первую из них, поэтому порядок следования фраз важен: фразы идущие в начале списка, отбирают результат у последующих. Метод argmax работает так, что если две фразы набрали одинаковое максимальное количество «очков», он укажет на первую из них, поэтому порядок следования фраз важен: фразы идущие в начале списка, отбирают результат у последующих. argmax Если ни одна фраза не сработала, и в матрице «документ — фраза» вся строчка заполнена нулями, то этот случай нужно обработать, чтобы отличить его от выбора метки под нулевым индексом. Если ни одна фраза не сработала, и в матрице «документ — фраза» вся строчка заполнена нулями, то этот случай нужно обработать, чтобы отличить его от выбора метки под нулевым индексом. Сразу выясняется, что наши фразы наотмечали кое-что лишнее. Попадются строчки, которые включают KGaA, но не имеют отношения к Merck. Например, «Bristol-Myers Squibb GmbH & Co. KGaA» или «Drägerwerk AG & Co. KGaA». Термин KGaA означает одну из форм организации юридического лица в Германии (в данном случае не важно, какую именно). Что с этим делать? Мы можем «экранировать» KGaA, добавив фразы «Bristol Myers Squibb», и «Drägerwerk AG» в список фраз до «Merck KGaA». В реальной жизни так не делают. База обновится, наш фильтр опять захватит лишнее, и снова придется менять список фраз. Нужно ограничить «чувствительность» фразы. до Эксперимент 2. Основной Добавим параметр минимального количества терминов, который фраза должна обнаружить в документе для того, чтобы документ считался ассоциированным с фразой (и соответственно, с меткой). min_terms = np.array([1, 4, 3, 3])
+
+phrase_term = vectorizer.transform(phrase)
+doc_phrase = doc_term.dot(phrase_term.transpose())
+tag_resolver = np.r_[pd.NA, tag]
+
+d_min_terms = scipy.sparse.diags(min_terms - 1, dtype=int)
+doc_phrase_score = doc_phrase - doc_phrase.sign().dot(d_min_terms)
+doc_phrase_score.data.clip(0, out=doc_phrase_score.data)
+doc_phrase_score.eliminate_zeros()
+
+tag_idx = np.array(doc_phrase_score.argmax(axis=1).flat)
+na_shift = np.sign(doc_phrase_score.sum(axis=1).flat)
+doc_tag = tag_resolver[tag_idx + na_shift]
+series_tag = pd.Series(doc_tag, index=corpus.index)]]></text>
+</doc>

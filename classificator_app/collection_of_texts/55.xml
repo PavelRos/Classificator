@@ -1,0 +1,452 @@
+<?xml version="1.0" ?>
+<doc>
+	<label auto="true" type="str" verify="true"><![CDATA[Develop]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Legendorik]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-12-15, 18:17]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/post/705798/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Ускоряем разработку за счет пакета Mason на Flutter]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Разработка под iOS]]></item>
+		<item type="str"><![CDATA[Разработка мобильных приложений]]></item>
+		<item type="str"><![CDATA[Разработка под Android]]></item>
+		<item type="str"><![CDATA[Dart]]></item>
+		<item type="str"><![CDATA[Flutter]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Шаблонный код]]></item>
+		<item type="str"><![CDATA[Генерация кода по шаблону]]></item>
+		<item type="str"><![CDATA[Mason]]></item>
+		<item type="str"><![CDATA[Генератор шаблонов]]></item>
+		<item type="str"><![CDATA[Ускорение разработки]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[Привет, меня зовут Александр, и я Flutter-разработчик в агентстве InstaDev. В процессе работы постепенно пришло осознание того, как много времени приходится тратить на написание шаблонного кода. Вооружившись желанием оптимизировать процесс, обнаружил решение: актуальный и развиваемый пакет Mason. Что он умеет, как с ним подружиться, и каков был путь от hello world до гибкого и настраиваемого генератора – рассказываю в этой статье.
+Немного вводных
+Mason – это генератор шаблонов с открытым исходным кодом, который можно применить для любого языка программирования. Он работает с использованием шаблонизатора mustache, чей простой синтаксис позволяет гибко настраивать генерацию с учетом различных условий и переменных, задаваемых пользователем. Mason также предоставляет консольный интерфейс для управления созданными шаблонами (здесь они называются "bricks" – кирпичиками) и экосистему brickhub, предназначенную для поиска уже реализованных шаблонов и публикации собственных разработок.
+Среди прочих полезных возможностей mason – поддержка выполнения скриптов до и после генерации (на данный момент только на языке Dart), импортирование кирпичиков в проект напрямую из git-репозитория, сборка шаблонов в один пакет для их дальнейшего использования программными методами и реализации, например, своего собственного консольного интерфейса для шаблонов.
+Проблематика
+К сожалению, шаблонный код – везде. Он начинает преследовать бедного программиста с момента инициализации проекта (который, конечно же, создается по шаблону), и любая новая функциональность требует своей подгонки под существующую структуру и архитектурные решения. Часть работы возьмут на себя библиотеки-кодогенераторы, что-то можно поручить IDE, но все еще остается множество утомительных и скучных Ctrl+C-Ctrl+V моментов. Создание папочной структуры, файлов, корректные наименования, инициализация необходимых библиотек: все это занимает время, которое можно потратить на более требовательные и творческие задачи. Здесь-то и пришла идея озаботиться созданием запаса кирпичиков на все случаи жизни.
+Ситуация
+В проекте мы придерживаемся Clean Architecture, используем Riverpod для управления состояниями, Hive для локального хранения данных и Chopper для запросов к серверу. Примерно так выглядит структура средненькой фичи:
+Фича. При раскрытии каждой папки, все это не помещается в экран
+Солидная часть кода при этом неминуемо повторяется: создание виджета под страницу, инициализирующий код для объектов состояния, интерфейсы со стандартными get и set методами и прочее, и прочее. Так как подобный стек и архитектура используется сразу в нескольких активно разрабатываемых проектах, было решено поручить все эти нехитрые операции, вместе с созданием нужных папок и файлов, mason'у.
+Решение
+Стоит отметить, что на brickhub уже сейчас есть довольно много шаблонов разной степени проработанности, в том числе шаблоны для создания новой функциональности, но с учетом набора технологий, специфичных проектных деталей и желания более тонкой настройки, было решено создать свой. Как раз этот процесс вместе со всеми встретившимися препятствиями я и постараюсь описать далее.
+Общая информация о mason'е
+При создании шаблона последовательность действий и базовые возможности выглядят так:
+Запуск команды mason new brick_name для инициализации необходимых файлов.
+Задание переменных в созданном файле brick.yaml с обязательным указанием имени и типа. Прямо сейчас мы можем создать переменную для хранения названия функциональности. Она наверняка пригодится.
+vars:
+  feature_name:
+    type: string
+    description: Feature name
+    default: feature
+    prompt: What is your feature?
+Создание шаблона. Задание нужной структуры папок происходит естественным образом внутри папки __brick__. В любом месте, как в содержимом файлов, так и в названиях, можно использовать mustache для подстановки значений переменных. Для начала создадим папку с названием функциональности, куда будут складываться все остальные файлы.
+Шаблонная папка.
+Фигурными скобками здесь обозначено обращение к переменной – ее значение будет подставлено в качестве названия файла при генерации. Вызов snakeCase в данном случае – использование встроенных в mason lambda-функций, которые предоставляют возможность изменять строковые значения в соответствии с различными типами нейминга, чем мы еще не раз воспользуемся. Их синтаксис упрощен по сравнению с lambda-функциями в mustache, но при желании можно прибегнуть к  классическому варианту.
+{{#snakeCase}}{{feature_name}}{{/snakeCase}}
+Слой представления
+Основная задача здесь – сгенерировать виджет страницы с подходящим наименованием и возможностью выбрать тип самого виджета – stateless или stateful. Это несколько усложняется тем, что riverpod имеет свою систему классов для виджетов, и было бы неплохо выбирать еще и из них.
+В итоге добавляем еще две переменные в шаблон.
+stateful:
+    type: boolean
+    description: Whether the page widget is stateful or stateless. True if stateful, false otherwise.
+    default: false
+    prompt: Is page widget stateful or stateless? True if stateful, false otherwise.
+
+consumer:
+    type: boolean
+    description: Whether the page widget use providers.
+    default: false
+    prompt: Is widget using providers?
+Однако stateless и stateful виджеты разнятся по структуре, что делает применение условий прямо внутри них довольно неудобным. Здесь можно воспользоваться механизмом partial'ов: создать отдельные файлы для обоих типов виджетов, после чего “импортировать” нужный в зависимости от значений переменных. К сожалению, в данный момент mason позволяет использовать только те файлы partial'ов, которые находятся в корне шаблона, что хоть и не мешает их использованию, но не дает распределить их поближе к зоне ответственности.
+По правилам mustache, partial помечается знаком “~” перед названием.
+Созданный partial для stateless виджета
+Файл, в котором должен располагаться код виджета
+Содержимое же файла-шаблона при этом крайне простое: одна проверка переменной stateful, чтобы определить, содержимое какого partial'а должно быть подставлено. Если stateful истинно, то подставится то, что заключено в тег {{#stateful}}...{{/stateful}}. Для обратного условия использован тег {{^stateful}}...{{/stateful}}
+{{#stateful}}
+{{> stateful_page }}
+{{/stateful}}
+{{^stateful}}
+{{> stateless_page }}
+{{/stateful}}
+Внутри partial'a расположен код виджета с проверкой переменной consumer для изменения класса виджета и метода build в случае, если предполагается обращаться к провайдерам.
+class {{feature_name.pascalCase()}}Page extends {{#consumer}}Consumer{{/consumer}}{{^consumer}}Stateless{{/consumer}}Widget {
+    const {{feature_name.pascalCase()}}Page({
+    super.key,
+
+  });
+
+  @override
+  Widget build(BuildContext context{{#consumer}}, WidgetRef ref{{/consumer}}) {
+    return Scaffold(
+        body: SafeArea(
+          child: SizedBox(),
+        ),
+    );
+  }
+}
+Слой бизнес-логики
+При создании шаблона для state notifier'а использовались все те же приемы: лямбда-функции для приведения текста внутри feature_name в подходящий вид, условия, добавляющие в класс слушатель потока данных из репозитория (который еще впереди), подстановка нужного типа данных, для чего снова использованы partials.
+final {{feature_name.pascalCase()}}NotifierProvider = StateNotifierProvider.autoDispose<{{feature_name.pascalCase()}}Notifier, {{feature_name.pascalCase()}}>(
+  (ref) {
+    return {{feature_name.pascalCase()}}Notifier(
+      repository: ref.read({{feature_name.camelCase()}}RepositoryProvider),
+    );
+  },
+);
+
+class {{feature_name.pascalCase()}}Notifier extends StateNotifier<{{> entity_for_repo_response }}> {
+  {{feature_name.pascalCase()}}Notifier({
+    required {{feature_name.pascalCase()}}Repository repository,
+  })  : _repository = repository, super(const {{feature_name.pascalCase()}}()){
+    {{#with_repository_stream}}
+    _subscription = _repository.{{feature_name.camelCase()}}Stream.listen((event) {
+      event.when(
+        left: (e) => null,
+        right: (data) {
+
+        },
+      );
+    });
+    {{/with_repository_stream}}
+  }
+
+  final {{feature_name.pascalCase()}}Repository _repository;
+
+  {{#with_repository_stream}}
+  late final StreamSubscription _subscription;
+
+  @override
+  void dispose() {
+    _subscription.cancel();
+    super.dispose();
+  }
+  {{/with_repository_stream}}
+}
+Также на этом слое располагается интерфейс репозитория – небольшой шаблон, определяющий метод для получения данных и поток, если это необходимо.
+abstract class {{feature_name.pascalCase()}}Repository {
+  {{#with_repository_stream}}abstract final Stream<Either<DataError, {{> entity_for_repo_response }}>> {{feature_name.camelCase()}}Stream;{{/with_repository_stream}}
+  Future<Either<DataError, {{> entity_for_repo_response }}>> get{{feature_name.pascalCase()}}();
+}
+Уже упомянутый partial entity_for_repo_response подставляет в качестве возвращаемого объекта либо единичную сущность, либо их список, избегая нагромождения условий в шаблонном файле.
+{{#single_entity_in_response}}List<{{feature_name.pascalCase()}}>{{/single_entity_in_response}}{{^single_entity_in_response}}{{feature_name.pascalCase()}}{{/single_entity_in_response}}
+На данном слое также располагается шаблон класса сущности без интересных деталей – пустой класс с именем, соответствующим названию функциональности.
+class {{feature_name.pascalCase()}} {
+  const {{feature_name.pascalCase()}}();
+}
+Слой данных
+Шаблон реализации репозитория достаточно прямолинеен – mason только проверяет пожелания пользователя насчет того, какие источники данных должны быть доступны, и с учетом переменных with_service и with_cache добавляет в класс соответствующие зависимости.
+final {{feature_name.camelCase()}}RepositoryProvider = Provider<{{feature_name.pascalCase()}}Repository>(
+  (ref) {
+    return {{feature_name.pascalCase()}}RepositoryImpl(
+      errorBus: ref.read(errorBusProvider),
+      {{#with_service}}service: {{feature_name.pascalCase()}}ServiceImpl.create(
+        client: ref.read(chopperClientProvider),
+      ),{{/with_service}}
+      {{#with_cache}}cache: ref.read({{feature_name.camelCase()}}CacheProvider),{{/with_cache}}
+    );
+  },
+);
+
+class {{feature_name.pascalCase()}}RepositoryImpl extends DataRepository implements {{feature_name.pascalCase()}}Repository {
+  {{feature_name.pascalCase()}}RepositoryImpl({
+    required super.errorBus,
+    {{#with_service}}required this.service,{{/with_service}}
+    {{#with_cache}}required this.cache,{{/with_cache}}
+  });
+
+  {{#with_service}}final {{feature_name.pascalCase()}}Service service;{{/with_service}}
+  {{#with_cache}}final {{feature_name.pascalCase()}}Cache cache;{{/with_cache}}
+
+  {{#with_repository_stream}}
+  @override
+  late final {{feature_name.camelCase()}}Stream = _{{feature_name.camelCase()}}Stream.stream;
+  final _{{feature_name.camelCase()}}Stream =
+      BehaviorSubject<Either<DataError, {{> entity_for_repo_response }}>>();
+  {{/with_repository_stream}}
+
+  @override
+  Future<Either<DataError, {{> entity_for_repo_response }}>> get{{feature_name.pascalCase()}}() async {
+    throw UnimplementedError();
+  }
+
+}
+Сделать для каждого источника данных опциональные файлы тоже возможно – для этого необходимо все имя генерируемого файла поместить внутрь условного тега.
+{{#with_cache}}{{feature_name.snakeCase()}}_cache.dart{{/with_cache}}
+Выглядеть созданный шаблон будет довольно странно, потому что система воспримет слэш в закрывающем теге как переход внутрь директории, но при генерации все будет работать так, как предполагается.
+Разделенный файл
+С тегом with_service выйдет та же самая ситуация. При генерации маппингов и DTO-классов ничего нового использовано не было, поэтому их описание опустим.
+Скрипты
+Как уже было упомянуто, mason при сборке может запускать заданные скрипты, называемые hooks. Для них будет предоставлен весь контекст генератора: заданные пользователем переменные, которые можно как читать, так и изменять, и логгер для вывода информации о процессе генерации.
+Мы добавим простой скрипт, который выполняется после завершения генерации, сообщает об успешном результате и запускает build_runner для создания файлов, генерируемых Hive'ом, Chopper'ом и библиотекой JsonSerializable. Сам скрипт должен содержать метод run, принимающий HookContext в качестве аргумента.
+import 'dart:io';
+
+import 'package:mason/mason.dart';
+
+void run(HookContext context) {
+  context.logger.info('${context.vars['feature_name']} created at');
+  context.logger.info('${Directory.current.path}');
+
+  Process.start(
+    'flutter',
+    ['pub', 'run', 'build_runner', 'build', '--delete-conflicting-outputs'],
+  ).then((process) => process.stdout.pipe(stdout));
+}
+Запуск
+Теперь, когда все шаблоны написаны, а скрипты подготовлены, пора воспользоваться результатами. Самый удобный вариант – сложить кирпичики в отдельный репозиторий и в проекте, в файле bricks.yaml, указать на них ссылки, поручая работу по скачиванию mason’у. К сожалению, такой подход крайне системозависим. Дело в том, что названия файлов и директорий в шаблоне получаются довольно длинными из-за активного использования тегов, из-за чего, вследствие системных ограничений ОС Windows на максимальную длину пути, mason просто не может использовать скачанные с гита файлы. Эта проблема уже отражена в одной из issue в репозитории mason, но на момент написания статьи не исправлена.
+Однако можно указать mason’у на загруженный локально шаблон, и, сделав его глобально доступным, использовать в любом необходимом проекте.
+Для запуска, учитывая количество доступных переменных, удобно сделать конфигурационный файл JSON и использовать его при сборке, не тратя время на ответы о нужных значениях в консоли. После этого весь процесс создания шаблонных файлов уменьшается до одной команды.
+mason make feature -c config.json -o ./path/to/directory
+Выводы
+Mason – это удивительно простой инструмент с большими возможностями по автоматизации создания повторяемого кода. Овладение им не требует серьезных временных затрат (по сравнению с постоянной необходимостью что-то копировать-вставлять уж точно), что позволяет оперативно встроить его в рабочий процесс. Это все еще молодая разработка, в которой и баги находятся, и простора для новых фич предостаточно. Например, сильно бы не помешала функциональность для точечной модификации файлов вместо их полной перезаписи. Так можно было бы реализовать дополнение файлов путей, доступных в приложении и много чего еще. 
+Но несмотря на все это, его удобно использовать как для генерации небольших стандартных файлов, требующихся какой-нибудь библиотеке, так и для создания и распространения кирпичного замка из собственных best practices.
+Mason на pub.dev
+Репозиторий с разработанным шаблоном Привет, меня зовут Александр, и я Flutter-разработчик в агентстве InstaDev. В процессе работы постепенно пришло осознание того, как много времени приходится тратить на написание шаблонного кода. Вооружившись желанием оптимизировать процесс, обнаружил решение: актуальный и развиваемый пакет Mason. Что он умеет, как с ним подружиться, и каков был путь от hello world до гибкого и настраиваемого генератора – рассказываю в этой статье.   Немного вводных Mason – это генератор шаблонов с открытым исходным кодом, который можно применить для любого языка программирования. Он работает с использованием шаблонизатора mustache, чей простой синтаксис позволяет гибко настраивать генерацию с учетом различных условий и переменных, задаваемых пользователем. Mason также предоставляет консольный интерфейс для управления созданными шаблонами (здесь они называются "bricks" – кирпичиками) и экосистему brickhub, предназначенную для поиска уже реализованных шаблонов и публикации собственных разработок. Среди прочих полезных возможностей mason – поддержка выполнения скриптов до и после генерации (на данный момент только на языке Dart), импортирование кирпичиков в проект напрямую из git-репозитория, сборка шаблонов в один пакет для их дальнейшего использования программными методами и реализации, например, своего собственного консольного интерфейса для шаблонов. Проблематика К сожалению, шаблонный код – везде. Он начинает преследовать бедного программиста с момента инициализации проекта (который, конечно же, создается по шаблону), и любая новая функциональность требует своей подгонки под существующую структуру и архитектурные решения. Часть работы возьмут на себя библиотеки-кодогенераторы, что-то можно поручить IDE, но все еще остается множество утомительных и скучных Ctrl+C-Ctrl+V моментов. Создание папочной структуры, файлов, корректные наименования, инициализация необходимых библиотек: все это занимает время, которое можно потратить на более требовательные и творческие задачи. Здесь-то и пришла идея озаботиться созданием запаса кирпичиков на все случаи жизни. Ситуация В проекте мы придерживаемся Clean Architecture, используем Riverpod для управления состояниями, Hive для локального хранения данных и Chopper для запросов к серверу. Примерно так выглядит структура средненькой фичи: Фича. При раскрытии каждой папки, все это не помещается в экран  Фича. При раскрытии каждой папки, все это не помещается в экран Солидная часть кода при этом неминуемо повторяется: создание виджета под страницу, инициализирующий код для объектов состояния, интерфейсы со стандартными get и set методами и прочее, и прочее. Так как подобный стек и архитектура используется сразу в нескольких активно разрабатываемых проектах, было решено поручить все эти нехитрые операции, вместе с созданием нужных папок и файлов, mason'у. Решение Стоит отметить, что на brickhub уже сейчас есть довольно много шаблонов разной степени проработанности, в том числе шаблоны для создания новой функциональности, но с учетом набора технологий, специфичных проектных деталей и желания более тонкой настройки, было решено создать свой. Как раз этот процесс вместе со всеми встретившимися препятствиями я и постараюсь описать далее. Общая информация о mason'е При создании шаблона последовательность действий и базовые возможности выглядят так: Запуск команды mason new brick_name для инициализации необходимых файлов.
+Задание переменных в созданном файле brick.yaml с обязательным указанием имени и типа. Прямо сейчас мы можем создать переменную для хранения названия функциональности. Она наверняка пригодится. Запуск команды mason new brick_name для инициализации необходимых файлов. Запуск команды mason new brick_name для инициализации необходимых файлов. mason new brick_name Задание переменных в созданном файле brick.yaml с обязательным указанием имени и типа. Прямо сейчас мы можем создать переменную для хранения названия функциональности. Она наверняка пригодится. Задание переменных в созданном файле brick.yaml с обязательным указанием имени и типа. Прямо сейчас мы можем создать переменную для хранения названия функциональности. Она наверняка пригодится. brick.yaml vars:
+  feature_name:
+    type: string
+    description: Feature name
+    default: feature
+    prompt: What is your feature? vars:
+  feature_name:
+    type: string
+    description: Feature name
+    default: feature
+    prompt: What is your feature? Создание шаблона. Задание нужной структуры папок происходит естественным образом внутри папки __brick__. В любом месте, как в содержимом файлов, так и в названиях, можно использовать mustache для подстановки значений переменных. Для начала создадим папку с названием функциональности, куда будут складываться все остальные файлы.
+Шаблонная папка. Создание шаблона. Задание нужной структуры папок происходит естественным образом внутри папки __brick__. В любом месте, как в содержимом файлов, так и в названиях, можно использовать mustache для подстановки значений переменных. Для начала создадим папку с названием функциональности, куда будут складываться все остальные файлы.
+Шаблонная папка. Создание шаблона. Задание нужной структуры папок происходит естественным образом внутри папки __brick__. В любом месте, как в содержимом файлов, так и в названиях, можно использовать mustache для подстановки значений переменных. Для начала создадим папку с названием функциональности, куда будут складываться все остальные файлы. __brick__ Шаблонная папка.  Шаблонная папка. Фигурными скобками здесь обозначено обращение к переменной – ее значение будет подставлено в качестве названия файла при генерации. Вызов snakeCase в данном случае – использование встроенных в mason lambda-функций, которые предоставляют возможность изменять строковые значения в соответствии с различными типами нейминга, чем мы еще не раз воспользуемся. Их синтаксис упрощен по сравнению с lambda-функциями в mustache, но при желании можно прибегнуть к  классическому варианту. {{#snakeCase}}{{feature_name}}{{/snakeCase}} {{#snakeCase}}{{feature_name}}{{/snakeCase}} Слой представления Основная задача здесь – сгенерировать виджет страницы с подходящим наименованием и возможностью выбрать тип самого виджета – stateless или stateful. Это несколько усложняется тем, что riverpod имеет свою систему классов для виджетов, и было бы неплохо выбирать еще и из них. В итоге добавляем еще две переменные в шаблон. stateful:
+    type: boolean
+    description: Whether the page widget is stateful or stateless. True if stateful, false otherwise.
+    default: false
+    prompt: Is page widget stateful or stateless? True if stateful, false otherwise.
+
+consumer:
+    type: boolean
+    description: Whether the page widget use providers.
+    default: false
+    prompt: Is widget using providers? stateful:
+    type: boolean
+    description: Whether the page widget is stateful or stateless. True if stateful, false otherwise.
+    default: false
+    prompt: Is page widget stateful or stateless? True if stateful, false otherwise.
+
+consumer:
+    type: boolean
+    description: Whether the page widget use providers.
+    default: false
+    prompt: Is widget using providers? Однако stateless и stateful виджеты разнятся по структуре, что делает применение условий прямо внутри них довольно неудобным. Здесь можно воспользоваться механизмом partial'ов: создать отдельные файлы для обоих типов виджетов, после чего “импортировать” нужный в зависимости от значений переменных. К сожалению, в данный момент mason позволяет использовать только те файлы partial'ов, которые находятся в корне шаблона, что хоть и не мешает их использованию, но не дает распределить их поближе к зоне ответственности. По правилам mustache, partial помечается знаком “~” перед названием. Созданный partial для stateless виджета  Созданный partial для stateless виджета Файл, в котором должен располагаться код виджета  Файл, в котором должен располагаться код виджета Содержимое же файла-шаблона при этом крайне простое: одна проверка переменной stateful, чтобы определить, содержимое какого partial'а должно быть подставлено. Если stateful истинно, то подставится то, что заключено в тег {{#stateful}}...{{/stateful}}. Для обратного условия использован тег {{^stateful}}...{{/stateful}} stateful stateful {{#stateful}}...{{/stateful}} {{^stateful}}...{{/stateful}} {{#stateful}}
+{{> stateful_page }}
+{{/stateful}}
+{{^stateful}}
+{{> stateless_page }}
+{{/stateful}} {{#stateful}}
+{{> stateful_page }}
+{{/stateful}}
+{{^stateful}}
+{{> stateless_page }}
+{{/stateful}} Внутри partial'a расположен код виджета с проверкой переменной consumer для изменения класса виджета и метода build в случае, если предполагается обращаться к провайдерам. class {{feature_name.pascalCase()}}Page extends {{#consumer}}Consumer{{/consumer}}{{^consumer}}Stateless{{/consumer}}Widget {
+    const {{feature_name.pascalCase()}}Page({
+    super.key,
+
+  });
+
+  @override
+  Widget build(BuildContext context{{#consumer}}, WidgetRef ref{{/consumer}}) {
+    return Scaffold(
+        body: SafeArea(
+          child: SizedBox(),
+        ),
+    );
+  }
+} class {{feature_name.pascalCase()}}Page extends {{#consumer}}Consumer{{/consumer}}{{^consumer}}Stateless{{/consumer}}Widget {
+    const {{feature_name.pascalCase()}}Page({
+    super.key,
+
+  });
+
+  @override
+  Widget build(BuildContext context{{#consumer}}, WidgetRef ref{{/consumer}}) {
+    return Scaffold(
+        body: SafeArea(
+          child: SizedBox(),
+        ),
+    );
+  }
+} Слой бизнес-логики При создании шаблона для state notifier'а использовались все те же приемы: лямбда-функции для приведения текста внутри feature_name в подходящий вид, условия, добавляющие в класс слушатель потока данных из репозитория (который еще впереди), подстановка нужного типа данных, для чего снова использованы partials. feature_name final {{feature_name.pascalCase()}}NotifierProvider = StateNotifierProvider.autoDispose<{{feature_name.pascalCase()}}Notifier, {{feature_name.pascalCase()}}>(
+  (ref) {
+    return {{feature_name.pascalCase()}}Notifier(
+      repository: ref.read({{feature_name.camelCase()}}RepositoryProvider),
+    );
+  },
+);
+
+class {{feature_name.pascalCase()}}Notifier extends StateNotifier<{{> entity_for_repo_response }}> {
+  {{feature_name.pascalCase()}}Notifier({
+    required {{feature_name.pascalCase()}}Repository repository,
+  })  : _repository = repository, super(const {{feature_name.pascalCase()}}()){
+    {{#with_repository_stream}}
+    _subscription = _repository.{{feature_name.camelCase()}}Stream.listen((event) {
+      event.when(
+        left: (e) => null,
+        right: (data) {
+
+        },
+      );
+    });
+    {{/with_repository_stream}}
+  }
+
+  final {{feature_name.pascalCase()}}Repository _repository;
+
+  {{#with_repository_stream}}
+  late final StreamSubscription _subscription;
+
+  @override
+  void dispose() {
+    _subscription.cancel();
+    super.dispose();
+  }
+  {{/with_repository_stream}}
+} final {{feature_name.pascalCase()}}NotifierProvider = StateNotifierProvider.autoDispose<{{feature_name.pascalCase()}}Notifier, {{feature_name.pascalCase()}}>(
+  (ref) {
+    return {{feature_name.pascalCase()}}Notifier(
+      repository: ref.read({{feature_name.camelCase()}}RepositoryProvider),
+    );
+  },
+);
+
+class {{feature_name.pascalCase()}}Notifier extends StateNotifier<{{> entity_for_repo_response }}> {
+  {{feature_name.pascalCase()}}Notifier({
+    required {{feature_name.pascalCase()}}Repository repository,
+  })  : _repository = repository, super(const {{feature_name.pascalCase()}}()){
+    {{#with_repository_stream}}
+    _subscription = _repository.{{feature_name.camelCase()}}Stream.listen((event) {
+      event.when(
+        left: (e) => null,
+        right: (data) {
+
+        },
+      );
+    });
+    {{/with_repository_stream}}
+  }
+
+  final {{feature_name.pascalCase()}}Repository _repository;
+
+  {{#with_repository_stream}}
+  late final StreamSubscription _subscription;
+
+  @override
+  void dispose() {
+    _subscription.cancel();
+    super.dispose();
+  }
+  {{/with_repository_stream}}
+} Также на этом слое располагается интерфейс репозитория – небольшой шаблон, определяющий метод для получения данных и поток, если это необходимо. abstract class {{feature_name.pascalCase()}}Repository {
+  {{#with_repository_stream}}abstract final Stream<Either<DataError, {{> entity_for_repo_response }}>> {{feature_name.camelCase()}}Stream;{{/with_repository_stream}}
+  Future<Either<DataError, {{> entity_for_repo_response }}>> get{{feature_name.pascalCase()}}();
+} abstract class {{feature_name.pascalCase()}}Repository {
+  {{#with_repository_stream}}abstract final Stream<Either<DataError, {{> entity_for_repo_response }}>> {{feature_name.camelCase()}}Stream;{{/with_repository_stream}}
+  Future<Either<DataError, {{> entity_for_repo_response }}>> get{{feature_name.pascalCase()}}();
+} Уже упомянутый partial entity_for_repo_response подставляет в качестве возвращаемого объекта либо единичную сущность, либо их список, избегая нагромождения условий в шаблонном файле. entity_for_repo_response {{#single_entity_in_response}}List<{{feature_name.pascalCase()}}>{{/single_entity_in_response}}{{^single_entity_in_response}}{{feature_name.pascalCase()}}{{/single_entity_in_response}} {{#single_entity_in_response}}List<{{feature_name.pascalCase()}}>{{/single_entity_in_response}}{{^single_entity_in_response}}{{feature_name.pascalCase()}}{{/single_entity_in_response}} На данном слое также располагается шаблон класса сущности без интересных деталей – пустой класс с именем, соответствующим названию функциональности. class {{feature_name.pascalCase()}} {
+  const {{feature_name.pascalCase()}}();
+} class {{feature_name.pascalCase()}} {
+  const {{feature_name.pascalCase()}}();
+} Слой данных Шаблон реализации репозитория достаточно прямолинеен – mason только проверяет пожелания пользователя насчет того, какие источники данных должны быть доступны, и с учетом переменных with_service и with_cache добавляет в класс соответствующие зависимости. with_service with_cache final {{feature_name.camelCase()}}RepositoryProvider = Provider<{{feature_name.pascalCase()}}Repository>(
+  (ref) {
+    return {{feature_name.pascalCase()}}RepositoryImpl(
+      errorBus: ref.read(errorBusProvider),
+      {{#with_service}}service: {{feature_name.pascalCase()}}ServiceImpl.create(
+        client: ref.read(chopperClientProvider),
+      ),{{/with_service}}
+      {{#with_cache}}cache: ref.read({{feature_name.camelCase()}}CacheProvider),{{/with_cache}}
+    );
+  },
+);
+
+class {{feature_name.pascalCase()}}RepositoryImpl extends DataRepository implements {{feature_name.pascalCase()}}Repository {
+  {{feature_name.pascalCase()}}RepositoryImpl({
+    required super.errorBus,
+    {{#with_service}}required this.service,{{/with_service}}
+    {{#with_cache}}required this.cache,{{/with_cache}}
+  });
+
+  {{#with_service}}final {{feature_name.pascalCase()}}Service service;{{/with_service}}
+  {{#with_cache}}final {{feature_name.pascalCase()}}Cache cache;{{/with_cache}}
+
+  {{#with_repository_stream}}
+  @override
+  late final {{feature_name.camelCase()}}Stream = _{{feature_name.camelCase()}}Stream.stream;
+  final _{{feature_name.camelCase()}}Stream =
+      BehaviorSubject<Either<DataError, {{> entity_for_repo_response }}>>();
+  {{/with_repository_stream}}
+
+  @override
+  Future<Either<DataError, {{> entity_for_repo_response }}>> get{{feature_name.pascalCase()}}() async {
+    throw UnimplementedError();
+  }
+
+} final {{feature_name.camelCase()}}RepositoryProvider = Provider<{{feature_name.pascalCase()}}Repository>(
+  (ref) {
+    return {{feature_name.pascalCase()}}RepositoryImpl(
+      errorBus: ref.read(errorBusProvider),
+      {{#with_service}}service: {{feature_name.pascalCase()}}ServiceImpl.create(
+        client: ref.read(chopperClientProvider),
+      ),{{/with_service}}
+      {{#with_cache}}cache: ref.read({{feature_name.camelCase()}}CacheProvider),{{/with_cache}}
+    );
+  },
+);
+
+class {{feature_name.pascalCase()}}RepositoryImpl extends DataRepository implements {{feature_name.pascalCase()}}Repository {
+  {{feature_name.pascalCase()}}RepositoryImpl({
+    required super.errorBus,
+    {{#with_service}}required this.service,{{/with_service}}
+    {{#with_cache}}required this.cache,{{/with_cache}}
+  });
+
+  {{#with_service}}final {{feature_name.pascalCase()}}Service service;{{/with_service}}
+  {{#with_cache}}final {{feature_name.pascalCase()}}Cache cache;{{/with_cache}}
+
+  {{#with_repository_stream}}
+  @override
+  late final {{feature_name.camelCase()}}Stream = _{{feature_name.camelCase()}}Stream.stream;
+  final _{{feature_name.camelCase()}}Stream =
+      BehaviorSubject<Either<DataError, {{> entity_for_repo_response }}>>();
+  {{/with_repository_stream}}
+
+  @override
+  Future<Either<DataError, {{> entity_for_repo_response }}>> get{{feature_name.pascalCase()}}() async {
+    throw UnimplementedError();
+  }
+
+} Сделать для каждого источника данных опциональные файлы тоже возможно – для этого необходимо все имя генерируемого файла поместить внутрь условного тега. {{#with_cache}}{{feature_name.snakeCase()}}_cache.dart{{/with_cache}} {{#with_cache}}{{feature_name.snakeCase()}}_cache.dart{{/with_cache}} Выглядеть созданный шаблон будет довольно странно, потому что система воспримет слэш в закрывающем теге как переход внутрь директории, но при генерации все будет работать так, как предполагается. Разделенный файл  Разделенный файл С тегом with_service выйдет та же самая ситуация. При генерации маппингов и DTO-классов ничего нового использовано не было, поэтому их описание опустим. Скрипты Как уже было упомянуто, mason при сборке может запускать заданные скрипты, называемые hooks. Для них будет предоставлен весь контекст генератора: заданные пользователем переменные, которые можно как читать, так и изменять, и логгер для вывода информации о процессе генерации. Мы добавим простой скрипт, который выполняется после завершения генерации, сообщает об успешном результате и запускает build_runner для создания файлов, генерируемых Hive'ом, Chopper'ом и библиотекой JsonSerializable. Сам скрипт должен содержать метод run, принимающий HookContext в качестве аргумента. run HookContext import 'dart:io';
+
+import 'package:mason/mason.dart';
+
+void run(HookContext context) {
+  context.logger.info('${context.vars['feature_name']} created at');
+  context.logger.info('${Directory.current.path}');
+
+  Process.start(
+    'flutter',
+    ['pub', 'run', 'build_runner', 'build', '--delete-conflicting-outputs'],
+  ).then((process) => process.stdout.pipe(stdout));
+} import 'dart:io';
+
+import 'package:mason/mason.dart';
+
+void run(HookContext context) {
+  context.logger.info('${context.vars['feature_name']} created at');
+  context.logger.info('${Directory.current.path}');
+
+  Process.start(
+    'flutter',
+    ['pub', 'run', 'build_runner', 'build', '--delete-conflicting-outputs'],
+  ).then((process) => process.stdout.pipe(stdout));
+} Запуск Теперь, когда все шаблоны написаны, а скрипты подготовлены, пора воспользоваться результатами. Самый удобный вариант – сложить кирпичики в отдельный репозиторий и в проекте, в файле bricks.yaml, указать на них ссылки, поручая работу по скачиванию mason’у. К сожалению, такой подход крайне системозависим. Дело в том, что названия файлов и директорий в шаблоне получаются довольно длинными из-за активного использования тегов, из-за чего, вследствие системных ограничений ОС Windows на максимальную длину пути, mason просто не может использовать скачанные с гита файлы. Эта проблема уже отражена в одной из issue в репозитории mason, но на момент написания статьи не исправлена. Однако можно указать mason’у на загруженный локально шаблон, и, сделав его глобально доступным, использовать в любом необходимом проекте. Для запуска, учитывая количество доступных переменных, удобно сделать конфигурационный файл JSON и использовать его при сборке, не тратя время на ответы о нужных значениях в консоли. После этого весь процесс создания шаблонных файлов уменьшается до одной команды. mason make feature -c config.json -o ./path/to/directory mason make feature -c config.json -o ./path/to/directory Выводы Mason – это удивительно простой инструмент с большими возможностями по автоматизации создания повторяемого кода. Овладение им не требует серьезных временных затрат (по сравнению с постоянной необходимостью что-то копировать-вставлять уж точно), что позволяет оперативно встроить его в рабочий процесс. Это все еще молодая разработка, в которой и баги находятся, и простора для новых фич предостаточно. Например, сильно бы не помешала функциональность для точечной модификации файлов вместо их полной перезаписи. Так можно было бы реализовать дополнение файлов путей, доступных в приложении и много чего еще.  Но несмотря на все это, его удобно использовать как для генерации небольших стандартных файлов, требующихся какой-нибудь библиотеке, так и для создания и распространения кирпичного замка из собственных best practices. Mason на pub.dev
+Репозиторий с разработанным шаблоном Mason на pub.dev  Репозиторий с разработанным шаблоном ]]></text>
+</doc>

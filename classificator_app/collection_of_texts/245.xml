@@ -1,0 +1,592 @@
+<?xml version="1.0" ?>
+<doc>
+	<label auto="true" type="str" verify="true"><![CDATA[Develop]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Plus3s]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-12-10, 15:15]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/post/704648/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Футбольно-аналитическая программа plus3s: прогнозирование результата футбольного матча и просто игра]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Python]]></item>
+		<item type="str"><![CDATA[Машинное обучение]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[футбольная аналитика]]></item>
+		<item type="str"><![CDATA[футбольное приложение]]></item>
+		<item type="str"><![CDATA[футбольно-аналитическая программа]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[Программа и руководство пользователя
+Видеоурок
+Всем привет!
+В настоящее время разработано уже достаточно много разнообразных программ, позволяющих работать с футбольными данными, так что, с одной стороны, сложно быть особым инноватором в этой области, с другой, труднопрогнозируемость футбольных результатов и развитие как аналитики в целом, так и машинного обучения в частности, открывает перед разработчиком дверь к большому простору для исследований и экспериментов.
+Сразу скажу, что в данной статье не будет раскрыто и половины кода футбольно-аналитической программы, о которой пойдет речь, и это как раз оттого, что представленный инструмент является не похожим на большинство иных, о которых я говорил выше и для его разработки потребовались месяцы кропотливой работы, которая дала достаточно уникальный результат.
+Но в случае заинтересованности, конечно, вы всегда можете связаться со мной по адресу электронной почты parovoz49@mail.ru и задать интересующие вас вопросы, а может быть и предложить сотрудничество. Что бы то ни было, отзывы любого характера являются вдохновляющими :-)
+Итак, начнем!
+Для того, чтобы программа не была просто каким-то экселевским файликом, а имела интересный вид, чем-то напоминающим игру, при ее разработке использовался фреймворк kivy (https://kivy.org), работающий совместно с языком программирования python (https://www.python.org).
+Уроки основ python ЗДЕСЬ
+Для того, чтобы получить вот такой стартовый экран с мячом, который отправляется в ту часть монитора, куда пользователь пожелает (все для того же разнообразия, о котором говорилось выше), было необходимо написать несколько следующих строк кода.
+from kivy.config import Config
+
+# размер экрана
+Config.set('graphics', 'resizable', '0')
+Config.set('graphics', 'width', '900')
+Config.set('graphics', 'height', '600')
+
+from kivy.app import App
+from kivy.lang import Builder
+from kivy.uix.screenmanager import ScreenManager, Screen, NoTransition
+from kivy.core.window import Window
+from kivy.vector import Vector
+from kivy.clock import Clock
+from kivy.properties import NumericProperty, ObjectProperty
+
+# разметка экрана (холст с изображением фона, кнопки, надписи)
+Builder.load_string("""
+
+<ScreenStart>:
+    canvas:
+        Rectangle:
+            pos: self.pos
+            size: self.size
+            source: 'other/grass.png'
+
+    AnchorLayout:
+        GridLayout:
+            rows: 3
+            size_hint_x: None
+            size_hint_y: None
+            width: self.minimum_width
+            height: self.minimum_height
+
+            Button:
+                id: button_newseason
+                background_normal: 'other/new_season.png'
+                background_down: 'other/new_season.png'
+                size_hint: None, None
+                size: '188dp', '68dp'
+                on_press:
+                    root.manager.current = 'screen2'
+
+            Image:
+                id: ball
+                source: 'other/ball.png'
+                size_hint: None, None
+
+            Button:
+                id: button_exit
+                background_normal: 'other/exit.png'
+                background_down: 'other/exit.png'
+                size_hint: None, None
+                size: '188dp', '68dp'
+                on_press:
+                    root.manager.current = exit()
+
+    RelativeLayout:
+        size_hint: None, None
+        pos: 720, 0
+
+        Label:
+            text: 'plus3s / version 2.1 / 2022'
+            color: 0, 0, 0, 1
+            bold: True
+            pos: self.pos
+            size: self.size
+
+# все экраны между которыми переключается программа (в данном примере только один)
+<Manager>:
+    id: screen_manager
+    screen_start: screen_start
+
+##### СТАРТОВЫЙ ЭКРАН #####
+    ScreenStart:
+        id: screen_start
+        name: "screen1"
+        manager: screen_manager
+
+""")
+
+
+class Manager(ScreenManager):
+    pass
+
+
+class ScreenStart(Screen):
+    # создаем числовые переменные для координат мяча
+    ball_x = NumericProperty()
+    ball_y = NumericProperty()
+
+    def on_enter(self, *args):
+        # координаты мяча при загрузке экрана (в середине экрана)
+        self.ball_x = Window.width / 2
+        self.ball_y = Window.height / 2
+        self.event4 = Clock.schedule_interval(self.update, .01)
+
+    # координаты касания мышки в определенной области экрана
+    def on_touch_down(self, touch):
+        self.ball_x = touch.x
+        self.ball_y = touch.y
+        return super().on_touch_down(touch)
+
+    def update(self, dt, *args):
+        # движение мяча к координатам касания с постепенным замедлением
+        self.ids.ball.pos = Vector(
+            self.ids.ball.x + ((self.ball_x - self.ids.ball.x) - self.ids.ball.size[0] / 2) * 0.1,
+            self.ids.ball.y + ((self.ball_y - self.ids.ball.y) - self.ids.ball.size[1] / 2) * 0.1)
+
+
+class MainApp(App):
+    # переменная с картинкой мяча
+    icon = ObjectProperty()
+
+    def build(self):
+        self.icon = 'other/ball.png'
+        manager = Manager(transition=NoTransition())
+        return manager
+
+
+MainApp().run()
+Можете попробовать поэкспериментировать с заставкой или придумать что-нибудь свое. В конце концов это просто забавно.
+Удобной средой разработки для работы с kivy (да и вообще) я считаю PyCharm; к тому же в PyCharm не возникает трудностей с установкой библиотеки kivy.
+Через настройки можно установит и kivy и все остальное, что вам нужно
+Но, возможно, у вас есть свои предпочтения.
+Дальше я предлагаю немного отойти от текста, ведь как известно в словах правды нет (или это в ногах?..) и посмотреть на более приятную глазу графическую презентацию основных возможностей футбольно-аналитической программы plus3s.
+Кстати, раскрыть кое-какой секрет программы будет наверное все-таки справедливо по отношению к терпеливым читателям, поэтому ниже приведу код, который используется для анализа соответствия различных показателей команды ее результату.
+Проводится данный анализ, как вы могли видеть на картинках выше, при помощи полиномиальной регрессии по следующему принципу: в качестве выборки данных берется информация за несколько последних сезонов, далее определяется значение того или иного показателя отдельной команды на текущий момент времени и сравнивается с выборкой. Таким образом мы видим как соответствует тот или иной текущий компонент игры команды многолетним показателям всех команд лиги.
+При проведении анализа важно учесть пару важных моментов:
+данные за последние несколько лет должны иметь более-менее (желательно более) линейный вид зависимости от целевого признака (например, самая линейная зависимость в футбольных данных - между занимаемым местом и количеством очков команды: чем больше очков, тем выше место, все очевидно и без анализа)
+целевой признак должен иметь очень хорошую взаимосвязь с самым главным в футболе - местом команды в турнирной таблице (например, забитые и пропущенные мячи очень хорошо подходят на роль целевых признаков)
+Определить влияние на целевой признак всех остальных признаков очень просто, для этого нам достаточно построить тепловую карту зависимостей (пример см. ниже).
+Из приведенной тепловой карты видно, что наибольшую взаимосвязь с местом, занимаемым командой (place), имеет количество набираемых командой очков (scores) (что логично); так же сильно взаимосвязаны с целевым признаком забитые голы (goals), показатель xG и т.д.
+Целевым признаком не обязательно должно быть занимаемое командой место, на данную важную роль могут с успехом претендовать и другие важные показатели, такие как, например, забитые или пропущенные командой голы (хотя об этом я уже писал выше).
+Код для построения тепловой карты взаимосвязей признаков.
+import pandas as pd
+import seaborn as sb
+from matplotlib import pyplot as plt
+
+# данные (датафрейм) для анализа
+df = pd.read_csv('all_small_country.csv', sep=',')
+
+# если вы хотите удалить какие-либо неинформативные или нечисловые признаки
+df = df.drop(columns=['Country', 'Season'])
+
+# рисуем холст будущего изображения
+f, ax = plt.subplots(figsize=(18, 18), dpi = 200)
+plt.figure(figsize=(10, 68))
+# определяем целевой признак, в данном случае - забитые голы (Gls)
+# указываем иные визуальные настройки
+df.corr()[['Gls']].sort_values(by='Gls', ascending=False)
+heatmap = sb.heatmap(df.corr()[['Gls']].sort_values(by='Gls', ascending=False), vmin=-1, vmax=1, annot=True,
+                     cmap='rocket', linecolor='white', linewidths=0.7)
+ax.invert_yaxis()
+
+# сохраняем тепловую карту в формате png
+heatmap.figure.savefig('correlation.png', dpi=200)
+Теперь нарисуем регрессию (не забудьте, что для работы кода потребуются библиотеки, а также данные из предыдущей части).
+import numpy as np
+from sklearn.linear_model import LinearRegression
+from sklearn.preprocessing import PolynomialFeatures
+from sklearn.model_selection import train_test_split
+from sklearn import preprocessing
+from sklearn.metrics import mean_squared_error
+
+fig, ax = plt.subplots(figsize=(12, 8), dpi=200)
+plt.xlabel('Ast', fontsize=16)
+plt.ylabel('голы забитые (в среднем за матч)', fontsize=16)
+ax.set(yticks=[i for i in range(1, 17)])
+plt.grid(linestyle="--")
+Xg = np.array(df['Ast']) # значения признака
+yg = np.array(df['Gls']) # значение целевой переменной
+X_g = Xg.reshape(-1, 1)
+# рисуем точки
+plt.scatter(X_g, yg)
+# данные для предсказания
+X_Gpred = np.array([0.3, 0.35, 0.45, 0.5, 0.6, 0.65, 0.7, 0.75, 0.8, 0.9, 1.0, 1.2, 1.25, 1.35, 1.45, 1.55])
+
+# ПОЛИНОМИАЛЬНАЯ РЕГЕССИЯ
+# создаем выборку из наблюдений прошлых сезонов
+X_train, X_test, y_train, y_test = train_test_split(X_g, yg, test_size=0.5, random_state=1)
+pr = LinearRegression()
+quadratic = PolynomialFeatures(degree=5)
+# обучаем регрессию на данных из прошлых сезонов
+pr.fit(quadratic.fit_transform(X_train), y_train)
+# делаем предсказание для наших данных X_Gpred
+y_pr = pr.predict(quadratic.fit_transform(X_Gpred.reshape(-1, 1)))
+# рисуем предсказания на холсте
+plt.plot(X_Gpred, y_pr, color='red')
+# печатаем предсказания в виде текста
+print(f'полиномиальная регрессия \n {y_pr}')
+# сохраняем рисунок
+plt.savefig('Ast_22.png', dpi=300)
+
+# оценка качества модели
+y = np.array([0.27, 0.35, 0.45, 0.5, 0.6, 0.65, 0.7, 0.75, 0.8, 0.9, 0.95, 1.0, 1.2, 1.25, 1.35, 1.45])
+print('Среднеквадратическое отклонение для полиномиальной модели:', mean_squared_error(y, y_pr))
+В итоге мы получим с вами такой результат.
+Синие точки - наблюдения за прошедшие сезоны, красная линия - прогнозирование компьютера
+Красная линия лежит на наших данных для предсказания (X_Gpred). Модель, обучившись на данных за прошлые сезоны, предсказала какому количества голов (ось Y) соответствует то или иное количество ассистов (пасов, после которых были забиты голы) (ось X).
+Из рисунка видно, что 0.6 ассистов (в среднем за матч) соответствует одному забитому голу (тоже в среднем за матч). Если у команды 0.6 ассистов, но она забивает меньше, чем один гол за матч, то это значит, что она не дорабатывает по данному показателю ассистов.
+Если вы новичок в футбольной аналитике и у вас еще нет своих данных, скачать файл для своих первых экспериментов вы можете по ЭТОЙ ссылке.
+Ну и как я уже говорил в начале статьи, в наше время футбольная аналитика открывает дверь к большому простору для исследований и экспериментов, так что пробуете, делайте открытия и, самое главное, относитесь ко всему именно как к игре! Футбол это ведь и есть игра, и чрезмерная серьезность здесь не приветствуется ))
+Игра эта, кстати, еще и труднопрогнозируемый вид спорта, и нельзя разработать систему, которая давала бы нам околостопроцентный результат. Но любая игра создана и не для этого: она должна привлекать нас и интересовать своим процессом, а не только результатом. Понимаете?.. Иначе данная программа не была бы доведена до своего логического завершения.
+Я пришел к этому пониманию спустя месяцы кропотливой работы, разочарований и достижений.
+Удачи вам и побед, в чем бы они ни заключались! Программа и руководство пользователя
+Видеоурок Программа и руководство пользователя Программа и руководство пользователя Программа и руководство пользователя Видеоурок Видеоурок Видеоурок Всем привет! В настоящее время разработано уже достаточно много разнообразных программ, позволяющих работать с футбольными данными, так что, с одной стороны, сложно быть особым инноватором в этой области, с другой, труднопрогнозируемость футбольных результатов и развитие как аналитики в целом, так и машинного обучения в частности, открывает перед разработчиком дверь к большому простору для исследований и экспериментов. Сразу скажу, что в данной статье не будет раскрыто и половины кода футбольно-аналитической программы, о которой пойдет речь, и это как раз оттого, что представленный инструмент является не похожим на большинство иных, о которых я говорил выше и для его разработки потребовались месяцы кропотливой работы, которая дала достаточно уникальный результат. Но в случае заинтересованности, конечно, вы всегда можете связаться со мной по адресу электронной почты parovoz49@mail.ru и задать интересующие вас вопросы, а может быть и предложить сотрудничество. Что бы то ни было, отзывы любого характера являются вдохновляющими :-) parovoz49@mail.ru Итак, начнем! Для того, чтобы программа не была просто каким-то экселевским файликом, а имела интересный вид, чем-то напоминающим игру, при ее разработке использовался фреймворк kivy (https://kivy.org), работающий совместно с языком программирования python (https://www.python.org). https://kivy.org https://www.python.org Уроки основ python ЗДЕСЬ ЗДЕСЬ   Для того, чтобы получить вот такой стартовый экран с мячом, который отправляется в ту часть монитора, куда пользователь пожелает (все для того же разнообразия, о котором говорилось выше), было необходимо написать несколько следующих строк кода. from kivy.config import Config
+
+# размер экрана
+Config.set('graphics', 'resizable', '0')
+Config.set('graphics', 'width', '900')
+Config.set('graphics', 'height', '600')
+
+from kivy.app import App
+from kivy.lang import Builder
+from kivy.uix.screenmanager import ScreenManager, Screen, NoTransition
+from kivy.core.window import Window
+from kivy.vector import Vector
+from kivy.clock import Clock
+from kivy.properties import NumericProperty, ObjectProperty
+
+# разметка экрана (холст с изображением фона, кнопки, надписи)
+Builder.load_string("""
+
+<ScreenStart>:
+    canvas:
+        Rectangle:
+            pos: self.pos
+            size: self.size
+            source: 'other/grass.png'
+
+    AnchorLayout:
+        GridLayout:
+            rows: 3
+            size_hint_x: None
+            size_hint_y: None
+            width: self.minimum_width
+            height: self.minimum_height
+
+            Button:
+                id: button_newseason
+                background_normal: 'other/new_season.png'
+                background_down: 'other/new_season.png'
+                size_hint: None, None
+                size: '188dp', '68dp'
+                on_press:
+                    root.manager.current = 'screen2'
+
+            Image:
+                id: ball
+                source: 'other/ball.png'
+                size_hint: None, None
+
+            Button:
+                id: button_exit
+                background_normal: 'other/exit.png'
+                background_down: 'other/exit.png'
+                size_hint: None, None
+                size: '188dp', '68dp'
+                on_press:
+                    root.manager.current = exit()
+
+    RelativeLayout:
+        size_hint: None, None
+        pos: 720, 0
+
+        Label:
+            text: 'plus3s / version 2.1 / 2022'
+            color: 0, 0, 0, 1
+            bold: True
+            pos: self.pos
+            size: self.size
+
+# все экраны между которыми переключается программа (в данном примере только один)
+<Manager>:
+    id: screen_manager
+    screen_start: screen_start
+
+##### СТАРТОВЫЙ ЭКРАН #####
+    ScreenStart:
+        id: screen_start
+        name: "screen1"
+        manager: screen_manager
+
+""")
+
+
+class Manager(ScreenManager):
+    pass
+
+
+class ScreenStart(Screen):
+    # создаем числовые переменные для координат мяча
+    ball_x = NumericProperty()
+    ball_y = NumericProperty()
+
+    def on_enter(self, *args):
+        # координаты мяча при загрузке экрана (в середине экрана)
+        self.ball_x = Window.width / 2
+        self.ball_y = Window.height / 2
+        self.event4 = Clock.schedule_interval(self.update, .01)
+
+    # координаты касания мышки в определенной области экрана
+    def on_touch_down(self, touch):
+        self.ball_x = touch.x
+        self.ball_y = touch.y
+        return super().on_touch_down(touch)
+
+    def update(self, dt, *args):
+        # движение мяча к координатам касания с постепенным замедлением
+        self.ids.ball.pos = Vector(
+            self.ids.ball.x + ((self.ball_x - self.ids.ball.x) - self.ids.ball.size[0] / 2) * 0.1,
+            self.ids.ball.y + ((self.ball_y - self.ids.ball.y) - self.ids.ball.size[1] / 2) * 0.1)
+
+
+class MainApp(App):
+    # переменная с картинкой мяча
+    icon = ObjectProperty()
+
+    def build(self):
+        self.icon = 'other/ball.png'
+        manager = Manager(transition=NoTransition())
+        return manager
+
+
+MainApp().run() from kivy.config import Config
+
+# размер экрана
+Config.set('graphics', 'resizable', '0')
+Config.set('graphics', 'width', '900')
+Config.set('graphics', 'height', '600')
+
+from kivy.app import App
+from kivy.lang import Builder
+from kivy.uix.screenmanager import ScreenManager, Screen, NoTransition
+from kivy.core.window import Window
+from kivy.vector import Vector
+from kivy.clock import Clock
+from kivy.properties import NumericProperty, ObjectProperty
+
+# разметка экрана (холст с изображением фона, кнопки, надписи)
+Builder.load_string("""
+
+<ScreenStart>:
+    canvas:
+        Rectangle:
+            pos: self.pos
+            size: self.size
+            source: 'other/grass.png'
+
+    AnchorLayout:
+        GridLayout:
+            rows: 3
+            size_hint_x: None
+            size_hint_y: None
+            width: self.minimum_width
+            height: self.minimum_height
+
+            Button:
+                id: button_newseason
+                background_normal: 'other/new_season.png'
+                background_down: 'other/new_season.png'
+                size_hint: None, None
+                size: '188dp', '68dp'
+                on_press:
+                    root.manager.current = 'screen2'
+
+            Image:
+                id: ball
+                source: 'other/ball.png'
+                size_hint: None, None
+
+            Button:
+                id: button_exit
+                background_normal: 'other/exit.png'
+                background_down: 'other/exit.png'
+                size_hint: None, None
+                size: '188dp', '68dp'
+                on_press:
+                    root.manager.current = exit()
+
+    RelativeLayout:
+        size_hint: None, None
+        pos: 720, 0
+
+        Label:
+            text: 'plus3s / version 2.1 / 2022'
+            color: 0, 0, 0, 1
+            bold: True
+            pos: self.pos
+            size: self.size
+
+# все экраны между которыми переключается программа (в данном примере только один)
+<Manager>:
+    id: screen_manager
+    screen_start: screen_start
+
+##### СТАРТОВЫЙ ЭКРАН #####
+    ScreenStart:
+        id: screen_start
+        name: "screen1"
+        manager: screen_manager
+
+""")
+
+
+class Manager(ScreenManager):
+    pass
+
+
+class ScreenStart(Screen):
+    # создаем числовые переменные для координат мяча
+    ball_x = NumericProperty()
+    ball_y = NumericProperty()
+
+    def on_enter(self, *args):
+        # координаты мяча при загрузке экрана (в середине экрана)
+        self.ball_x = Window.width / 2
+        self.ball_y = Window.height / 2
+        self.event4 = Clock.schedule_interval(self.update, .01)
+
+    # координаты касания мышки в определенной области экрана
+    def on_touch_down(self, touch):
+        self.ball_x = touch.x
+        self.ball_y = touch.y
+        return super().on_touch_down(touch)
+
+    def update(self, dt, *args):
+        # движение мяча к координатам касания с постепенным замедлением
+        self.ids.ball.pos = Vector(
+            self.ids.ball.x + ((self.ball_x - self.ids.ball.x) - self.ids.ball.size[0] / 2) * 0.1,
+            self.ids.ball.y + ((self.ball_y - self.ids.ball.y) - self.ids.ball.size[1] / 2) * 0.1)
+
+
+class MainApp(App):
+    # переменная с картинкой мяча
+    icon = ObjectProperty()
+
+    def build(self):
+        self.icon = 'other/ball.png'
+        manager = Manager(transition=NoTransition())
+        return manager
+
+
+MainApp().run() Можете попробовать поэкспериментировать с заставкой или придумать что-нибудь свое. В конце концов это просто забавно. Удобной средой разработки для работы с kivy (да и вообще) я считаю PyCharm; к тому же в PyCharm не возникает трудностей с установкой библиотеки kivy. PyCharm  Через настройки можно установит и kivy и все остальное, что вам нужно Но, возможно, у вас есть свои предпочтения. Дальше я предлагаю немного отойти от текста, ведь как известно в словах правды нет (или это в ногах?..) и посмотреть на более приятную глазу графическую презентацию основных возможностей футбольно-аналитической программы plus3s.                             Кстати, раскрыть кое-какой секрет программы будет наверное все-таки справедливо по отношению к терпеливым читателям, поэтому ниже приведу код, который используется для анализа соответствия различных показателей команды ее результату. Проводится данный анализ, как вы могли видеть на картинках выше, при помощи полиномиальной регрессии по следующему принципу: в качестве выборки данных берется информация за несколько последних сезонов, далее определяется значение того или иного показателя отдельной команды на текущий момент времени и сравнивается с выборкой. Таким образом мы видим как соответствует тот или иной текущий компонент игры команды многолетним показателям всех команд лиги. При проведении анализа важно учесть пару важных моментов: данные за последние несколько лет должны иметь более-менее (желательно более) линейный вид зависимости от целевого признака (например, самая линейная зависимость в футбольных данных - между занимаемым местом и количеством очков команды: чем больше очков, тем выше место, все очевидно и без анализа)
+целевой признак должен иметь очень хорошую взаимосвязь с самым главным в футболе - местом команды в турнирной таблице (например, забитые и пропущенные мячи очень хорошо подходят на роль целевых признаков) данные за последние несколько лет должны иметь более-менее (желательно более) линейный вид зависимости от целевого признака (например, самая линейная зависимость в футбольных данных - между занимаемым местом и количеством очков команды: чем больше очков, тем выше место, все очевидно и без анализа) данные за последние несколько лет должны иметь более-менее (желательно более) линейный вид зависимости от целевого признака (например, самая линейная зависимость в футбольных данных - между занимаемым местом и количеством очков команды: чем больше очков, тем выше место, все очевидно и без анализа) целевой признак должен иметь очень хорошую взаимосвязь с самым главным в футболе - местом команды в турнирной таблице (например, забитые и пропущенные мячи очень хорошо подходят на роль целевых признаков) целевой признак должен иметь очень хорошую взаимосвязь с самым главным в футболе - местом команды в турнирной таблице (например, забитые и пропущенные мячи очень хорошо подходят на роль целевых признаков) Определить влияние на целевой признак всех остальных признаков очень просто, для этого нам достаточно построить тепловую карту зависимостей (пример см. ниже).    Из приведенной тепловой карты видно, что наибольшую взаимосвязь с местом, занимаемым командой (place), имеет количество набираемых командой очков (scores) (что логично); так же сильно взаимосвязаны с целевым признаком забитые голы (goals), показатель xG и т.д. Целевым признаком не обязательно должно быть занимаемое командой место, на данную важную роль могут с успехом претендовать и другие важные показатели, такие как, например, забитые или пропущенные командой голы (хотя об этом я уже писал выше). Код для построения тепловой карты взаимосвязей признаков. import pandas as pd
+import seaborn as sb
+from matplotlib import pyplot as plt
+
+# данные (датафрейм) для анализа
+df = pd.read_csv('all_small_country.csv', sep=',')
+
+# если вы хотите удалить какие-либо неинформативные или нечисловые признаки
+df = df.drop(columns=['Country', 'Season'])
+
+# рисуем холст будущего изображения
+f, ax = plt.subplots(figsize=(18, 18), dpi = 200)
+plt.figure(figsize=(10, 68))
+# определяем целевой признак, в данном случае - забитые голы (Gls)
+# указываем иные визуальные настройки
+df.corr()[['Gls']].sort_values(by='Gls', ascending=False)
+heatmap = sb.heatmap(df.corr()[['Gls']].sort_values(by='Gls', ascending=False), vmin=-1, vmax=1, annot=True,
+                     cmap='rocket', linecolor='white', linewidths=0.7)
+ax.invert_yaxis()
+
+# сохраняем тепловую карту в формате png
+heatmap.figure.savefig('correlation.png', dpi=200) import pandas as pd
+import seaborn as sb
+from matplotlib import pyplot as plt
+
+# данные (датафрейм) для анализа
+df = pd.read_csv('all_small_country.csv', sep=',')
+
+# если вы хотите удалить какие-либо неинформативные или нечисловые признаки
+df = df.drop(columns=['Country', 'Season'])
+
+# рисуем холст будущего изображения
+f, ax = plt.subplots(figsize=(18, 18), dpi = 200)
+plt.figure(figsize=(10, 68))
+# определяем целевой признак, в данном случае - забитые голы (Gls)
+# указываем иные визуальные настройки
+df.corr()[['Gls']].sort_values(by='Gls', ascending=False)
+heatmap = sb.heatmap(df.corr()[['Gls']].sort_values(by='Gls', ascending=False), vmin=-1, vmax=1, annot=True,
+                     cmap='rocket', linecolor='white', linewidths=0.7)
+ax.invert_yaxis()
+
+# сохраняем тепловую карту в формате png
+heatmap.figure.savefig('correlation.png', dpi=200) Теперь нарисуем регрессию (не забудьте, что для работы кода потребуются библиотеки, а также данные из предыдущей части). import numpy as np
+from sklearn.linear_model import LinearRegression
+from sklearn.preprocessing import PolynomialFeatures
+from sklearn.model_selection import train_test_split
+from sklearn import preprocessing
+from sklearn.metrics import mean_squared_error
+
+fig, ax = plt.subplots(figsize=(12, 8), dpi=200)
+plt.xlabel('Ast', fontsize=16)
+plt.ylabel('голы забитые (в среднем за матч)', fontsize=16)
+ax.set(yticks=[i for i in range(1, 17)])
+plt.grid(linestyle="--")
+Xg = np.array(df['Ast']) # значения признака
+yg = np.array(df['Gls']) # значение целевой переменной
+X_g = Xg.reshape(-1, 1)
+# рисуем точки
+plt.scatter(X_g, yg)
+# данные для предсказания
+X_Gpred = np.array([0.3, 0.35, 0.45, 0.5, 0.6, 0.65, 0.7, 0.75, 0.8, 0.9, 1.0, 1.2, 1.25, 1.35, 1.45, 1.55])
+
+# ПОЛИНОМИАЛЬНАЯ РЕГЕССИЯ
+# создаем выборку из наблюдений прошлых сезонов
+X_train, X_test, y_train, y_test = train_test_split(X_g, yg, test_size=0.5, random_state=1)
+pr = LinearRegression()
+quadratic = PolynomialFeatures(degree=5)
+# обучаем регрессию на данных из прошлых сезонов
+pr.fit(quadratic.fit_transform(X_train), y_train)
+# делаем предсказание для наших данных X_Gpred
+y_pr = pr.predict(quadratic.fit_transform(X_Gpred.reshape(-1, 1)))
+# рисуем предсказания на холсте
+plt.plot(X_Gpred, y_pr, color='red')
+# печатаем предсказания в виде текста
+print(f'полиномиальная регрессия \n {y_pr}')
+# сохраняем рисунок
+plt.savefig('Ast_22.png', dpi=300)
+
+# оценка качества модели
+y = np.array([0.27, 0.35, 0.45, 0.5, 0.6, 0.65, 0.7, 0.75, 0.8, 0.9, 0.95, 1.0, 1.2, 1.25, 1.35, 1.45])
+print('Среднеквадратическое отклонение для полиномиальной модели:', mean_squared_error(y, y_pr)) import numpy as np
+from sklearn.linear_model import LinearRegression
+from sklearn.preprocessing import PolynomialFeatures
+from sklearn.model_selection import train_test_split
+from sklearn import preprocessing
+from sklearn.metrics import mean_squared_error
+
+fig, ax = plt.subplots(figsize=(12, 8), dpi=200)
+plt.xlabel('Ast', fontsize=16)
+plt.ylabel('голы забитые (в среднем за матч)', fontsize=16)
+ax.set(yticks=[i for i in range(1, 17)])
+plt.grid(linestyle="--")
+Xg = np.array(df['Ast']) # значения признака
+yg = np.array(df['Gls']) # значение целевой переменной
+X_g = Xg.reshape(-1, 1)
+# рисуем точки
+plt.scatter(X_g, yg)
+# данные для предсказания
+X_Gpred = np.array([0.3, 0.35, 0.45, 0.5, 0.6, 0.65, 0.7, 0.75, 0.8, 0.9, 1.0, 1.2, 1.25, 1.35, 1.45, 1.55])
+
+# ПОЛИНОМИАЛЬНАЯ РЕГЕССИЯ
+# создаем выборку из наблюдений прошлых сезонов
+X_train, X_test, y_train, y_test = train_test_split(X_g, yg, test_size=0.5, random_state=1)
+pr = LinearRegression()
+quadratic = PolynomialFeatures(degree=5)
+# обучаем регрессию на данных из прошлых сезонов
+pr.fit(quadratic.fit_transform(X_train), y_train)
+# делаем предсказание для наших данных X_Gpred
+y_pr = pr.predict(quadratic.fit_transform(X_Gpred.reshape(-1, 1)))
+# рисуем предсказания на холсте
+plt.plot(X_Gpred, y_pr, color='red')
+# печатаем предсказания в виде текста
+print(f'полиномиальная регрессия \n {y_pr}')
+# сохраняем рисунок
+plt.savefig('Ast_22.png', dpi=300)
+
+# оценка качества модели
+y = np.array([0.27, 0.35, 0.45, 0.5, 0.6, 0.65, 0.7, 0.75, 0.8, 0.9, 0.95, 1.0, 1.2, 1.25, 1.35, 1.45])
+print('Среднеквадратическое отклонение для полиномиальной модели:', mean_squared_error(y, y_pr)) В итоге мы получим с вами такой результат.  Синие точки - наблюдения за прошедшие сезоны, красная линия - прогнозирование компьютера Красная линия лежит на наших данных для предсказания (X_Gpred). Модель, обучившись на данных за прошлые сезоны, предсказала какому количества голов (ось Y) соответствует то или иное количество ассистов (пасов, после которых были забиты голы) (ось X). Из рисунка видно, что 0.6 ассистов (в среднем за матч) соответствует одному забитому голу (тоже в среднем за матч). Если у команды 0.6 ассистов, но она забивает меньше, чем один гол за матч, то это значит, что она не дорабатывает по данному показателю ассистов. Если вы новичок в футбольной аналитике и у вас еще нет своих данных, скачать файл для своих первых экспериментов вы можете по ЭТОЙ ссылке. ЭТОЙ Ну и как я уже говорил в начале статьи, в наше время футбольная аналитика открывает дверь к большому простору для исследований и экспериментов, так что пробуете, делайте открытия и, самое главное, относитесь ко всему именно как к игре! Футбол это ведь и есть игра, и чрезмерная серьезность здесь не приветствуется )) Игра эта, кстати, еще и труднопрогнозируемый вид спорта, и нельзя разработать систему, которая давала бы нам околостопроцентный результат. Но любая игра создана и не для этого: она должна привлекать нас и интересовать своим процессом, а не только результатом. Понимаете?.. Иначе данная программа не была бы доведена до своего логического завершения. Я пришел к этому пониманию спустя месяцы кропотливой работы, разочарований и достижений. Удачи вам и побед, в чем бы они ни заключались!]]></text>
+</doc>

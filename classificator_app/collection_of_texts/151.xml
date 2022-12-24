@@ -1,0 +1,123 @@
+<?xml version="1.0" ?>
+<doc>
+	<label auto="true" type="str" verify="true"><![CDATA[Develop]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[pokatomnik]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-12-13, 14:42]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/company/samokat_tech/blog/705204/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Нюансы поддержки npm в Deno]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Блог компании Самокат.Тех]]></item>
+		<item type="str"><![CDATA[Информационная безопасность]]></item>
+		<item type="str"><![CDATA[Программирование]]></item>
+		<item type="str"><![CDATA[Node.JS]]></item>
+		<item type="str"><![CDATA[TypeScript]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[jetpack compose]]></item>
+		<item type="str"><![CDATA[react]]></item>
+		<item type="str"><![CDATA[react.js]]></item>
+		<item type="str"><![CDATA[reactjs]]></item>
+		<item type="str"><![CDATA[программирование]]></item>
+		<item type="str"><![CDATA[deno]]></item>
+		<item type="str"><![CDATA[typescript]]></item>
+		<item type="str"><![CDATA[инфобез]]></item>
+		<item type="str"><![CDATA[информационная безопасность]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[Всем, привет! Меня зовут Данильян, я работаю в Самокате фронтенд-разработчиком и разрабатываю бэкофисное приложение с использованием React. Помимо работы, у меня есть несколько сайд-проектов, в которых я широко использую Deno. В последнее время этот проект радует новыми фичами чуть ли не каждую неделю и об одной из них я хотел бы рассказать в этом посте.
+Что нового в Deno 1.28
+В течение нескольких последних лет NodeJS в разрезе проблем с безопасностью и npm, в частности, не пинает только ленивый. Код зависимостей (а также зависимостей зависимостей) необходимо проверять на наличие уязвимостей и намеренно внедрённого вредоносного кода.
+Возможно, некоторые знают, что Deno умеет запускать код, написанный для Node механизм интеропа (о нём ниже), но то как он это делает, заслуживает внимания обеспокоенных безопасностью, о проблемах в которой было сказано.
+Что важного принёс апдейт
+import { createRequire } from "https://deno.land/std@0.165.0/node/module.ts";
+const require = createRequire(import.meta.url);
+const path = require("path");
+const npmModule = require("npm-module-name");
+Однако npm-module-name должен был быть установлен с помощью npm и директория node_modules должна существовать. Можно было даже прикрутить типы с помощью специального комментария:
+// @deno-types="https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/master/types/express/index.d.ts"// @deno-types="https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/master/types/express-serve-static-core/index.d.ts"// @deno-types="url/or/filesystem/path/to/typings.d.ts"// @deno-types="url/or/filesystem/path/to/typings.d.ts"
+Это работает и сейчас, и этот способ не deprecated.
+Однако, появился более простой способ как можно импортировать модули:
+// @deno-types="https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/master/types/express/index.d.ts"// @deno-types="https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/master/types/express-serve-static-core/index.d.ts"// @deno-types="url/or/filesystem/path/to/typings.d.ts"
+import npmModule from "npm:npm-module-name";
+Для того, чтобы deno «понял» откуда брать зависимость, необходим префикс npm:.
+Через imports_map.json тоже работает:
+{
+"imports": {
+"lodash": "npm:lodash@^4.17"
+}
+}
+Некоторым npm пакетам жизненно необходимо находиться в node_modules, так тоже можно:
+$ deno run --node-modules-dir main.ts
+В этом случае пакет будет кеширован в локальный node_modules вместо того, чтобы кешироваться в стандартную директорию кешей Deno. Если её не указывать, то пакеты npm как и обычные зависимости Deno будут кешированы в стандартную папку кешей Deno. Если указать версию, то будет использована именно она, а не последняя на данный момент. Версии, как и в случае с обычными зависимостями Deno считаются иммутабельными и не скачиваются повторно (конечно, если не указать это специально через deno cache --reload my_module.ts).
+Подводные камни interoperability
+Я слукавлю, если скажу, что работает абсолютно все: некоторых возможностей node до сих пор нет. Например, поддерживаются только эти «встроенные» пакеты. То есть если npm модуль использует отсутствующие возможности, то запустить код модуля с помощью deno не получится.
+У отсутствующих возможностей могут быть разные причины. Во-первых, это может быть ещё не реализовано. Во-вторых, пакет может идти вразрез с тем, как работает и куда развивается Deno. Ну и в-третьих, пакет может быть legacy уже даже в рамках node.
+В случае использования npm пакетов в таком проекте, скомпилировать приложение в бинарный файл станет невозможно. Некоторые другие важные возможности также на момент написания статьи недоступны.
+Какие фреймворки удалось завести, а какие нет
+Тем не менее исходя из документации Deno, обеспечена поддержка некоторых очень востребованных библиотек и фреймворков. Среди них есть драйверы баз данных, например, для MySQL, PostgreSQL, MongoDB. Есть и поддержка фреймворков типа Vue и React. И кстати хайповый NextJS тут имеет свою достойную альтернативу – AlephJS, который работает без необходимости использовать npm модули, нативно.
+Почему это интересно в том числе тем кто пишет на node
+В самом начале статьи я писал про то, что у npm есть проблемы с безопасностью. Код может делать всё, что позволено текущему пользователю. Это и происходит в случае использования node.
+В случае с Deno не всё так просто: весь код, запускаемый в модулях проекта, в модулях зависимостей, будь то модули написанные для deno или зависимости, пришедшие из репозитория npm, наследуют права доступа, указанные при запуске скрипта. То есть мы, конечно же, до сих пор можем запустить deno с --allow-all и разрешить сразу всё, либо можем по отдельности разрешить доступ к сети или даже к конкретным адресам или к конкретным местам в файловой системе, формируя белый список разрешённых ресурсов. Всё остальное будет нельзя и при попытке обратиться к этим ресурсам deno в интерактивном режиме задаст вопрос, можно ли такое или нет.
+Наглядный пример: создадим небольшой скрипт для Deno, который будет запускать простой express-сервер. Я немного расширил пример из документации, для того чтобы типы лучше резолвились, но смысл не поменялся:
+// mod.ts
+// @deno-types="https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/master/types/express/index.d.ts"// @deno-types="https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/master/types/express-serve-static-core/index.d.ts"
+import { Express } from "npm:express-serve-static-core";
+// @deno-types="https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/master/types/express/index.d.ts"
+import express from "npm:express@4.18.2";
+const app: Express = express();
+app.get("/", function (req, res) {
+res.send("Hello World");
+});
+app.listen(3000);
+И запустим его:
+$ deno run ./mod.ts
+Deno скачает все зависимости, и запустит сервер, но перед этим задаст кучу вопросов о том, действительно ли этот скрипт имеет право использовать сеть и читать переменные окружения. Если бы этот скрипт считывал файлы, то о них также были бы заданы соответствующие вопросы.
+Обычно проверка зависимостей проекта на уязвимости и на вредоносный код требует поднятия своей инфраструктуры, которая бы делала автоматические проверки, своих зеркал npm, в которые попадают только проверенные (в худшем случае только временем) пакеты, а также ручной аудит всего кода. Баланс между удобством автоматического управления зависимостями с помощью npm и безопасностью необходим. Это оградит от утечек персональных данных, в случае если пакет выполняет скрипт postinstall, отправляя на сторонние сервера содержимое директории .ssh, а то и вообще загружая сторонний код на сервер и выполняя его. 
+Вместо итогов 
+Другими словами, если верить маркетинговой статье от самого проекта deno, было «добавлено» 1.3 миллиона новых пакетов. Верить не стоит, я крайне сомневаюсь, что все 1.3 миллиона будут работать одинаково хорошо, а если и будут, качество != количество. Однако большинство из того, что используют разработчики, работает и работало ещё до внедрения этой фичи.
+Документация
+Статья о релизе
+Релиз 1.28.0
+Используете ли вы Deno в своих проектах или даже в продакшене? Сталкивались ли вы с вредоносным кодом из npm? Если да, то напишите, как это проявлялось.   Всем, привет! Меня зовут Данильян, я работаю в Самокате фронтенд-разработчиком и разрабатываю бэкофисное приложение с использованием React. Помимо работы, у меня есть несколько сайд-проектов, в которых я широко использую Deno. В последнее время этот проект радует новыми фичами чуть ли не каждую неделю и об одной из них я хотел бы рассказать в этом посте. Что нового в Deno 1.28 В течение нескольких последних лет NodeJS в разрезе проблем с безопасностью и npm, в частности, не пинает только ленивый. Код зависимостей (а также зависимостей зависимостей) необходимо проверять на наличие уязвимостей и намеренно внедрённого вредоносного кода. npm Возможно, некоторые знают, что Deno умеет запускать код, написанный для Node механизм интеропа (о нём ниже), но то как он это делает, заслуживает внимания обеспокоенных безопасностью, о проблемах в которой было сказано. Что важного принёс апдейт import { createRequire } from "https://deno.land/std@0.165.0/node/module.ts";
+const require = createRequire(import.meta.url);
+const path = require("path");
+const npmModule = require("npm-module-name"); import { createRequire } from "https://deno.land/std@0.165.0/node/module.ts";
+const require = createRequire(import.meta.url);
+const path = require("path");
+const npmModule = require("npm-module-name"); Однако npm-module-name должен был быть установлен с помощью npm и директория node_modules должна существовать. Можно было даже прикрутить типы с помощью специального комментария: npm-module-name npm node_modules // @deno-types="https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/master/types/express/index.d.ts"// @deno-types="https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/master/types/express-serve-static-core/index.d.ts"// @deno-types="url/or/filesystem/path/to/typings.d.ts"// @deno-types="url/or/filesystem/path/to/typings.d.ts" // @deno-types="https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/master/types/express/index.d.ts"// @deno-types="https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/master/types/express-serve-static-core/index.d.ts"// @deno-types="url/or/filesystem/path/to/typings.d.ts"// @deno-types="url/or/filesystem/path/to/typings.d.ts" Это работает и сейчас, и этот способ не deprecated. Однако, появился более простой способ как можно импортировать модули: // @deno-types="https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/master/types/express/index.d.ts"// @deno-types="https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/master/types/express-serve-static-core/index.d.ts"// @deno-types="url/or/filesystem/path/to/typings.d.ts"
+import npmModule from "npm:npm-module-name"; // @deno-types="https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/master/types/express/index.d.ts"// @deno-types="https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/master/types/express-serve-static-core/index.d.ts"// @deno-types="url/or/filesystem/path/to/typings.d.ts"
+import npmModule from "npm:npm-module-name"; Для того, чтобы deno «понял» откуда брать зависимость, необходим префикс npm:. npm: Через imports_map.json тоже работает: imports_map.json {
+"imports": {
+"lodash": "npm:lodash@^4.17"
+}
+} {
+"imports": {
+"lodash": "npm:lodash@^4.17"
+}
+} Некоторым npm пакетам жизненно необходимо находиться в node_modules, так тоже можно: npm node_modules $ deno run --node-modules-dir main.ts $ deno run --node-modules-dir main.ts В этом случае пакет будет кеширован в локальный node_modules вместо того, чтобы кешироваться в стандартную директорию кешей Deno. Если её не указывать, то пакеты npm как и обычные зависимости Deno будут кешированы в стандартную папку кешей Deno. Если указать версию, то будет использована именно она, а не последняя на данный момент. Версии, как и в случае с обычными зависимостями Deno считаются иммутабельными и не скачиваются повторно (конечно, если не указать это специально через deno cache --reload my_module.ts). node_modules npm deno cache --reload my_module.ts Подводные камни interoperability Я слукавлю, если скажу, что работает абсолютно все: некоторых возможностей node до сих пор нет. Например, поддерживаются только эти «встроенные» пакеты. То есть если npm модуль использует отсутствующие возможности, то запустить код модуля с помощью deno не получится. эти У отсутствующих возможностей могут быть разные причины. Во-первых, это может быть ещё не реализовано. Во-вторых, пакет может идти вразрез с тем, как работает и куда развивается Deno. Ну и в-третьих, пакет может быть legacy уже даже в рамках node. В случае использования npm пакетов в таком проекте, скомпилировать приложение в бинарный файл станет невозможно. Некоторые другие важные возможности также на момент написания статьи недоступны. невозможно недоступны Какие фреймворки удалось завести, а какие нет Тем не менее исходя из документации Deno, обеспечена поддержка некоторых очень востребованных библиотек и фреймворков. Среди них есть драйверы баз данных, например, для MySQL, PostgreSQL, MongoDB. Есть и поддержка фреймворков типа Vue и React. И кстати хайповый NextJS тут имеет свою достойную альтернативу – AlephJS, который работает без необходимости использовать npm модули, нативно. обеспечена AlephJS Почему это интересно в том числе тем кто пишет на node В самом начале статьи я писал про то, что у npm есть проблемы с безопасностью. Код может делать всё, что позволено текущему пользователю. Это и происходит в случае использования node. В случае с Deno не всё так просто: весь код, запускаемый в модулях проекта, в модулях зависимостей, будь то модули написанные для deno или зависимости, пришедшие из репозитория npm, наследуют права доступа, указанные при запуске скрипта. То есть мы, конечно же, до сих пор можем запустить deno с --allow-all и разрешить сразу всё, либо можем по отдельности разрешить доступ к сети или даже к конкретным адресам или к конкретным местам в файловой системе, формируя белый список разрешённых ресурсов. Всё остальное будет нельзя и при попытке обратиться к этим ресурсам deno в интерактивном режиме задаст вопрос, можно ли такое или нет. deno с --allow-all Наглядный пример: создадим небольшой скрипт для Deno, который будет запускать простой express-сервер. Я немного расширил пример из документации, для того чтобы типы лучше резолвились, но смысл не поменялся: // mod.ts
+// @deno-types="https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/master/types/express/index.d.ts"// @deno-types="https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/master/types/express-serve-static-core/index.d.ts"
+import { Express } from "npm:express-serve-static-core";
+// @deno-types="https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/master/types/express/index.d.ts"
+import express from "npm:express@4.18.2";
+const app: Express = express();
+app.get("/", function (req, res) {
+res.send("Hello World");
+});
+app.listen(3000);
+И запустим его:
+$ deno run ./mod.ts // mod.ts
+// @deno-types="https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/master/types/express/index.d.ts"// @deno-types="https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/master/types/express-serve-static-core/index.d.ts"
+import { Express } from "npm:express-serve-static-core";
+// @deno-types="https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/master/types/express/index.d.ts"
+import express from "npm:express@4.18.2";
+const app: Express = express();
+app.get("/", function (req, res) {
+res.send("Hello World");
+});
+app.listen(3000);
+И запустим его:
+$ deno run ./mod.ts Deno скачает все зависимости, и запустит сервер, но перед этим задаст кучу вопросов о том, действительно ли этот скрипт имеет право использовать сеть и читать переменные окружения. Если бы этот скрипт считывал файлы, то о них также были бы заданы соответствующие вопросы. Обычно проверка зависимостей проекта на уязвимости и на вредоносный код требует поднятия своей инфраструктуры, которая бы делала автоматические проверки, своих зеркал npm, в которые попадают только проверенные (в худшем случае только временем) пакеты, а также ручной аудит всего кода. Баланс между удобством автоматического управления зависимостями с помощью npm и безопасностью необходим. Это оградит от утечек персональных данных, в случае если пакет выполняет скрипт postinstall, отправляя на сторонние сервера содержимое директории .ssh, а то и вообще загружая сторонний код на сервер и выполняя его.  npm postinstall Вместо итогов  Другими словами, если верить маркетинговой статье от самого проекта deno, было «добавлено» 1.3 миллиона новых пакетов. Верить не стоит, я крайне сомневаюсь, что все 1.3 миллиона будут работать одинаково хорошо, а если и будут, качество != количество. Однако большинство из того, что используют разработчики, работает и работало ещё до внедрения этой фичи. было «добавлено» 1.3 миллиона новых пакетов Документация
+Статья о релизе
+Релиз 1.28.0 Документация Документация   Статья о релизе Статья о релизе   Релиз 1.28.0 Релиз 1.28.0 Используете ли вы Deno в своих проектах или даже в продакшене? Сталкивались ли вы с вредоносным кодом из npm? Если да, то напишите, как это проявлялось. Используете ли вы Deno в своих проектах или даже в продакшене? Сталкивались ли вы с вредоносным кодом из npm? Если да, то напишите, как это проявлялось. ]]></text>
+</doc>

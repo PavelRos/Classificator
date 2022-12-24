@@ -1,0 +1,550 @@
+<?xml version="1.0" ?>
+<doc>
+	<original_author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Bharathiraja Shanmugam]]></item>
+	</original_author>
+	<label auto="true" type="str" verify="true"><![CDATA[Develop]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Shyhartskoi]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-12-05, 16:01]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/company/timeweb/blog/703550/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[StatefulSet в Kubernetes – примеры и наилучшие практики]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Блог компании Timeweb Cloud]]></item>
+		<item type="str"><![CDATA[MySQL]]></item>
+		<item type="str"><![CDATA[Хранилища данных]]></item>
+		<item type="str"><![CDATA[DevOps]]></item>
+		<item type="str"><![CDATA[Kubernetes]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[timeweb_статьи_перевод]]></item>
+		<item type="str"><![CDATA[Kubernetes]]></item>
+		<item type="str"><![CDATA[Oracle]]></item>
+		<item type="str"><![CDATA[MySQL]]></item>
+		<item type="str"><![CDATA[Elasticsearch]]></item>
+		<item type="str"><![CDATA[MongoDB]]></item>
+		<item type="str"><![CDATA[StatefulSets]]></item>
+		<item type="str"><![CDATA[Vault]]></item>
+		<item type="str"><![CDATA[ConfigMaps]]></item>
+		<item type="str"><![CDATA[HashiCorp]]></item>
+		<item type="str"><![CDATA[Deployment]]></item>
+		<item type="str"><![CDATA[YAML]]></item>
+		<item type="str"><![CDATA[приложения]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[Собираетесь ли вы развертывать базу данных в кластере Kubernetes? Если так – то это отличный выбор. Kubernetes – это инструмент оркестрации контейнеров, который при помощи множества инструментов координирует эксплуатацию приложений в контейнерах (подах). Один из этих контроллеров называется StatefulSet и используется для эксплуатации приложений, сохраняющих состояние.
+
+Развертывание приложений с сохранением состояния в кластере Kubernetes порой бывает утомительной задачей. Дело в том, что приложение, сохраняющее состояние ожидает, что придется работать с архитектурой «ведущий-ведомый» (primary-replica), а имя пода будет фиксированным. Контроллер StatefulSets решает эту проблему, развертывая в кластере Kubernetes приложение с сохранением состояния.
+
+Из этой статьи вы подробнее узнаете, что представляют собой StatefulSet в кластере Kubernetes, и в каких ситуациях из использовать, а также как развернуть приложение с сохранением состояния при помощи контроллера StatefulSets. Все это будет рассмотрено в пошаговом примере, в который мы включим все файлы манифеста (YAML). Более того, концепция StatefulSets будет продемонстрирована при помощи базы данных MySQL, и мы заодно рассмотрим, как создать фиксированное имя пода для каждой репликации MySQL, а также как обращаться к реплицированным подам через объект Services.
+
+❯ Что такое приложения с сохранением состояния?
+
+Это приложения, которые сохраняют данные и помогают их отслеживать. Все базы данных, в частности, MySQL, Oracle и PostgreSQL – это примеры приложений, сохраняющих состояние. С другой стороны, в приложениях без сохранения состояния данные долго не держатся. Примеры приложений без сохранения состояния — Node.js и Nginx. Если состояние в приложении не сохраняется, то на каждый запрос приложение будет получать новые данные и обрабатывать их.
+
+В современных веб-приложениях такие приложения без сохранения состояния соединяются с приложениями, сохраняющими состояние, чтобы обслужить пользовательский запрос. Приложение Node.js не сохраняет состояние, оно получает новые данные при каждом запросе, поступающем от пользователя. Далее это приложение соединяется для обработки данных с другим, сохраняющим состояние, например, с базой данных MySQL. База данных MySQL сохраняет данные и продолжает их обновлять, исходя из пользовательского запроса.
+
+
+
+Далее подробнее поговорим о структурах StatefulSet в кластере Kubernetes — что они собой представляют, как ими пользоваться, и каковы наилучшие практики обращения с ними.
+
+❯ О структурах StatefulSet
+
+StatefulSet – это контроллер Kubernetes, применяемый для эксплуатации сохраняющих состояние приложений в виде контейнеров (подов) в кластере Kubernetes. StatefulSet присваивают каждому поду идентификатор-липучку (sticky identity) – порядковый номер начиная с нуля — а не случайные ID каждой реплике пода. Новый под создается клонированием данных уже существовавшего пода. Если ранее существовавший под находился в ожидающем состоянии, то новый под создан не будет. Удаление подов происходит в обратном порядке, а не в случайном. Например, если у вас было четыре реплики, и в результате масштабирования их количество было сокращено до трех, то под номер 3 будет удален.
+
+На приведенной ниже схеме показано, как поды нумеруются, начиная с нуля, и как в StatefulSet к поду прикрепляется том долговременного хранения данных.
+
+
+
+❯ Когда использовать StatefulSets
+
+Есть несколько причин, по которым может быть целесообразно использовать StatefulSets. Рассмотрим два примера:
+
+Допустим, вы развернули базу данных MySQL в кластере Kubernetes и масштабировали ее до трех реплик, а клиентское приложение пытается получить доступ к кластеру MySQL, чтобы считывать и записывать данные. Запрос на считывание будет переадресовываться на три пода. Однако запрос на запись будет переадресовываться только на первый (ведущий) под, а записанные сюда данные будут синхронизироваться с другими подами. Это достижимо при помощи StatefulSets.
+Если удалить StatefulSet или отмасштабировать вниз, то не будут удалены тома, связанные с приложением, сохраняющим состояние. Так вашим данным обеспечивается безопасность. Если удалить или перезапустить под с MySQL, то вы сможете обращаться к данным из все того же тома, что и раньше.
+
+Объект Deployment и StatefulSets
+
+Также можно создавать поды (контейнеры), используя в кластере Kubernetes объект Deployment. Так вы сможете с легкостью реплицировать поды и прикреплять к подам тома, служащие в качестве хранилищ данных. То же самое можно проделать и при помощи StatefulSets. В чем же тогда преимущество работы со StatefulSets?
+
+Дело в том, что подам, создаваемым при помощи объекта Deployment, присваиваются случайные ID. Например, вы создаете под с именем “my-app”, после чего расширяете его до трех реплик. Имена этих подов создаются примерно так:
+
+my-app-123ab
+my-app-098bd
+my-app-890yt
+
+
+Вслед за именем “my-app” добавляются случайные ID. Если под перезапускается, либо выполняется масштабирование вниз, то, опять же, объект Kubernetes Deployment присвоит иные случайные ID каждому поду. После перезапуска имена всех подов примут вид:
+
+my-app-jk879
+my-app-kl097
+my-app-76hf7
+
+
+Все эти поды ассоциированы с одним сервисом, выполняющим балансировку нагрузки. Поэтому в приложении, не сохраняющем состояния, изменения в именах подов легко идентифицируются, а сервисный объект легко обрабатывает случайные ID подов и распределяет нагрузку. Такой тип развертывания очень хорош с приложениями, не сохраняющими состояние.
+
+
+
+Но вот приложения, сохраняющие состояние, таким образом развертывать невозможно. Приложению, сохраняющему состояние, требуется липкий идентификатор для каждого пода, поскольку поды-реплики не идентичны.
+
+Рассмотрим развернутый инстанс базы данных MySQL. Предположим, вы создаете поды для базы данных MySQL при помощи объекта Kubernetes Deployment и масштабируете поды. Если вы записываете данные в один под MySQL, то ни в коем случае не реплицируйте те же данные на другом поде MySQL, если под перезапускается. Это первая проблема с объектом Kubernetes Deployment применительно к приложениям, сохраняющим состояние.
+
+
+
+Приложениям, сохраняющим состояние, всегда нужен липкий идентификатор. Притом, что объект Kubernetes Deployment предлагает случайные ID для каждого пода, контроллер Kubernetes StatefulSets предлагает для каждого пода порядковый номер начиная с нуля, вида: mysql-0, mysql-1, mysql-2 и т. д.
+
+
+
+Для приложений, сохраняющих состояние и работающих с контроллером StatefulSet, можно задать первый под в качестве ведущего, а остальные поды сделать репликами ведущего. Первый под будет обрабатывать поступающие от пользователя как на чтение, так и на запись, а прочие поды будут всегда синхронизироваться с первым для репликации данных. Если под погибает, то создается одноименный ему новый под.
+
+На следующей схеме показана архитектура с ведущим инстансом MySQL и репликами, где предусмотрен том для долговременного хранения данных и система репликации данных.
+
+
+
+Теперь добавим сюда еще один под. Четвертый под будет создан лишь в случае, если третий под активен и работает, и на четвертый под будут склонированы данные с существовавшего ранее пода.
+
+
+
+Резюмируя, обозначим, что StatefulSets обеспечивают следующие преимущества по сравнению с объектами Deployment:
+
+Порядковые номера для каждого из подов.
+Первый под может выступать в качестве ведущего, благодаря чему хорошо подходит для подготовки конфигурации с реплицируемой базой данных – такая конфигурация позволяет обрабатывать как чтение, так и запись.
+Другие поды действуют в качестве реплик.
+Новые поды будут создаваться лишь в случае, если более ранний под сейчас действует, причем, данные более раннего пода клонируются.
+Поды удаляются в порядке, обратном тому, в котором создавались.
+
+❯ Как создать StatefulSet в Kubernetes
+
+В этом разделе будет рассказано, как создать под для базы данных MySQL, воспользовавшись для этого контроллером StatefulSets.
+
+Создаем секрет
+
+Сперва нужно создать для приложения MySQL секрет, в котором будет храниться конфиденциальная информация, в частности, имена пользователей и пароли. Здесь я создаю простой секрет. Но при работе в продакшене рекомендуется использовать хранилище Vault от HashiCorp. Секрет для MySQL создается при помощи следующего кода:
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-password
+type: opaque
+stringData:
+  MYSQL_ROOT_PASSWORD: password
+
+
+Сохраните код в файле, который будет называться mysql-secret.yaml, и выполните код в вашем кластере Kubernetes при помощи следующего кода:
+
+kubectl apply -f mysql-secret.yaml
+
+
+Получите список секретов:
+
+kubectl get secrets
+
+
+Создаем приложение StatefulSet для MySQL
+
+Прежде, чем создать приложение StatefulSet, проверьте ваши тома – для этого просто выведите список томов долговременного хранения:
+
+kubectl get pv
+NAME                   CAPACITY   ACCESS MODES   RECLAIM     STATUS
+pvc-e0567     10Gi        RWO             Retain           Bound
+
+
+Далее выведите список заявок на тома долговременного хранения:
+
+kubectl get pvc
+
+NAME                             STATUS   VOLUME                      CAPACITY   ACCESS 
+mysql-store-mysql-set-0   Bound     pvc-e0567d43ffc6405b   10Gi        RWO
+
+
+Наконец, получим список классов хранилища:
+
+kubectl get storageclass
+
+NAME                       PROVISIONER                RECLAIMPOLICY  
+linode-block-storage      linodebs.csi.linode.com    Delete         
+linode-block-storage-retain (default)   linodebs.csi.linode.com   Retain         
+
+
+Затем при помощи следующего кода создадим для MySQL приложение StatefulSet в кластере Kubernetes:
+
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql-set
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  serviceName: "mysql"
+  replicas: 3
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      terminationGracePeriodSeconds: 10
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: mysql-store
+          mountPath: /var/lib/mysql
+        env:
+          - name: MYSQL_ROOT_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: mysql-password
+                key: MYSQL_ROOT_PASSWORD
+  volumeClaimTemplates:
+  - metadata:
+      name: mysql-store
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      storageClassName: "linode-block-storage-retain"
+      resources:
+        requests:
+          storage: 5Gi
+
+
+Здесь нужно отметить несколько вещей:
+
+kind – это StatefulSet. kind приказывает Kubernetes создать приложение MySQL с возможностью сохранения состояния
+Пароль берется из объекта Secret при помощи secretKeyRef.
+Блоковое хранилище Linode использовалось в volumeClaimTemplates. Если здесь не упомянуть имени никакого класса хранилища, то для вашего кластера будет выбрано то хранилище, что задано по умолчанию.
+Количество реплик здесь равно 3 (указывается в параметре replica), поэтому будет создано три пода с именами mysql-set-0, mysql-set-1 и mysql-set-2.
+
+Далее сохраняем код в файле под именем mysql.yaml и выполняем его при помощи следующей команды:
+
+kubectl apply -f mysql.yaml
+Теперь, когда поды MySQL созданы, получаем список подов:
+kubectl get pods
+
+NAME          READY   STATUS      RESTARTS   AGE
+mysql-set-0   1/1         Running        0                 142s
+mysql-set-1   1/1         Running        0                 132s
+mysql-set-2   1/1         Running        0                 120s
+
+
+Создаем сервис для приложения со StatefulSet
+
+Теперь создаем сервис для пода MySQL. С приложением, сохраняющим состояние, нельзя использовать балансировщик нагрузки. Вместо этого создадим для приложения MySQL «безголовый» сервис, воспользовавшись следующим кодом:
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  labels:
+    app: mysql
+spec:
+  ports:
+  - port: 3306
+  clusterIP: None
+  selector:
+    app: mysql
+
+
+Сохраняем этот код в файле под именем mysql-service.yaml и выполняем при помощи следующей команды:
+
+kubectl apply -f mysql-service.yaml
+
+
+Получаем список работающих сервисов:
+
+kubectl get svc
+
+
+Создаем клиент для MySQL
+
+Если вы хотите обращаться к MySQL, то вам понадобится клиентский инструмент для работы с MySQL. Разверните клиент MySQL, воспользовавшись следующим кодом манифеста:
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mysql-client
+spec:
+  containers:
+  - name: mysql-container
+    image: alpine
+    command: ['sh','-c', "sleep 1800m"]
+    imagePullPolicy: IfNotPresent
+
+
+Сохраните этот код в файле под именем mysql-client.yaml и выполните при помощи следующей команды:
+
+kubectl apply -f mysql-client.yaml
+
+
+Затем введите в клиент MySQL следующий код:
+
+kubectl exec --stdin --tty mysql-client -- sh
+
+
+Наконец, установите клиентский инструмент для работы с MySQL:
+
+apk add mysql-client
+
+
+Обратитесь к приложению MySQL через клиент MySQL
+
+Далее будем обращаться к приложению MySQL через клиент MySQL и создавать базы данных в подах.
+
+Если вы еще не зашли в под с клиентом MySQL, введите следующий код:
+kubectl exec -it mysql-client /bin/sh
+
+Чтобы обратиться к MySQL, можно воспользоваться все той же стандартной командой MySQL, чтобы подключиться к серверу MySQL:
+
+mysql -u root -p -h host-server-name
+
+
+Для доступа вам понадобится имя сервера MySQL. Синтаксис сервера MySQL в кластере Kubernetes приведен ниже:
+
+stateful_name-ordinal_number.mysql.default.svc.cluster.local
+
+#Example
+mysql-set-0.mysql.default.svc.cluster.local
+
+
+Подключитесь к ведущему поду MySQL при помощи следующей команды. Когда система запросит пароль, введите тот, который вы подобрали в предыдущем разделе о создании секрета.
+
+mysql -u root -p -h mysql-set-0.mysql.default.svc.cluster.local
+
+
+Далее создайте базу данных в ведущем поде с MySQL, после этого выйдите:
+
+create database erp;
+exit;
+
+
+Теперь подключайтесь к другим подам и создайте базу данных так, как показано выше:
+
+mysql -u root -p -h mysql-set-1.mysql.default.svc.cluster.local
+
+
+mysql -u root -p -h mysql-set-2.mysql.default.svc.cluster.local
+
+
+Не забывайте, что, конечно, Kubernetes помогает настроить приложение с сохранением состояния, но клонирование и синхронизацию данных вы должны настроить самостоятельно. StatefulSets сами этого сделать не смогут.
+
+❯ Наилучшие практики
+
+Если вы планируете развертывать приложения, работающие с сохранением состояния, например, Oracle, MySQL, Elasticsearch и MongoDB, то StatefulSets – отличный вариант для вас.
+Создавая приложения с сохранением состояния, учитывайте следующие факторы:
+
+Создайте для баз данных отдельное пространство имен.
+Все компоненты, необходимые для приложений с сохранением состояния, например, ConfigMaps, секреты и сервисы, размещайте в конкретном пространстве имен.
+Ваши собственные скрипты размещайте в ConfigMaps.
+При создании объектов «сервис» пользуйтесь безголовым сервисом, а не сервисом для балансировки нагрузки.
+Секреты храните в Vault или HashiCorp.
+Данные храните только в томе для долговременного хранения. В таком случае ваши данные не будут удалены, если под погибнет или аварийно завершит работу.
+
+
+Объекты Deployment – это самые ходовые контроллеры, используемые для создания подов в Kubernetes. Эти поды легко масштабировать, для этого достаточно указать в файле манифеста количество реплик. Например, допустим, вы планируете развернуть приложение Node.js, после чего собираетесь распространить его на пять реплик. В таком случае вам хорошо подойдет объект Deployment.
+
+На следующей схеме показано, как Deployment и StatefulSets присваивают имена подам.
+
+
+
+StatefulSets создают пронумерованные по порядку конечные точки сервисов для каждого пода, созданного путем репликации. На следующей схеме показано, как создаются конечные точки сохраняющих состояние подов (пронумерованные по порядку), и как они обмениваются информацией друг с другом.
+
+
+
+❯ Заключение
+
+В этой статье было рассказано о двух главных контроллерах, используемых в Kubernetes для создания подов: Deployment и StatefulSet. Объект Deployment очень хорош для работы с приложениями, не сохраняющими состояние, а StatefulSets – с сохраняющими. Если вы планируете развертывать приложения, сохраняющие состояние, например, MySQL и Oracle, следует воспользоваться контроллером StatefulSets, а не объектом Deployment.
+
+Контроллер StatefulSets предоставляет возможность пронумеровать все поды по порядку, начиная с нуля. Поэтому при работе с приложениями, сохраняющими состояние, легко обустроить архитектуру, в которой один под является ведущим, а остальные – его репликами. Если один из подов погибнет, то заново создается одноименный ему новый под. Эта возможность очень полезна и не нарушает цепочку кластеров с приложениями, сохраняющими состояние. Если же вы масштабируетесь вниз, то избыточные поды удаляются в обратном порядке.
+
+Пользуйтесь контроллером StatefulSets в кластере Kubernetes, если нужно развертывать приложения, сохраняющие состояние, например, Oracle, MySQL, Elasticsearch и MongoDB. Притом, что клонирование и синхронизацию данных все равно потребуется обеспечивать вручную, StatefulSets в значительной степени упрощают развертывание приложений, сохраняющих состояние.    Kubernetes StatefulSet        ❯ Что такое приложения с сохранением состояния? ❯ Что такое приложения с сохранением состояния?           ❯ О структурах StatefulSet ❯ О структурах StatefulSet         ❯ Когда использовать StatefulSets ❯ Когда использовать StatefulSets    Допустим, вы развернули базу данных MySQL в кластере Kubernetes и масштабировали ее до трех реплик, а клиентское приложение пытается получить доступ к кластеру MySQL, чтобы считывать и записывать данные. Запрос на считывание будет переадресовываться на три пода. Однако запрос на запись будет переадресовываться только на первый (ведущий) под, а записанные сюда данные будут синхронизироваться с другими подами. Это достижимо при помощи StatefulSets.
+Если удалить StatefulSet или отмасштабировать вниз, то не будут удалены тома, связанные с приложением, сохраняющим состояние. Так вашим данным обеспечивается безопасность. Если удалить или перезапустить под с MySQL, то вы сможете обращаться к данным из все того же тома, что и раньше. Допустим, вы развернули базу данных MySQL в кластере Kubernetes и масштабировали ее до трех реплик, а клиентское приложение пытается получить доступ к кластеру MySQL, чтобы считывать и записывать данные. Запрос на считывание будет переадресовываться на три пода. Однако запрос на запись будет переадресовываться только на первый (ведущий) под, а записанные сюда данные будут синхронизироваться с другими подами. Это достижимо при помощи StatefulSets. Если удалить StatefulSet или отмасштабировать вниз, то не будут удалены тома, связанные с приложением, сохраняющим состояние. Так вашим данным обеспечивается безопасность. Если удалить или перезапустить под с MySQL, то вы сможете обращаться к данным из все того же тома, что и раньше.  Объект Deployment и StatefulSets Объект Deployment и StatefulSets      my-app-123ab
+my-app-098bd
+my-app-890yt my-app-123ab
+my-app-098bd
+my-app-890yt     my-app-jk879
+my-app-kl097
+my-app-76hf7 my-app-jk879
+my-app-kl097
+my-app-76hf7                                  Порядковые номера для каждого из подов.
+Первый под может выступать в качестве ведущего, благодаря чему хорошо подходит для подготовки конфигурации с реплицируемой базой данных – такая конфигурация позволяет обрабатывать как чтение, так и запись.
+Другие поды действуют в качестве реплик.
+Новые поды будут создаваться лишь в случае, если более ранний под сейчас действует, причем, данные более раннего пода клонируются.
+Поды удаляются в порядке, обратном тому, в котором создавались. Порядковые номера для каждого из подов. Первый под может выступать в качестве ведущего, благодаря чему хорошо подходит для подготовки конфигурации с реплицируемой базой данных – такая конфигурация позволяет обрабатывать как чтение, так и запись. Другие поды действуют в качестве реплик. Новые поды будут создаваться лишь в случае, если более ранний под сейчас действует, причем, данные более раннего пода клонируются. Поды удаляются в порядке, обратном тому, в котором создавались.  ❯ Как создать StatefulSet в Kubernetes ❯ Как создать StatefulSet в Kubernetes    Создаем секрет Создаем секрет    apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-password
+type: opaque
+stringData:
+  MYSQL_ROOT_PASSWORD: password apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-password
+type: opaque
+stringData:
+  MYSQL_ROOT_PASSWORD: password   mysql-secret.yaml   kubectl apply -f mysql-secret.yaml kubectl apply -f mysql-secret.yaml     kubectl get secrets kubectl get secrets   Создаем приложение StatefulSet для MySQL Создаем приложение StatefulSet для MySQL    kubectl get pv
+NAME                   CAPACITY   ACCESS MODES   RECLAIM     STATUS
+pvc-e0567     10Gi        RWO             Retain           Bound kubectl get pv
+NAME                   CAPACITY   ACCESS MODES   RECLAIM     STATUS
+pvc-e0567     10Gi        RWO             Retain           Bound     kubectl get pvc
+
+NAME                             STATUS   VOLUME                      CAPACITY   ACCESS 
+mysql-store-mysql-set-0   Bound     pvc-e0567d43ffc6405b   10Gi        RWO kubectl get pvc
+
+NAME                             STATUS   VOLUME                      CAPACITY   ACCESS 
+mysql-store-mysql-set-0   Bound     pvc-e0567d43ffc6405b   10Gi        RWO     kubectl get storageclass
+
+NAME                       PROVISIONER                RECLAIMPOLICY  
+linode-block-storage      linodebs.csi.linode.com    Delete         
+linode-block-storage-retain (default)   linodebs.csi.linode.com   Retain          kubectl get storageclass
+
+NAME                       PROVISIONER                RECLAIMPOLICY  
+linode-block-storage      linodebs.csi.linode.com    Delete         
+linode-block-storage-retain (default)   linodebs.csi.linode.com   Retain              apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql-set
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  serviceName: "mysql"
+  replicas: 3
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      terminationGracePeriodSeconds: 10
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: mysql-store
+          mountPath: /var/lib/mysql
+        env:
+          - name: MYSQL_ROOT_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: mysql-password
+                key: MYSQL_ROOT_PASSWORD
+  volumeClaimTemplates:
+  - metadata:
+      name: mysql-store
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      storageClassName: "linode-block-storage-retain"
+      resources:
+        requests:
+          storage: 5Gi apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql-set
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  serviceName: "mysql"
+  replicas: 3
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      terminationGracePeriodSeconds: 10
+      containers:
+      - name: mysql
+        image: mysql:5.7
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: mysql-store
+          mountPath: /var/lib/mysql
+        env:
+          - name: MYSQL_ROOT_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: mysql-password
+                key: MYSQL_ROOT_PASSWORD
+  volumeClaimTemplates:
+  - metadata:
+      name: mysql-store
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      storageClassName: "linode-block-storage-retain"
+      resources:
+        requests:
+          storage: 5Gi     kind – это StatefulSet. kind приказывает Kubernetes создать приложение MySQL с возможностью сохранения состояния
+Пароль берется из объекта Secret при помощи secretKeyRef.
+Блоковое хранилище Linode использовалось в volumeClaimTemplates. Если здесь не упомянуть имени никакого класса хранилища, то для вашего кластера будет выбрано то хранилище, что задано по умолчанию.
+Количество реплик здесь равно 3 (указывается в параметре replica), поэтому будет создано три пода с именами mysql-set-0, mysql-set-1 и mysql-set-2. kind – это StatefulSet. kind приказывает Kubernetes создать приложение MySQL с возможностью сохранения состояния kind kind Пароль берется из объекта Secret при помощи secretKeyRef. secretKeyRef Блоковое хранилище Linode использовалось в volumeClaimTemplates. Если здесь не упомянуть имени никакого класса хранилища, то для вашего кластера будет выбрано то хранилище, что задано по умолчанию. volumeClaimTemplates Количество реплик здесь равно 3 (указывается в параметре replica), поэтому будет создано три пода с именами mysql-set-0, mysql-set-1 и mysql-set-2. mysql-set-0 mysql-set-1 mysql-set-2  mysql.yaml   kubectl apply -f mysql.yaml
+Теперь, когда поды MySQL созданы, получаем список подов:
+kubectl get pods
+
+NAME          READY   STATUS      RESTARTS   AGE
+mysql-set-0   1/1         Running        0                 142s
+mysql-set-1   1/1         Running        0                 132s
+mysql-set-2   1/1         Running        0                 120s kubectl apply -f mysql.yaml
+Теперь, когда поды MySQL созданы, получаем список подов:
+kubectl get pods
+
+NAME          READY   STATUS      RESTARTS   AGE
+mysql-set-0   1/1         Running        0                 142s
+mysql-set-1   1/1         Running        0                 132s
+mysql-set-2   1/1         Running        0                 120s   Создаем сервис для приложения со StatefulSet Создаем сервис для приложения со StatefulSet    apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  labels:
+    app: mysql
+spec:
+  ports:
+  - port: 3306
+  clusterIP: None
+  selector:
+    app: mysql apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  labels:
+    app: mysql
+spec:
+  ports:
+  - port: 3306
+  clusterIP: None
+  selector:
+    app: mysql   mysql-service.yaml   kubectl apply -f mysql-service.yaml kubectl apply -f mysql-service.yaml     kubectl get svc kubectl get svc   Создаем клиент для MySQL Создаем клиент для MySQL    apiVersion: v1
+kind: Pod
+metadata:
+  name: mysql-client
+spec:
+  containers:
+  - name: mysql-container
+    image: alpine
+    command: ['sh','-c', "sleep 1800m"]
+    imagePullPolicy: IfNotPresent apiVersion: v1
+kind: Pod
+metadata:
+  name: mysql-client
+spec:
+  containers:
+  - name: mysql-container
+    image: alpine
+    command: ['sh','-c', "sleep 1800m"]
+    imagePullPolicy: IfNotPresent   mysql-client.yaml   kubectl apply -f mysql-client.yaml kubectl apply -f mysql-client.yaml     kubectl exec --stdin --tty mysql-client -- sh kubectl exec --stdin --tty mysql-client -- sh     apk add mysql-client apk add mysql-client   Обратитесь к приложению MySQL через клиент MySQL Обратитесь к приложению MySQL через клиент MySQL         mysql -u root -p -h host-server-name mysql -u root -p -h host-server-name     stateful_name-ordinal_number.mysql.default.svc.cluster.local
+
+#Example
+mysql-set-0.mysql.default.svc.cluster.local stateful_name-ordinal_number.mysql.default.svc.cluster.local
+
+#Example
+mysql-set-0.mysql.default.svc.cluster.local     mysql -u root -p -h mysql-set-0.mysql.default.svc.cluster.local mysql -u root -p -h mysql-set-0.mysql.default.svc.cluster.local     create database erp;
+exit; create database erp;
+exit;     mysql -u root -p -h mysql-set-1.mysql.default.svc.cluster.local mysql -u root -p -h mysql-set-1.mysql.default.svc.cluster.local   mysql -u root -p -h mysql-set-2.mysql.default.svc.cluster.local mysql -u root -p -h mysql-set-2.mysql.default.svc.cluster.local     ❯ Наилучшие практики ❯ Наилучшие практики     Создайте для баз данных отдельное пространство имен.
+Все компоненты, необходимые для приложений с сохранением состояния, например, ConfigMaps, секреты и сервисы, размещайте в конкретном пространстве имен.
+Ваши собственные скрипты размещайте в ConfigMaps.
+При создании объектов «сервис» пользуйтесь безголовым сервисом, а не сервисом для балансировки нагрузки.
+Секреты храните в Vault или HashiCorp.
+Данные храните только в томе для долговременного хранения. В таком случае ваши данные не будут удалены, если под погибнет или аварийно завершит работу. Создайте для баз данных отдельное пространство имен. Все компоненты, необходимые для приложений с сохранением состояния, например, ConfigMaps, секреты и сервисы, размещайте в конкретном пространстве имен. Ваши собственные скрипты размещайте в ConfigMaps. При создании объектов «сервис» пользуйтесь безголовым сервисом, а не сервисом для балансировки нагрузки. Секреты храните в Vault или HashiCorp. Данные храните только в томе для долговременного хранения. В таком случае ваши данные не будут удалены, если под погибнет или аварийно завершит работу.               ❯ Заключение ❯ Заключение         ]]></text>
+</doc>

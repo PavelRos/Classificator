@@ -1,0 +1,384 @@
+<?xml version="1.0" ?>
+<doc>
+	<label auto="true" type="str" verify="true"><![CDATA[Develop]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[denis_kondratev]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-12-05, 12:52]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/post/703518/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Nullable reference types в Unity простыми словами]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[C#]]></item>
+		<item type="str"><![CDATA[Unity]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[nullable]]></item>
+		<item type="str"><![CDATA[nullable reference types]]></item>
+		<item type="str"><![CDATA[unity]]></item>
+		<item type="str"><![CDATA[unity3d уроки]]></item>
+		<item type="str"><![CDATA[c#]]></item>
+		<item type="str"><![CDATA[c# 8]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[С выходом Unity 2021 LTS в полной степени стал доступен Nullable reference types. Коротко расскажу о том, как включить поддержку Nullables в Unity, и с какими проблемами вы можете встретиться.
+Коротко о Nullable reference types
+Если вы уже знакомы с данной концепцией, то можете сразу перейти к разделу “Как включить Null reference type в проекте Unity”.
+Nullable reference types позволяет четко определять какие переменные ссылочного типа могут принимать значения null, а какие — нет. И еще на стадии написания кода находить уязвимые места, которые могу приводить Null reference exception.
+public class Person    
+{
+    private string _name;
+    private string? _occupation;
+}
+В этом примере переменная поле _name всегда должна иметь значение. В свою очередь для _occupation допускается значение null. Уже в этом примере возникнет предупреждение, с указанием на то, что объект Person может быть создан с пустым полем _name. Действительно, при таком раскладе _name обязательно должен заполняться в конструкторе.
+public class Person    
+{
+    private string _name;
+    private string? _occupation;
+
+    public Person(string name)
+    {
+        _name = name;
+    }
+}
+Или даже так.
+public class Person    
+{
+    private readonly string _name;
+    private string? _occupation;
+
+    public Person(string name, string? occupation)
+    {
+        _name = name;
+        _occupation = occupation;
+    }
+}
+Это особенно полезно при тесной работе в команде. Коллега, создавая объект, сразу из конструктора поймёт поведение класса. Также мы можем более точно определять контракт интерфейса.
+public interface IPerson
+{
+    string Name { get; }
+    string? Occupation { get; }
+}
+Реализуя данный интерфейс, получим такой класс
+public class Person : IPerson
+{
+    public string Name { get; }
+    
+    public string? Occupation { get; private set; }
+
+    public Person(string name, string? occupation)
+    {
+        Name = name;
+        Occupation = occupation;
+    }
+}
+В ходе разработки кода использующий этот класс IDE будет всячески указывать на места, которые могут нарушать заданную логику. Приведу пример работы с этим классом.
+public class People
+{
+    private readonly Dictionary<string, IPerson> _persons;
+
+    public People(Dictionary<string, IPerson> persons)
+    {
+        _persons = persons;
+    }
+
+    public string GetOccupationByName(string name)
+    {
+        if (_persons.TryGetValue(name, out var person))
+        {
+            return person.Occupation;
+        }
+
+        return null;
+    }
+}
+Тут мы получим сразу два предупреждения. Мы утверждаем, что метод GetOccupationByName() возвращает string, без возможного null. Но при этом возвращаем null в конце, а так же возвращаем person.Occupation, где уже Occupation может быть null. Задаваемые же нами правила заставляют нас писать код более корректно. Либо указать, что GetOccupationByName() возвращает string?, либо, к примеру, ввести метод TryGetOccupationByName.
+public bool TryGetOccupationByName(
+    string name,
+    [MaybeNullWhen(false)] out string occupation)
+{
+    if (_persons.TryGetValue(name, out var person))
+    {
+        occupation = person.Occupation;
+        return occupation is not null;
+    }
+
+    occupation = null;
+    return false;
+}
+Думаю, вы обратили внимание на атрибут MaybeNullWhen(bool). Интуитивно понятно, что он позволяет указывать для occupation null, при результате false.
+Как включить Null reference type в проекте Unity
+Конечно, мы всегда можем управлять доступностью Nullable reference type в конкретном месте через директивы #nullable enable, disable или restore. Но как включить эту опцию для всего проекта Unity по умолчанию? 
+На данный момент нет возможности это сделать напрямую через настройки в Assembly Definition в самом Unity или через настройки проекта в IDE.
+Чтобы включить Nullable reference types для всего проекта Unity расположите файл Directory.Build.props в корневой папке. Содержимое должно быть таким.
+<Project>
+    <PropertyGroup>
+        <Nullable>enable</Nullable>
+ </PropertyGroup>
+</Project>
+Для регулирования отдельных сборок разместите файл csc.rsp с текстом ‘-nullable:enable’ рядом с файлом сборки.
+Если вы используете Visual Studio, не должно возникнуть никаких проблем. Для Rider от JetBrains проверьте ваши настройки MSBuild. Откройте настройки File -> Settings. Найдите там раздел “Build, Execution, Deployment” -> “Toolset and Build”, пункт “MSBuild version”. Версия MSBuild должна быть достаточно свежая. У меня с 17.0 все работает.
+Сериализуемые поля в MonoBehaviour и ScriptableObject
+Для MonoBehaviour и ScriptableObject есть возможность указываться значения некоторых полей в редакторе через инспектор. Получается, что инициализация полей через конструктор не производится. А значит будут предупреждения.
+Надеюсь, эту проблему поправят в будущем. А сейчас есть два возможных решения этой проблемы. Отключать данный функционал для области объявления этих полей.
+public class Card : MonoBehaviour
+{
+#nullable disable
+   [SerializeField] private string _description;
+   [SerializeField] private Sprite _icon;
+#nullable restore
+}
+При это для указаных полей предупреждения перестают работать. К примеру следующий код у анализатора уже не будет вызывать никаких вопросов.
+private void Awake()
+{
+   _icon = null;
+}
+Поэтому советую применять второй вариант: назначать всем полям значение null!.
+public class Card : MonoBehaviour
+{
+    [SerializeField] private string _description = null!;
+    [SerializeField] private Sprite _icon = null!;
+
+    private void Awake()
+    {
+        _icon = null;
+    }
+}
+Здесь в методе Awake() мы уже получим предупреждение.
+Стоит коротко упомянуть, из-за того, что для MonoBehaviour нельзя указывать конструкторы, в некоторых случаях в их роли выступаю обычные методы. Тут мы столкнемся с теми же самыми проблемами. Способы их решение тут точно такие же.
+public class Cube : MonoBehaviour
+{
+   private ICollidingService _collidingService = null!;
+  
+   public void Initialize(ICollidingService collidingService)
+   {
+       _collidingService = collidingService;
+   }
+}
+Отсутствие поддержки в библиотеке Unity
+На мой взгляд, пока это самая большая проблема, которая может отпугнуть разработчика Unity от использования Nullable reference types. К примеру.
+public class Card : MonoBehaviour
+{
+    [SerializeField] private Card _parent = null!;
+    
+    private void Awake()
+    {
+        _parent = transform.parent.GetComponent<Card>();
+    }
+}
+Очевидно, что тут мы должны получить предупреждение, т.к. GetComponent<T> может возвращать null, т.е. T?, но это, к сожалению, пока никак не отображено в библиотеке Unity. Так же печалит факт отсутствия хоть каких либо анонсов исправления этой ситуации.
+Заключение
+Несмотря на перечисленные проблемы в Unity, я всё же считаю, что стоит начать присматриваться к этому новому функционалу. Постепенно внедрять в свои проекты шаг за шагом. Или пока ограничиваться локальным применением в новых фичах. 
+Благодаря Nullable reference types код становится более последовательным и помогает избегать некоторых будущих багов. Эффект особенно заметен, если разработка сильно пересекается между программистами. К примеру, один специалист все еще пишет реализацию интерфейса, где ещё полным полно заглушек, а другой — уже использует этот класс в другом месте. При этом всё ещё не может посмотреть его конечную реализацию.
+И конечно же мы ждем от Unity, Rider и Visual Studio каких-то готовых решений упомянутых проблем. С выходом Unity 2021 LTS в полной степени стал доступен Nullable reference types. Коротко расскажу о том, как включить поддержку Nullables в Unity, и с какими проблемами вы можете встретиться. Коротко о Nullable reference types Если вы уже знакомы с данной концепцией, то можете сразу перейти к разделу “Как включить Null reference type в проекте Unity”. Как включить Null reference type в проекте Unity Nullable reference types позволяет четко определять какие переменные ссылочного типа могут принимать значения null, а какие — нет. И еще на стадии написания кода находить уязвимые места, которые могу приводить Null reference exception. public class Person    
+{
+    private string _name;
+    private string? _occupation;
+} public class Person    
+{
+    private string _name;
+    private string? _occupation;
+} В этом примере переменная поле _name всегда должна иметь значение. В свою очередь для _occupation допускается значение null. Уже в этом примере возникнет предупреждение, с указанием на то, что объект Person может быть создан с пустым полем _name. Действительно, при таком раскладе _name обязательно должен заполняться в конструкторе. public class Person    
+{
+    private string _name;
+    private string? _occupation;
+
+    public Person(string name)
+    {
+        _name = name;
+    }
+} public class Person    
+{
+    private string _name;
+    private string? _occupation;
+
+    public Person(string name)
+    {
+        _name = name;
+    }
+} Или даже так. public class Person    
+{
+    private readonly string _name;
+    private string? _occupation;
+
+    public Person(string name, string? occupation)
+    {
+        _name = name;
+        _occupation = occupation;
+    }
+} public class Person    
+{
+    private readonly string _name;
+    private string? _occupation;
+
+    public Person(string name, string? occupation)
+    {
+        _name = name;
+        _occupation = occupation;
+    }
+} Это особенно полезно при тесной работе в команде. Коллега, создавая объект, сразу из конструктора поймёт поведение класса. Также мы можем более точно определять контракт интерфейса. public interface IPerson
+{
+    string Name { get; }
+    string? Occupation { get; }
+} public interface IPerson
+{
+    string Name { get; }
+    string? Occupation { get; }
+} Реализуя данный интерфейс, получим такой класс public class Person : IPerson
+{
+    public string Name { get; }
+    
+    public string? Occupation { get; private set; }
+
+    public Person(string name, string? occupation)
+    {
+        Name = name;
+        Occupation = occupation;
+    }
+} public class Person : IPerson
+{
+    public string Name { get; }
+    
+    public string? Occupation { get; private set; }
+
+    public Person(string name, string? occupation)
+    {
+        Name = name;
+        Occupation = occupation;
+    }
+} В ходе разработки кода использующий этот класс IDE будет всячески указывать на места, которые могут нарушать заданную логику. Приведу пример работы с этим классом. public class People
+{
+    private readonly Dictionary<string, IPerson> _persons;
+
+    public People(Dictionary<string, IPerson> persons)
+    {
+        _persons = persons;
+    }
+
+    public string GetOccupationByName(string name)
+    {
+        if (_persons.TryGetValue(name, out var person))
+        {
+            return person.Occupation;
+        }
+
+        return null;
+    }
+} public class People
+{
+    private readonly Dictionary<string, IPerson> _persons;
+
+    public People(Dictionary<string, IPerson> persons)
+    {
+        _persons = persons;
+    }
+
+    public string GetOccupationByName(string name)
+    {
+        if (_persons.TryGetValue(name, out var person))
+        {
+            return person.Occupation;
+        }
+
+        return null;
+    }
+} Тут мы получим сразу два предупреждения. Мы утверждаем, что метод GetOccupationByName() возвращает string, без возможного null. Но при этом возвращаем null в конце, а так же возвращаем person.Occupation, где уже Occupation может быть null. Задаваемые же нами правила заставляют нас писать код более корректно. Либо указать, что GetOccupationByName() возвращает string?, либо, к примеру, ввести метод TryGetOccupationByName. public bool TryGetOccupationByName(
+    string name,
+    [MaybeNullWhen(false)] out string occupation)
+{
+    if (_persons.TryGetValue(name, out var person))
+    {
+        occupation = person.Occupation;
+        return occupation is not null;
+    }
+
+    occupation = null;
+    return false;
+} public bool TryGetOccupationByName(
+    string name,
+    [MaybeNullWhen(false)] out string occupation)
+{
+    if (_persons.TryGetValue(name, out var person))
+    {
+        occupation = person.Occupation;
+        return occupation is not null;
+    }
+
+    occupation = null;
+    return false;
+} Думаю, вы обратили внимание на атрибут MaybeNullWhen(bool). Интуитивно понятно, что он позволяет указывать для occupation null, при результате false.  Как включить Null reference type в проекте Unity Конечно, мы всегда можем управлять доступностью Nullable reference type в конкретном месте через директивы #nullable enable, disable или restore. Но как включить эту опцию для всего проекта Unity по умолчанию?  На данный момент нет возможности это сделать напрямую через настройки в Assembly Definition в самом Unity или через настройки проекта в IDE. Чтобы включить Nullable reference types для всего проекта Unity расположите файл Directory.Build.props в корневой папке. Содержимое должно быть таким. <Project>
+    <PropertyGroup>
+        <Nullable>enable</Nullable>
+ </PropertyGroup>
+</Project> <Project>
+    <PropertyGroup>
+        <Nullable>enable</Nullable>
+ </PropertyGroup>
+</Project> Для регулирования отдельных сборок разместите файл csc.rsp с текстом ‘-nullable:enable’ рядом с файлом сборки. Если вы используете Visual Studio, не должно возникнуть никаких проблем. Для Rider от JetBrains проверьте ваши настройки MSBuild. Откройте настройки File -> Settings. Найдите там раздел “Build, Execution, Deployment” -> “Toolset and Build”, пункт “MSBuild version”. Версия MSBuild должна быть достаточно свежая. У меня с 17.0 все работает. Сериализуемые поля в MonoBehaviour и ScriptableObject Для MonoBehaviour и ScriptableObject есть возможность указываться значения некоторых полей в редакторе через инспектор. Получается, что инициализация полей через конструктор не производится. А значит будут предупреждения. Надеюсь, эту проблему поправят в будущем. А сейчас есть два возможных решения этой проблемы. Отключать данный функционал для области объявления этих полей. public class Card : MonoBehaviour
+{
+#nullable disable
+   [SerializeField] private string _description;
+   [SerializeField] private Sprite _icon;
+#nullable restore
+} public class Card : MonoBehaviour
+{
+#nullable disable
+   [SerializeField] private string _description;
+   [SerializeField] private Sprite _icon;
+#nullable restore
+} При это для указаных полей предупреждения перестают работать. К примеру следующий код у анализатора уже не будет вызывать никаких вопросов. private void Awake()
+{
+   _icon = null;
+} private void Awake()
+{
+   _icon = null;
+} Поэтому советую применять второй вариант: назначать всем полям значение null!. public class Card : MonoBehaviour
+{
+    [SerializeField] private string _description = null!;
+    [SerializeField] private Sprite _icon = null!;
+
+    private void Awake()
+    {
+        _icon = null;
+    }
+} public class Card : MonoBehaviour
+{
+    [SerializeField] private string _description = null!;
+    [SerializeField] private Sprite _icon = null!;
+
+    private void Awake()
+    {
+        _icon = null;
+    }
+} Здесь в методе Awake() мы уже получим предупреждение. Стоит коротко упомянуть, из-за того, что для MonoBehaviour нельзя указывать конструкторы, в некоторых случаях в их роли выступаю обычные методы. Тут мы столкнемся с теми же самыми проблемами. Способы их решение тут точно такие же. public class Cube : MonoBehaviour
+{
+   private ICollidingService _collidingService = null!;
+  
+   public void Initialize(ICollidingService collidingService)
+   {
+       _collidingService = collidingService;
+   }
+} public class Cube : MonoBehaviour
+{
+   private ICollidingService _collidingService = null!;
+  
+   public void Initialize(ICollidingService collidingService)
+   {
+       _collidingService = collidingService;
+   }
+} Отсутствие поддержки в библиотеке Unity На мой взгляд, пока это самая большая проблема, которая может отпугнуть разработчика Unity от использования Nullable reference types. К примеру. public class Card : MonoBehaviour
+{
+    [SerializeField] private Card _parent = null!;
+    
+    private void Awake()
+    {
+        _parent = transform.parent.GetComponent<Card>();
+    }
+} public class Card : MonoBehaviour
+{
+    [SerializeField] private Card _parent = null!;
+    
+    private void Awake()
+    {
+        _parent = transform.parent.GetComponent<Card>();
+    }
+} Очевидно, что тут мы должны получить предупреждение, т.к. GetComponent<T> может возвращать null, т.е. T?, но это, к сожалению, пока никак не отображено в библиотеке Unity. Так же печалит факт отсутствия хоть каких либо анонсов исправления этой ситуации. Заключение Несмотря на перечисленные проблемы в Unity, я всё же считаю, что стоит начать присматриваться к этому новому функционалу. Постепенно внедрять в свои проекты шаг за шагом. Или пока ограничиваться локальным применением в новых фичах.  Благодаря Nullable reference types код становится более последовательным и помогает избегать некоторых будущих багов. Эффект особенно заметен, если разработка сильно пересекается между программистами. К примеру, один специалист все еще пишет реализацию интерфейса, где ещё полным полно заглушек, а другой — уже использует этот класс в другом месте. При этом всё ещё не может посмотреть его конечную реализацию. И конечно же мы ждем от Unity, Rider и Visual Studio каких-то готовых решений упомянутых проблем. ]]></text>
+</doc>

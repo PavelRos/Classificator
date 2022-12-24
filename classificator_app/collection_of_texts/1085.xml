@@ -1,0 +1,2070 @@
+<?xml version="1.0" ?>
+<doc>
+	<original_author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Sebastian Poręba]]></item>
+	</original_author>
+	<label auto="true" type="str" verify="true"><![CDATA[Other]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[ru_vds]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-08-14, 13:00]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/company/ruvds/blog/680666/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Как создать игру Tetris с помощью Three.js]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Блог компании RUVDS.com]]></item>
+		<item type="str"><![CDATA[JavaScript]]></item>
+		<item type="str"><![CDATA[Работа с 3D-графикой]]></item>
+		<item type="str"><![CDATA[Разработка игр]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[ruvds_перевод]]></item>
+		<item type="str"><![CDATA[three.js]]></item>
+		<item type="str"><![CDATA[тетрис]]></item>
+		<item type="str"><![CDATA[трёхмерная графика]]></item>
+		<item type="str"><![CDATA[tetris]]></item>
+		<item type="str"><![CDATA[веб-приложения]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[Вспомните, как мы играем в «Тетрис». При движении блока мы свободно перемещаем и вращаем его. Кубы, из которых состоят блоки, соединены, поэтому должно быть соединено и их описание в коде. С другой стороны, когда мы завершаем горизонтальный срез (в 2D это строка), кубы удаляются и блок, к которым они принадлежали, на этом этапе уже не важны. На самом деле, они и не должны быть важны, ведь некоторые кубы из блока могут удалиться, а другие остаться на поле.
+
+Для отслеживания начальной точки куба пришлось бы постоянно разделять и объединять геометрию, и поверьте мне, это был бы сущий хаос. В оригинальном двухмерном «Тетрисе» показателем исходного блока был цвет квадрата. Однако в 3D нам нужен удобный способ демонстрации оси Z, и лучше всего для этого подходит цвет.
+
+В нашей игре кубы будут соединены, когда они динамичны и разделены, когда они статичны.
+
+Добавление статичного блока
+
+Давайте начнём с момента, когда движущийся блок касается пола (или другого блока). Движущийся блок (с объединённой геометрией нескольких кубов) преобразуется в статичные, разделённые кубы, которые больше не двигаются. Удобно хранить такие кубы в 3D-массиве.
+
+Tetris.staticBlocks = [];
+Tetris.zColors = [
+  0x6666ff, 0x66ffff, 0xcc68EE, 0x666633, 0x66ff66, 0x9966ff, 0x00ff66, 0x66EE33, 0x003399, 0x330099, 0xFFA500, 0x99ff00, 0xee1289, 0x71C671, 0x00BFFF, 0x666633, 0x669966, 0x9966ff
+];
+Tetris.addStaticBlock = function(x,y,z) {
+  if(Tetris.staticBlocks[x] === undefined) Tetris.staticBlocks[x] = [];
+  if(Tetris.staticBlocks[x][y] === undefined) Tetris.staticBlocks[x][y] = [];
+ 
+  var mesh = THREE.SceneUtils.createMultiMaterialObject(new THREE.CubeGeometry( Tetris.blockSize, Tetris.blockSize, Tetris.blockSize), [
+    new THREE.MeshBasicMaterial({color: 0x000000, shading: THREE.FlatShading, wireframe: true, transparent: true}),
+    new THREE.MeshBasicMaterial({color: Tetris.zColors[z]})
+  ] );
+ 
+  mesh.position.x = (x - Tetris.boundingBoxConfig.splitX/2)*Tetris.blockSize + Tetris.blockSize/2;
+  mesh.position.y = (y - Tetris.boundingBoxConfig.splitY/2)*Tetris.blockSize + Tetris.blockSize/2;
+  mesh.position.z = (z - Tetris.boundingBoxConfig.splitZ/2)*Tetris.blockSize + Tetris.blockSize/2;
+  mesh.overdraw = true;
+ 
+  Tetris.scene.add(mesh);
+  Tetris.staticBlocks[x][y][z] = mesh;
+};
+
+Здесь нужно многое объяснить.
+
+▍ Цвета и материалы
+
+Tetris.zColors хранит список цветов, обозначающих позицию куба по оси Z. Мне бы хотелось иметь красивый куб, поэтому у него должны быть цвет и граница с контуром. Я воспользуюсь не очень популярной в туториалах по Three.js штукой — multiMaterial. В SceneUtils Three.js есть функция, получающая геометрию и массив SceneUtils (обратите внимание на скобки []) материалов. Взглянем на исходный код Three.js:
+
+  createMultiMaterialObject : function ( geometry, materials ) {
+  var i, il = materials.length, group = new THREE.Object3D();
+  for ( i = 0; i < il; i ++ ) {
+    var object = new THREE.Mesh( geometry, materials[ i ] );
+    group.add( object );
+  }
+  return group;
+},
+
+Это очень простой хак, создающий меш для каждого материала. На чистом WebGL есть более удобные способы достижения того же результата (например, двукратная отрисовка, в первый раз при помощи gl.LINES, во второй при помощи gl.something), но обычно эта функция используется, например, для одновременного объединения тексту и материалов, а не разных типов отрисовки.
+
+▍ Позиция в 3D-пространстве
+
+Почему позиция выглядит так?
+
+mesh.position.x = (x - Tetris.boundingBoxConfig.splitX/2)*Tetris.blockSize + Tetris.blockSize/2;
+
+Центр поля при инициализации был размещён в точке (0,0,0). Это не очень хорошая точка, так как некоторые кубы будут иметь отрицательную позицию, а другие положительную. В нашем случае будет лучше задать угол объекта. Более того, нам удобнее воспринимать позиции кубов как дискретные значения от 1 до 6 или, по крайней мере, от 0 до 5. В Three.js (а также в WebGL, OpenGL и всём остальном) используются собственные единицы, которые ближе соотносятся с метрами или пикселями. Напомню, что в конфигурацию мы поместили значение
+
+Tetris.blockSize = boundingBoxConfig.width/boundingBoxConfig.splitX;
+
+Оно отвечает за преобразование. Итак, подведём итог:
+
+// преобразуем 0-5 в -3 - +2
+(x - Tetris.boundingBoxConfig.splitX/2)
+ // масштабируем в единицы Three.js
+*Tetris.blockSize
+ // задаём центр куба, а не угол - нам нужно сдвинуть позицию на + Tetris.blockSize/2
+
+Хороший тест
+
+Наша игра по-прежнему очень статична, но можно открыть консоль и выполнить следующий код:
+
+var i = 0, j = 0, k = 0, interval = setInterval(function() {if(i==6) {i=0;j++;} if(j==6) {j=0;k++;} if(k==6) {clearInterval(interval); return;} Tetris.addStaticBlock(i,j,k); i++;},30)
+
+Он должен создать анимацию заполнения поля кубами.
+
+Ведём счёт
+
+Небольшая вспомогательная функция для ведения счёта:
+
+Tetris.currentPoints = 0;
+
+Tetris.addPoints = function(n) {
+
+  Tetris.currentPoints += n;
+
+  Tetris.pointsDOM.innerHTML = Tetris.currentPoints;
+
+  Cufon.replace('#points');
+
+}
+
+Подготовка
+
+Для начала создадим новый файл, в котором будет храниться объект блока, и включим его в index.html. Файл должен начинаться так:
+
+window.Tetris = window.Tetris  || {}; // эквивалент ъif(!window.Tetris) window.Tetris = {};
+
+Таким образом, даже если порядок парсинга файла будет нарушен (что, кстати, очень маловероятно), мы никогда не будем переписывать существующие объекты или использовать неопределённые переменные. На этом этапе можно заменить и объявление var Tetris = {}; в нашем основном файле.
+
+Прежде чем двигаться дальше, нам нужна ещё одна вспомогательная функция.
+
+Tetris.Utils = {}; 
+
+Tetris.Utils.cloneVector = function (v) {
+
+  return {x: v.x, y: v.y, z: v.z};
+
+};
+
+Чтобы понять, зачем нам это нужно, мы должны поговорить о переменных в JS. Если мы используем число, оно всегда передаётся по значению. Это означает, что код:
+
+var a = 5;
+
+var b = a;
+
+Поместит в b число 5, но оно никак не будет связано с a. Однако при использовании объектов:
+
+var a = (x: 5};
+
+var b = a;
+
+b — это ссылка на объект. b.x = 6; выполнит запись в тот же объект, на который ссылается a.
+
+Именно поэтому нам нужен способ создания копии вектора. Простое v1 = v2 будет означать, что в памяти находится только один вектор. Однако если мы выполним доступ непосредственно к числовым частям вектора и создадим клон, то у нас будет два вектора и ими можно будет манипулировать по отдельности.
+
+Последним подготовительным шагом будет определение фигур.
+
+Tetris.Block = {};
+
+ 
+
+Tetris.Block.shapes = [
+
+    [
+
+        {x: 0, y: 0, z: 0},
+
+        {x: 1, y: 0, z: 0},
+
+        {x: 1, y: 1, z: 0},
+
+        {x: 1, y: 2, z: 0}
+
+    ],
+
+    [
+
+        {x: 0, y: 0, z: 0},
+
+        {x: 0, y: 1, z: 0},
+
+        {x: 0, y: 2, z: 0},
+
+    ],
+
+    [
+
+        {x: 0, y: 0, z: 0},
+
+        {x: 0, y: 1, z: 0},
+
+        {x: 1, y: 0, z: 0},
+
+        {x: 1, y: 1, z: 0}
+
+    ],
+
+    [
+
+        {x: 0, y: 0, z: 0},
+
+        {x: 0, y: 1, z: 0},
+
+        {x: 0, y: 2, z: 0},
+
+        {x: 1, y: 1, z: 0}
+
+    ],
+
+    [
+
+        {x: 0, y: 0, z: 0},
+
+        {x: 0, y: 1, z: 0},
+
+        {x: 1, y: 1, z: 0},
+
+        {x: 1, y: 2, z: 0}
+
+    ]
+
+];
+
+ 
+
+Обратите внимание, что первый куб каждой фигуры находится в (0,0,0). Это очень важно и будет объяснено в следующем разделе.
+
+Генерация фигур
+
+Для описания блока нужно три значения: базовая фигура, позиция и поворот. На этом этапе нам нужно заранее подумать, как мы будем распознавать коллизии.
+
+По своему опыту я знаю, что распознавание коллизий в играх — это в той или иной степени фальшивка. Всё дело в производительности — геометрии упрощаются, коллизии для специфических ситуаций исключаются первым делом, некоторые коллизии вообще не рассматриваются, а реакция на коллизию почти всегда неточна. Но это не важно — если всё выглядит естественно, никто ничего не заметит, и мы сэкономим много дефицитных тактов ЦП.
+
+Каким же будет самое простое распознавание коллизий для «Тетриса»? Все фигуры — это кубы с привязкой к осям координат, центры которых — это одна из заданных групп точек. Я на 99% уверен, что лучше всего работать с этим, храня массив значений [FREE, MOVING, STATIC] для каждой позиции на поле. Таким образом, если мы захотим переместить фигуру и пространство, которое ей нужно, уже занято, то у нас есть коллизия. Сложность: O(количество кубов в фигуре) <=> O(1). Великолепно!
+
+Я знаю, что вращение — довольно сложная штука, и его по возможности стоит избегать. Именно поэтому мы будем хранить базовую фигуру блока в повёрнутом виде. Благодаря этому, мы сможем применять только позицию (что делается легко) и быстро проверять, есть ли коллизия. На самом деле в нашем случае это не особо важно, но было бы важно в более сложной игре. Ни одна игра не мала настолько, чтобы писать её лениво.
+
+И позиция, и вращение используются в Three.js. Однако проблема в том, что в Three.js и на поле используются разные единицы. Чтобы упростить код, мы будем хранить позицию отдельно. Вращение везде одинаковое, поэтому мы будем использовать встроенные значения.
+
+Сначала мы берём случайную фигуру и создаём копию. Именно для этого нужна функция cloneVector.
+
+Tetris.Block.position = {};
+
+ 
+
+Tetris.Block.generate = function() {
+
+  var geometry, tmpGeometry;
+
+ 
+
+  var type = Math.floor(Math.random()*(Tetris.Block.shapes.length));
+
+  this.blockType = type;
+
+ 
+
+  Tetris.Block.shape = [];
+
+  for(var i = 0; i < Tetris.Block.shapes[type].length; i++) {
+
+    Tetris.Block.shape[i] = Tetris.Utils.cloneVector(Tetris.Block.shapes[type][i]);
+
+  }
+
+Теперь нужно объединить все кубы, чтобы они действовали как одна фигура.
+
+Для этого есть функция Three.js — она получает геометрию и меш, и объединяет их. На самом деле здесь выполняется объединение массива внутренних вершин. Оно учитывает позицию объединённой геометрии. Именно поэтому нам было нужно, чтобы первый куб находился в (0,0,0). Меш имеет позицию, в отличие от геометрии — она всегда считается (0,0,0). Можно было бы написать функцию объединения для двух мешей, но это сложнее, чем наша система хранения фигур.
+
+geometry = new THREE.CubeGeometry(Tetris.blockSize, Tetris.blockSize, Tetris.blockSize);
+
+for(var i = 1 ; i < Tetris.Block.shape.length; i++) {
+
+  tmpGeometry = new THREE.Mesh(new THREE.CubeGeometry(Tetris.blockSize, Tetris.blockSize, Tetris.blockSize));
+
+  tmpGeometry.position.x = Tetris.blockSize * Tetris.Block.shape[i].x;
+
+  tmpGeometry.position.y = Tetris.blockSize * Tetris.Block.shape[i].y;
+
+  THREE.GeometryUtils.merge(geometry, tmpGeometry);
+
+}
+
+Имея объединённую геометрию, мы можем воспользоваться описанным выше трюком с двойными материалами.
+
+Tetris.Block.mesh = THREE.SceneUtils.createMultiMaterialObject(geometry, [
+
+  new THREE.MeshBasicMaterial({color: 0x000000, shading: THREE.FlatShading, wireframe: true, transparent: true}),
+
+  new THREE.MeshBasicMaterial({color: 0xff0000})
+
+]);
+
+Нам нужно задать исходную позицию и вращение блока (центр поля для x,y и какое-то произвольное число для z).
+
+// исходная позиция
+
+  Tetris.Block.position = {x: Math.floor(Tetris.boundingBoxConfig.splitX/2)-1, y: Math.floor(Tetris.boundingBoxConfig.splitY/2)-1, z: 15};
+
+ 
+
+  Tetris.Block.mesh.position.x = (Tetris.Block.position.x - Tetris.boundingBoxConfig.splitX/2)*Tetris.blockSize/2;
+
+  Tetris.Block.mesh.position.y = (Tetris.Block.position.y - Tetris.boundingBoxConfig.splitY/2)*Tetris.blockSize/2;
+
+  Tetris.Block.mesh.position.z = (Tetris.Block.position.z - Tetris.boundingBoxConfig.splitZ/2)*Tetris.blockSize + Tetris.blockSize/2;
+
+  Tetris.Block.mesh.rotation = {x: 0, y: 0, z: 0};
+
+  Tetris.Block.mesh.overdraw = true;
+
+ 
+
+  Tetris.scene.add(Tetris.Block.mesh);
+
+}; // конец Tetris.Block.generate()
+
+При желании можно вызвать Tetris.Block.generate() из консоли.
+
+Перемещение
+
+На самом деле, перемещать блок очень просто. Для вращения мы используем внутренние структуры Three.js и нам нужно преобразовать углы в радианы.
+
+Tetris.Block.rotate = function(x,y,z) {
+
+  Tetris.Block.mesh.rotation.x += x * Math.PI / 180;
+
+  Tetris.Block.mesh.rotation.y += y * Math.PI / 180;
+
+  Tetris.Block.mesh.rotation.z += z * Math.PI / 180;
+
+};
+
+С позицией всё просто: Three.js нужна позиция, учитывающая размер блока, а нашей копии она не нужна. Для нашего развлечения в коде есть простая проверка касания пола; в дальнейшем мы её удалим.
+
+Tetris.Block.move = function(x,y,z) {
+
+  Tetris.Block.mesh.position.x += x*Tetris.blockSize;
+
+  Tetris.Block.position.x += x;
+
+ 
+
+  Tetris.Block.mesh.position.y += y*Tetris.blockSize;
+
+  Tetris.Block.position.y += y;
+
+ 
+
+  Tetris.Block.mesh.position.z += z*Tetris.blockSize;
+
+  Tetris.Block.position.z += z;
+
+  if(Tetris.Block.position.z == 0) Tetris.Block.hitBottom();
+
+};
+
+Касание пола и повторное создание
+
+Помните, для чего нужна hitBottom? Если жизненный цикл блока завершился, мы должны преобразовать его в статичные кубы, удалить его из сцены и сгенерировать новый.
+
+Tetris.Block.hitBottom = function() {
+
+  Tetris.Block.petrify();
+
+  Tetris.scene.removeObject(Tetris.Block.mesh);
+
+  Tetris.Block.generate();
+
+};
+
+У нас уже есть generate(), а removeObject() — это функция Three.js для удаления неиспользуемых мешей. К счастью, ранее мы написали функцию для статичных кубов и теперь используем её в petrify().
+
+Tetris.Block.petrify = function() {
+
+  var shape = Tetris.Block.shape;
+
+  for(var i = 0 ; i < shape.length; i++) {
+
+    Tetris.addStaticBlock(Tetris.Block.position.x + shape[i].x, Tetris.Block.position.y + shape[i].y, Tetris.Block.position.z + shape[i].z);
+
+  }
+
+};
+
+Мы использовали шорткат для Tetris.Block.shape, он повышает и понятность, и производительность кода, поэтому пользуйтесь этой техникой, когда это возможно. В этой функции мы видим, почему хранение фигуры и отдельного вращения было хорошей идеей. Благодаря этому, наш код будет приятно читать, а с распознаванием коллизий это будет ещё важнее.
+
+Соединяем всё вместе
+
+Итак, теперь у нас есть все необходимые для блоков функции, давайте теперь подключим их туда, где это необходимо. Нам нужно сгенерировать один блок в начале, так что изменим Tetris.start():
+
+Tetris.start = function() {
+
+  document.getElementById("menu").style.display = "none";
+
+  Tetris.pointsDOM = document.getElementById("points");
+
+  Tetris.pointsDOM.style.display = "block";
+
+  Tetris.Block.generate(); // добавили эту строку
+
+  Tetris.animate();
+
+};
+
+С каждым тактом игры мы должны двигать блок на один шаг вперёд, так что найдём место в Tetris.animate(), где мы выполняем движение, и изменим его:
+
+while(Tetris.cumulatedFrameTime > Tetris.gameStepTime) {
+
+
+
+   Tetris.cumulatedFrameTime -= Tetris.gameStepTime;
+
+
+
+   Tetris.Block.move(0,0,-1);
+
+Клавиатура
+
+Нужно признаться: я ненавижу события клавиатуры. Коды клавиш бессмысленны и различаются для keydown и keypress. Не существует удобного способа опроса состояния клавиатуры, после второго keypress событие повторяется в 10 раз быстрее, чем для первых двух и так далее. Если вы хотите написать серьёзную игру с активным использованием клавиатуры, вам почти точно придётся написать обёртку для всей этой ерунды. Можно попробовать воспользоваться KeyboardJS, он выглядит неплохо. Для демонстрации идеи я воспользуюсь ванильным JS. Для его отладки я использовал console.log(keycode). Это сильно помогает в поиске нужных кодов.
+
+window.addEventListener('keydown', function (event) {
+
+  var key = event.which ? event.which : event.keyCode;
+
+ 
+
+  switch(key) {
+
+    case 38: // вверх (стрелка)
+
+      Tetris.Block.move(0, 1, 0);
+
+      break;
+
+    case 40: // вниз (стрелка)
+
+      Tetris.Block.move(0, -1, 0);
+
+      break;
+
+    case 37: // влево (стрелка)
+
+      Tetris.Block.move(-1, 0, 0);
+
+      break;
+
+    case 39: // вправо (стрелка)
+
+      Tetris.Block.move(1, 0, 0);
+
+      break;
+
+    case 32: // пробел
+
+      Tetris.Block.move(0, 0, -1);
+
+      break;
+
+ 
+
+    case 87: // вверх (w)
+
+      Tetris.Block.rotate(90, 0, 0);
+
+      break;
+
+    case 83: // вниз (s)
+
+      Tetris.Block.rotate(-90, 0, 0);
+
+      break;
+
+ 
+
+    case 65: // влево (a)
+
+      Tetris.Block.rotate(0, 0, 90);
+
+      break;
+
+    case 68: // вправо (d)
+
+      Tetris.Block.rotate(0, 0, -90);
+
+      break;   
+
+ 
+
+    case 81: // (q)
+
+      Tetris.Block.rotate(0, 90, 0);
+
+      break;
+
+    case 69: // (e)
+
+      Tetris.Block.rotate(0, -90, 0);
+
+      break;
+
+  }
+
+}, false);
+
+Если запустить игру сейчас, то вы сможете перемещать и вращать блок. Распознавания коллизий не будет, но когда блок коснётся пола, он удалится и на поле появится новый блок. Так как мы не применяем вращение к хранящейся фигуре, статичная версия может вращаться иначе.
+
+Объект поля
+
+Мы начнём с нового класса для хранения информации о 3D-пространстве. Нам нужны значения const, enum. На самом деле, они не будут являться ни const, ни enum, поскольку всего этого нет в JS, однако в JS 1.8.5 есть новая функция freeze. Можно создать объект и защитить его от любых дальнейших модификаций. Она имеет широкую поддержку во всех браузерах, где можно запускать WebGL, и обеспечит нам реализацию похожих на enum объектов.
+
+window.Tetris = window.Tetris  || {};
+
+Tetris.Board = {};
+
+ 
+
+Tetris.Board.COLLISION = {NONE:0, WALL:1, GROUND:2};
+
+Object.freeze(Tetris.Board.COLLISION);
+
+ 
+
+Tetris.Board.FIELD = {EMPTY:0, ACTIVE:1, PETRIFIED:2};
+
+Object.freeze(Tetris.Board.FIELD);
+
+Мы будем использовать поле enum для хранения состояния игрового поля в массиве полей. В начале игры нам нужно инициализировать его пустым.
+
+Tetris.Board.fields = [];
+
+ 
+
+Tetris.Board.init = function(_x,_y,_z) {
+
+    for(var x = 0; x < _x; x++) {
+
+        Tetris.Board.fields[x] = [];
+
+        for(var y = 0; y < _y; y++) {
+
+            Tetris.Board.fields[x][y] = [];
+
+            for(var z = 0; z < _z; z++) {
+
+                Tetris.Board.fields[x][y][z] = Tetris.Board.FIELD.EMPTY;
+
+            }
+
+        }
+
+    }
+
+};
+
+Tetris.Board.init() должен вызываться до появления в игре блоков. Я вызываю её из Tetris.init, потому что мы можем легко передать размеры поля в качестве параметров:
+
+// добавить в любое место Tetris.init
+
+Tetris.Board.init(boundingBoxConfig.splitX, boundingBoxConfig.splitY, boundingBoxConfig.splitZ);
+
+Также нам следует изменить функцию Tetris.Block.petrify, чтобы она сохраняла информацию в новый массив.
+
+Tetris.Block.petrify = function () {
+
+    var shape = Tetris.Block.shape;
+
+    for (var i = 0; i < shape.length; i++) {
+
+        Tetris.addStaticBlock(Tetris.Block.position.x + shape[i].x, Tetris.Block.position.y + shape[i].y, Tetris.Block.position.z + shape[i].z);
+
+        Tetris.Board.fields[Tetris.Block.position.x + shape[i].x][Tetris.Block.position.y + shape[i].y][Tetris.Block.position.z + shape[i].z] = Tetris.Board.FIELD.PETRIFIED;
+
+    }
+
+};
+
+Распознавание коллизий
+
+В «Тетрисе» существует два основных типа коллизий. Первый — это коллизия со стеной, когда активный блок касается стены или другого блока при движении или повороте по осям x/y (т. е. на одном уровне). Второй — это коллизия с полом, которая происходит, когда блок двигается по оси z и касается пола или другого блока, после чего его жизненный цикл завершается.
+
+Мы начнём с коллизий со стенами поля, которое реализовать довольно легко. Чтобы сделать код красивее (и быстрее) я снова использовал шорткаты.
+
+Tetris.Board.testCollision = function (ground_check) {
+
+    var x, y, z, i;
+
+ 
+
+    // шорткаты
+
+    var fields = Tetris.Board.fields;
+
+    var posx = Tetris.Block.position.x, posy = Tetris.Block.position.y,
+
+        posz = Tetris.Block.position.z, shape = Tetris.Block.shape;
+
+ 
+
+    for (i = 0; i < shape.length; i++) {
+
+        // 4 распознавания стен для каждой части фигуры
+
+        if ((shape[i].x + posx) < 0 ||
+
+            (shape[i].y + posy) < 0 ||
+
+            (shape[i].x + posx) >= fields.length ||
+
+            (shape[i].y + posy) >= fields[0].length) {
+
+            return Tetris.Board.COLLISION.WALL;
+
+        }
+
+А как же обрабатывать коллизию «блок-блок»? Мы уже храним в массиве статичные блоки, поэтому можем проверять, пересекается ли блок с каким-то из существующих кубов. Вы можете задаться вопросом, почему для testCollision в качестве аргумента используется ground_check. Это результат простого наблюдения: коллизия «блок-блок» распознаётся почти одинаково для коллизии с полом и стеной. Единственное различие заключается в движении по оси z, которое должно вызвать касание пола.
+
+if (fields[shape[i].x + posx][shape[i].y + posy][shape[i].z + posz - 1] === Tetris.Board.FIELD.PETRIFIED) {
+
+    return ground_check ? Tetris.Board.COLLISION.GROUND : Tetris.Board.COLLISION.WALL;
+
+}
+
+Также мы будем проверять, не равна ли нулю позиция по оси z. Это означает, что под нашим движущимся блоком нет кубов, но он достиг уровня пола и всё равно должен превратиться в статичный.
+
+  if((shape[i].z + posz) <= 0) {
+
+            return Tetris.Board.COLLISION.GROUND;
+
+        }
+
+    }
+
+};
+
+Реакция на коллизию
+
+Давайте теперь сделаем что-нибудь с имеющейся у нас информацией. Мы начнём с простейшего: с распознавания проигрыша. Можно сделать это, проверяя, не возникает ли коллизия непосредственно после создания нового блока. Если он касается пола, больше играть смысла нет.
+
+Добавим в Tetris.Block.generate после вычисления позиции блока следующее:
+
+if (Tetris.Board.testCollision(true) === Tetris.Board.COLLISION.GROUND) {
+
+    Tetris.gameOver = true;
+
+    Tetris.pointsDOM.innerHTML = "GAME OVER";
+
+    Cufon.replace('#points');
+
+}
+
+С движением тоже всё просто. После изменения позиции мы вызываем распознавание коллизий, передавая в качестве аргумента информацию о движении по оси z.
+
+Если есть коллизия со стеной, то перемещение было невозможным и нам нужно его отменить. Можно добавить несколько строк для вычитания позиции, но я ленив и предпочитаю снова вызвать функцию перемещения, но с обратными аргументами. Это никогда не будет использоваться с перемещением по оси z, поэтому в качестве z можно передать ноль.
+
+Если фигура касается пола, то у нас уже есть функция hitBottom(), которую нужно вызвать. Она удалит из игры все активные фигуры, изменит состояние поля и создаст новую фигуру.
+
+// добавляем вместо распознавания уровня пола
+
+var collision = Tetris.Board.testCollision((z != 0));
+
+if (collision === Tetris.Board.COLLISION.WALL) {
+
+    Tetris.Block.move(-x, -y, 0); // лень-матушка
+
+}
+
+if (collision === Tetris.Board.COLLISION.GROUND) {
+
+    Tetris.Block.hitBottom();
+
+}
+
+Если сейчас запустить игру, то вы заметите, что вращающаяся фигура непостоянна. Когда она касается пола, то возвращается к исходному значению вращения. Так получилось, потому что мы применяем вращение к мешу Three.js (как Tetris.Block.mesh.rotation), но не используем его для получения координат нашего описания фигуры на основе кубов. Чтобы учитывать это, нам нужен небольшой урок математики.
+
+Математика 3D
+
+Примечание: если вы боитесь математики или у вас мало времени, то можно пропустить эту часть. Важно знать, что происходит внутри вашего движка, но позже мы используем для этого функции Three.js.
+
+Рассмотрим трёхэлементный вектор (представляющий позицию в 3D-пространстве). Чтобы преобразовать такой вектор в евклидовом пространстве, нужно прибавить другой вектор. Это можно представить следующим образом:
+
+
+Всё довольно просто. Проблема возникает, когда нам нужно повернуть вектор. Вращение по одной оси затрагивает две из трёх координат (проверьте, если не верите мне) и уравнения для этого не так просты. К счастью, существует один способ, используемый почти во всей генерируемой компьютером графике, включая Three.js, WebGL, OpenGL и сам GPU.
+
+Как вы можете помнить из старшей школы, при умножении вектора на матрицу мы получаем другой вектор. На основании этого существует множество преобразований. Простейшее — это нейтральное преобразование (при помощи матрицы тождественности), которая не делает ничего, кроме демонстрации общей идеи, и используется как основа для других преобразований.
+
+
+Почему мы используем матрицы 4×4 и четырёхэлементные векторы вместо 3×3 и трёх элементов? Это позволяет обеспечить перенос на вектор:
+
+
+Это удобный математический фокус, упрощающий все уравнения. Также он помогает с устранением числовых ошибок и позволяет нам использовать ещё более сложные концепции наподобие кватернионов.
+
+Масштабирование тоже выполняется просто:
+
+
+Существует три матрицы для вращений, по одной для каждой оси.
+
+Для оси x:
+
+
+Для оси y:
+
+
+Для оси z:
+
+
+Ещё один отличный аспект матричных преобразований заключается в том, что мы можем легко скомбинировать два преобразования, перемножив их матрицы. Если вы хотите выполнить вращение по всем трём осям, то можно перемножить три матрицы и получить матрицу преобразования. Таким образом, вы легко преобразуете вектор, описывающий позицию.
+
+К счастью, чаще всего вам необязательно работать с математической библиотекой. В Three.js есть встроенная математическая библиотека и мы ею воспользуемся.
+
+Снова о вращении
+
+Для вращения фигуры в Three.js нам нужно создать матрицу вращения и умножить её на каждый вектор фигуры. Мы снова используем cloneVector, чтобы созданная фигура не зависела от той, которая хранится как паттерн.
+
+// добавляем в Tetris.Block.rotate()
+
+var rotationMatrix = new THREE.Matrix4();
+
+rotationMatrix.setRotationFromEuler(Tetris.Block.mesh.rotation);
+
+ 
+
+for (var i = 0; i < Tetris.Block.shape.length; i++) {
+
+    Tetris.Block.shape[i] = rotationMatrix.multiplyVector3(
+
+        Tetris.Utils.cloneVector(Tetris.Block.shapes[this.blockType][i])
+
+    );
+
+    Tetris.Utils.roundVector(Tetris.Block.shape[i]);
+
+}
+
+В матрице вращения и нашим описанием поля есть одна проблема. Поля индексируются как массив, индексы которого являются целыми числами, а результат умножения матрицы на вектор может быть float. JavaScript не очень хорошо работает с числами с плавающей запятой и я почти уверен, что при этом получатся позиции наподобие 1.000001 или 2.999998. Именно поэтому нам нужна функция округления.
+
+Tetris.Utils.roundVector = function(v) {
+
+    v.x = Math.round(v.x);
+
+    v.y = Math.round(v.y);
+
+    v.z = Math.round(v.z);
+
+};
+
+После вращения фигуры очень легко проверить, произошла ли коллизия. Я снова использовал тот же трюк для отмены вращения: повторно вызываю функцию, но с обратными параметрами. Обратите внимание, что коллизия никогда не происходит при отмене перемещения. При желании можно добавить дополнительный параметр, чтобы она не проверялась снова, когда это не требуется.
+
+// добавляем в Tetris.Block.rotate()
+
+if (Tetris.Board.testCollision(false) === Tetris.Board.COLLISION.WALL) {
+
+    Tetris.Block.rotate(-x, -y, -z); // лень-матушка
+
+}
+
+Заполненность срезов и подсчёт очков
+
+Эта функция будет довольно длинной, но простой. Чтобы проверить, заполнен ли срез, я вычисляю максимальное количество занятых полей и проверяю каждый срез (двигаясь по оси z) на заполненность. Благодаря этому, я могу изменить размер поля и эта функция всё равно продолжит работать. Старайтесь думать обо всех функциях так: если что-нибудь когда-нибудь может измениться, делайте код гибким.
+
+Tetris.Board.checkCompleted = function() {
+
+  var x,y,z,x2,y2,z2, fields = Tetris.Board.fields;
+
+  var rebuild = false;
+
+ 
+
+  var sum, expected = fields[0].length*fields.length, bonus = 0;
+
+ 
+
+  for(z = 0; z < fields[0][0].length; z++) {
+
+    sum = 0;
+
+    for(y = 0; y < fields[0].length; y++) {
+
+      for(x = 0; x < fields.length; x++) {
+
+        if(fields[x][y][z] === Tetris.Board.FIELD.PETRIFIED) sum++;
+
+      }
+
+    }
+
+Если срез заполнен, мы должны удалить его и сдвинуть все последующие срезы. Чтобы не пропустить сдвинутый срез, мы один раз уменьшаем z. Чтобы сделать игру интереснее, за одновременное заполнение нескольких срезов начисляются бонусные очки.
+
+ if(sum == expected) {
+
+    bonus += 1 + bonus; // 1, 3, 7, 15...
+
+ 
+
+    for(y2 = 0; y2 < fields[0].length; y2++) {
+
+      for(x2 = 0; x2 < fields.length; x2++) {
+
+        for(z2 = z; z2 < fields[0][0].length-1; z2++) {
+
+          Tetris.Board.fields[x2][y2][z2] = fields[x2][y2][z2+1]; // сдвиг
+
+        }
+
+        Tetris.Board.fields[x2][y2][fields[0][0].length-1] = Tetris.Board.FIELD.EMPTY;
+
+      }
+
+    }
+
+    rebuild = true;
+
+    z--;
+
+  }
+
+}
+
+if(bonus) {
+
+  Tetris.addPoints(1000 * bonus);
+
+}
+
+Хотя мы уже поработали с информацией о поле, нам по-прежнему нужно внести изменения в геометрии Three.js. Мы не можем делать это в предыдущем цикле, потому что это перестроит геометрии дважды или даже больше, если одновременно заполнено несколько срезов. Этот цикл проверяет каждый Tetris.Board.fields с соответствующим Tetris.staticBlocks, при необходимости добавляя и удаляя геометрии.
+
+if(rebuild) {
+
+    for(var z = 0; z < fields[0][0].length-1; z++) {
+
+      for(var y = 0; y < fields[0].length; y++) {
+
+        for(var x = 0; x < fields.length; x++) {
+
+          if(fields[x][y][z] === Tetris.Board.FIELD.PETRIFIED && !Tetris.staticBlocks[x][y][z]) {
+
+            Tetris.addStaticBlock(x,y,z);
+
+          }
+
+          if(fields[x][y][z] == Tetris.Board.FIELD.EMPTY && Tetris.staticBlocks[x][y][z]) {
+
+            Tetris.scene.removeObject(Tetris.staticBlocks[x][y][z]);
+
+            Tetris.staticBlocks[x][y][z] = undefined;
+
+          }
+
+        }
+
+      }
+
+    }
+
+  }
+
+};
+
+Audio API
+
+Добавить звук в игру можно при помощи HTML5. Давайте начнём с добавления в index.html элементов <audio>.
+
+<audio id="audio_theme" src="music/tetris.mp3" preload="auto"></audio>
+
+<audio id="audio_move" src="music/move.mp3" preload="auto"></audio>
+
+<audio id="audio_collision" src="music/collision.mp3" preload="auto"></audio>
+
+<audio id="audio_gameover" src="music/gameover.mp3" preload="auto"></audio>
+
+<audio id="audio_score" src="music/cash.mp3" preload="auto"></audio>
+
+Пользоваться этими файлами в JS тоже очень легко. Сначала создадим объект для хранения наших звуков:
+
+// перед Tetris.init()
+
+Tetris.sounds = {};
+
+Для вызова Audio API нам нужно получить эти элементы DOM.
+
+// в Tetris.init()
+
+Tetris.sounds["theme"] = document.getElementById("audio_theme");
+
+Tetris.sounds["collision"] = document.getElementById("audio_collision");
+
+Tetris.sounds["move"] = document.getElementById("audio_move");
+
+Tetris.sounds["gameover"] = document.getElementById("audio_gameover");
+
+Tetris.sounds["score"] = document.getElementById("audio_score");
+
+Существует множество способов, и вы даже можете написать собственный аудиоплеер, но для наших целей достаточно play() и pause(). Наверно, вы уже догадались, куда нужно добавлять музыку:
+
+Tetris.sounds["theme"].play() – в Tetris.init(), сразу после инициализации объекта звука.
+Tetris.sounds["theme"].pause() – в Tetris.start().
+else {Tetris.sounds["move"].play();} – в Tetris.Block.move(), если нет коллизии с полом.
+Tetris.sounds["collision"].play(); – в Tetris.Block.move(), если коллизия с полом была.
+Tetris.sounds["score"].play(); – в Tetris.addPoints().
+Tetris.sounds["gameover"].play(); – в Tetris.Block.generate(), где мы выполняем проверку на проигрыш.
+
+Заключение
+
+Вот и всё! Наш «Тетрис» теперь работает. Надеюсь, это был интересный способ изучения Three.js. Есть много других тем, например, более сложные геометрии, шейдеры, скелетная анимация и т. п., но здесь мы их не рассматривали. Я просто хотел показать, что для создания игры они не всегда нужны.
+
+Если вы хотите узнать больше, то, вероятно, вам следует в дальнейшем работать с чистым WebGL. Можно начать с этого туториала. Также изучите «Building the Game» Брэндона Джонса.            Добавление статичного блока Добавление статичного блока    Tetris.staticBlocks = [];
+Tetris.zColors = [
+  0x6666ff, 0x66ffff, 0xcc68EE, 0x666633, 0x66ff66, 0x9966ff, 0x00ff66, 0x66EE33, 0x003399, 0x330099, 0xFFA500, 0x99ff00, 0xee1289, 0x71C671, 0x00BFFF, 0x666633, 0x669966, 0x9966ff
+];
+Tetris.addStaticBlock = function(x,y,z) {
+  if(Tetris.staticBlocks[x] === undefined) Tetris.staticBlocks[x] = [];
+  if(Tetris.staticBlocks[x][y] === undefined) Tetris.staticBlocks[x][y] = [];
+ 
+  var mesh = THREE.SceneUtils.createMultiMaterialObject(new THREE.CubeGeometry( Tetris.blockSize, Tetris.blockSize, Tetris.blockSize), [
+    new THREE.MeshBasicMaterial({color: 0x000000, shading: THREE.FlatShading, wireframe: true, transparent: true}),
+    new THREE.MeshBasicMaterial({color: Tetris.zColors[z]})
+  ] );
+ 
+  mesh.position.x = (x - Tetris.boundingBoxConfig.splitX/2)*Tetris.blockSize + Tetris.blockSize/2;
+  mesh.position.y = (y - Tetris.boundingBoxConfig.splitY/2)*Tetris.blockSize + Tetris.blockSize/2;
+  mesh.position.z = (z - Tetris.boundingBoxConfig.splitZ/2)*Tetris.blockSize + Tetris.blockSize/2;
+  mesh.overdraw = true;
+ 
+  Tetris.scene.add(mesh);
+  Tetris.staticBlocks[x][y][z] = mesh;
+}; Tetris.staticBlocks = [];
+Tetris.zColors = [
+  0x6666ff, 0x66ffff, 0xcc68EE, 0x666633, 0x66ff66, 0x9966ff, 0x00ff66, 0x66EE33, 0x003399, 0x330099, 0xFFA500, 0x99ff00, 0xee1289, 0x71C671, 0x00BFFF, 0x666633, 0x669966, 0x9966ff
+];
+Tetris.addStaticBlock = function(x,y,z) {
+  if(Tetris.staticBlocks[x] === undefined) Tetris.staticBlocks[x] = [];
+  if(Tetris.staticBlocks[x][y] === undefined) Tetris.staticBlocks[x][y] = [];
+ 
+  var mesh = THREE.SceneUtils.createMultiMaterialObject(new THREE.CubeGeometry( Tetris.blockSize, Tetris.blockSize, Tetris.blockSize), [
+    new THREE.MeshBasicMaterial({color: 0x000000, shading: THREE.FlatShading, wireframe: true, transparent: true}),
+    new THREE.MeshBasicMaterial({color: Tetris.zColors[z]})
+  ] );
+ 
+  mesh.position.x = (x - Tetris.boundingBoxConfig.splitX/2)*Tetris.blockSize + Tetris.blockSize/2;
+  mesh.position.y = (y - Tetris.boundingBoxConfig.splitY/2)*Tetris.blockSize + Tetris.blockSize/2;
+  mesh.position.z = (z - Tetris.boundingBoxConfig.splitZ/2)*Tetris.blockSize + Tetris.blockSize/2;
+  mesh.overdraw = true;
+ 
+  Tetris.scene.add(mesh);
+  Tetris.staticBlocks[x][y][z] = mesh;
+};    ▍ Цвета и материалы ▍ Цвета и материалы  Three.js     createMultiMaterialObject : function ( geometry, materials ) {
+  var i, il = materials.length, group = new THREE.Object3D();
+  for ( i = 0; i < il; i ++ ) {
+    var object = new THREE.Mesh( geometry, materials[ i ] );
+    group.add( object );
+  }
+  return group;
+},   createMultiMaterialObject : function ( geometry, materials ) {
+  var i, il = materials.length, group = new THREE.Object3D();
+  for ( i = 0; i < il; i ++ ) {
+    var object = new THREE.Mesh( geometry, materials[ i ] );
+    group.add( object );
+  }
+  return group;
+},    ▍ Позиция в 3D-пространстве ▍ Позиция в 3D-пространстве    mesh.position.x = (x - Tetris.boundingBoxConfig.splitX/2)*Tetris.blockSize + Tetris.blockSize/2; mesh.position.x = (x - Tetris.boundingBoxConfig.splitX/2)*Tetris.blockSize + Tetris.blockSize/2;    Tetris.blockSize = boundingBoxConfig.width/boundingBoxConfig.splitX; Tetris.blockSize = boundingBoxConfig.width/boundingBoxConfig.splitX;    // преобразуем 0-5 в -3 - +2
+(x - Tetris.boundingBoxConfig.splitX/2)
+ // масштабируем в единицы Three.js
+*Tetris.blockSize
+ // задаём центр куба, а не угол - нам нужно сдвинуть позицию на + Tetris.blockSize/2 // преобразуем 0-5 в -3 - +2
+(x - Tetris.boundingBoxConfig.splitX/2)
+ // масштабируем в единицы Three.js
+*Tetris.blockSize
+ // задаём центр куба, а не угол - нам нужно сдвинуть позицию на + Tetris.blockSize/2  Хороший тест Хороший тест    var i = 0, j = 0, k = 0, interval = setInterval(function() {if(i==6) {i=0;j++;} if(j==6) {j=0;k++;} if(k==6) {clearInterval(interval); return;} Tetris.addStaticBlock(i,j,k); i++;},30) var i = 0, j = 0, k = 0, interval = setInterval(function() {if(i==6) {i=0;j++;} if(j==6) {j=0;k++;} if(k==6) {clearInterval(interval); return;} Tetris.addStaticBlock(i,j,k); i++;},30)    Ведём счёт Ведём счёт    Tetris.currentPoints = 0;
+
+Tetris.addPoints = function(n) {
+
+  Tetris.currentPoints += n;
+
+  Tetris.pointsDOM.innerHTML = Tetris.currentPoints;
+
+  Cufon.replace('#points');
+
+} Tetris.currentPoints = 0;
+
+Tetris.addPoints = function(n) {
+
+  Tetris.currentPoints += n;
+
+  Tetris.pointsDOM.innerHTML = Tetris.currentPoints;
+
+  Cufon.replace('#points');
+
+}  Подготовка Подготовка    window.Tetris = window.Tetris  || {}; // эквивалент ъif(!window.Tetris) window.Tetris = {}; window.Tetris = window.Tetris  || {}; // эквивалент ъif(!window.Tetris) window.Tetris = {};  var Tetris = {};     Tetris.Utils = {}; 
+
+Tetris.Utils.cloneVector = function (v) {
+
+  return {x: v.x, y: v.y, z: v.z};
+
+}; Tetris.Utils = {}; 
+
+Tetris.Utils.cloneVector = function (v) {
+
+  return {x: v.x, y: v.y, z: v.z};
+
+};    var a = 5;
+
+var b = a; var a = 5;
+
+var b = a;  b a   var a = (x: 5};
+
+var b = a; var a = (x: 5};
+
+var b = a;  b b.x = 6; a   v1 = v2     Tetris.Block = {};
+
+ 
+
+Tetris.Block.shapes = [
+
+    [
+
+        {x: 0, y: 0, z: 0},
+
+        {x: 1, y: 0, z: 0},
+
+        {x: 1, y: 1, z: 0},
+
+        {x: 1, y: 2, z: 0}
+
+    ],
+
+    [
+
+        {x: 0, y: 0, z: 0},
+
+        {x: 0, y: 1, z: 0},
+
+        {x: 0, y: 2, z: 0},
+
+    ],
+
+    [
+
+        {x: 0, y: 0, z: 0},
+
+        {x: 0, y: 1, z: 0},
+
+        {x: 1, y: 0, z: 0},
+
+        {x: 1, y: 1, z: 0}
+
+    ],
+
+    [
+
+        {x: 0, y: 0, z: 0},
+
+        {x: 0, y: 1, z: 0},
+
+        {x: 0, y: 2, z: 0},
+
+        {x: 1, y: 1, z: 0}
+
+    ],
+
+    [
+
+        {x: 0, y: 0, z: 0},
+
+        {x: 0, y: 1, z: 0},
+
+        {x: 1, y: 1, z: 0},
+
+        {x: 1, y: 2, z: 0}
+
+    ]
+
+];
+
+  Tetris.Block = {};
+
+ 
+
+Tetris.Block.shapes = [
+
+    [
+
+        {x: 0, y: 0, z: 0},
+
+        {x: 1, y: 0, z: 0},
+
+        {x: 1, y: 1, z: 0},
+
+        {x: 1, y: 2, z: 0}
+
+    ],
+
+    [
+
+        {x: 0, y: 0, z: 0},
+
+        {x: 0, y: 1, z: 0},
+
+        {x: 0, y: 2, z: 0},
+
+    ],
+
+    [
+
+        {x: 0, y: 0, z: 0},
+
+        {x: 0, y: 1, z: 0},
+
+        {x: 1, y: 0, z: 0},
+
+        {x: 1, y: 1, z: 0}
+
+    ],
+
+    [
+
+        {x: 0, y: 0, z: 0},
+
+        {x: 0, y: 1, z: 0},
+
+        {x: 0, y: 2, z: 0},
+
+        {x: 1, y: 1, z: 0}
+
+    ],
+
+    [
+
+        {x: 0, y: 0, z: 0},
+
+        {x: 0, y: 1, z: 0},
+
+        {x: 1, y: 1, z: 0},
+
+        {x: 1, y: 2, z: 0}
+
+    ]
+
+];
+
+     Генерация фигур Генерация фигур            cloneVector   Tetris.Block.position = {};
+
+ 
+
+Tetris.Block.generate = function() {
+
+  var geometry, tmpGeometry;
+
+ 
+
+  var type = Math.floor(Math.random()*(Tetris.Block.shapes.length));
+
+  this.blockType = type;
+
+ 
+
+  Tetris.Block.shape = [];
+
+  for(var i = 0; i < Tetris.Block.shapes[type].length; i++) {
+
+    Tetris.Block.shape[i] = Tetris.Utils.cloneVector(Tetris.Block.shapes[type][i]);
+
+  } Tetris.Block.position = {};
+
+ 
+
+Tetris.Block.generate = function() {
+
+  var geometry, tmpGeometry;
+
+ 
+
+  var type = Math.floor(Math.random()*(Tetris.Block.shapes.length));
+
+  this.blockType = type;
+
+ 
+
+  Tetris.Block.shape = [];
+
+  for(var i = 0; i < Tetris.Block.shapes[type].length; i++) {
+
+    Tetris.Block.shape[i] = Tetris.Utils.cloneVector(Tetris.Block.shapes[type][i]);
+
+  }      geometry = new THREE.CubeGeometry(Tetris.blockSize, Tetris.blockSize, Tetris.blockSize);
+
+for(var i = 1 ; i < Tetris.Block.shape.length; i++) {
+
+  tmpGeometry = new THREE.Mesh(new THREE.CubeGeometry(Tetris.blockSize, Tetris.blockSize, Tetris.blockSize));
+
+  tmpGeometry.position.x = Tetris.blockSize * Tetris.Block.shape[i].x;
+
+  tmpGeometry.position.y = Tetris.blockSize * Tetris.Block.shape[i].y;
+
+  THREE.GeometryUtils.merge(geometry, tmpGeometry);
+
+} geometry = new THREE.CubeGeometry(Tetris.blockSize, Tetris.blockSize, Tetris.blockSize);
+
+for(var i = 1 ; i < Tetris.Block.shape.length; i++) {
+
+  tmpGeometry = new THREE.Mesh(new THREE.CubeGeometry(Tetris.blockSize, Tetris.blockSize, Tetris.blockSize));
+
+  tmpGeometry.position.x = Tetris.blockSize * Tetris.Block.shape[i].x;
+
+  tmpGeometry.position.y = Tetris.blockSize * Tetris.Block.shape[i].y;
+
+  THREE.GeometryUtils.merge(geometry, tmpGeometry);
+
+}    Tetris.Block.mesh = THREE.SceneUtils.createMultiMaterialObject(geometry, [
+
+  new THREE.MeshBasicMaterial({color: 0x000000, shading: THREE.FlatShading, wireframe: true, transparent: true}),
+
+  new THREE.MeshBasicMaterial({color: 0xff0000})
+
+]); Tetris.Block.mesh = THREE.SceneUtils.createMultiMaterialObject(geometry, [
+
+  new THREE.MeshBasicMaterial({color: 0x000000, shading: THREE.FlatShading, wireframe: true, transparent: true}),
+
+  new THREE.MeshBasicMaterial({color: 0xff0000})
+
+]);    // исходная позиция
+
+  Tetris.Block.position = {x: Math.floor(Tetris.boundingBoxConfig.splitX/2)-1, y: Math.floor(Tetris.boundingBoxConfig.splitY/2)-1, z: 15};
+
+ 
+
+  Tetris.Block.mesh.position.x = (Tetris.Block.position.x - Tetris.boundingBoxConfig.splitX/2)*Tetris.blockSize/2;
+
+  Tetris.Block.mesh.position.y = (Tetris.Block.position.y - Tetris.boundingBoxConfig.splitY/2)*Tetris.blockSize/2;
+
+  Tetris.Block.mesh.position.z = (Tetris.Block.position.z - Tetris.boundingBoxConfig.splitZ/2)*Tetris.blockSize + Tetris.blockSize/2;
+
+  Tetris.Block.mesh.rotation = {x: 0, y: 0, z: 0};
+
+  Tetris.Block.mesh.overdraw = true;
+
+ 
+
+  Tetris.scene.add(Tetris.Block.mesh);
+
+}; // конец Tetris.Block.generate() // исходная позиция
+
+  Tetris.Block.position = {x: Math.floor(Tetris.boundingBoxConfig.splitX/2)-1, y: Math.floor(Tetris.boundingBoxConfig.splitY/2)-1, z: 15};
+
+ 
+
+  Tetris.Block.mesh.position.x = (Tetris.Block.position.x - Tetris.boundingBoxConfig.splitX/2)*Tetris.blockSize/2;
+
+  Tetris.Block.mesh.position.y = (Tetris.Block.position.y - Tetris.boundingBoxConfig.splitY/2)*Tetris.blockSize/2;
+
+  Tetris.Block.mesh.position.z = (Tetris.Block.position.z - Tetris.boundingBoxConfig.splitZ/2)*Tetris.blockSize + Tetris.blockSize/2;
+
+  Tetris.Block.mesh.rotation = {x: 0, y: 0, z: 0};
+
+  Tetris.Block.mesh.overdraw = true;
+
+ 
+
+  Tetris.scene.add(Tetris.Block.mesh);
+
+}; // конец Tetris.Block.generate()    Перемещение Перемещение    Tetris.Block.rotate = function(x,y,z) {
+
+  Tetris.Block.mesh.rotation.x += x * Math.PI / 180;
+
+  Tetris.Block.mesh.rotation.y += y * Math.PI / 180;
+
+  Tetris.Block.mesh.rotation.z += z * Math.PI / 180;
+
+}; Tetris.Block.rotate = function(x,y,z) {
+
+  Tetris.Block.mesh.rotation.x += x * Math.PI / 180;
+
+  Tetris.Block.mesh.rotation.y += y * Math.PI / 180;
+
+  Tetris.Block.mesh.rotation.z += z * Math.PI / 180;
+
+};    Tetris.Block.move = function(x,y,z) {
+
+  Tetris.Block.mesh.position.x += x*Tetris.blockSize;
+
+  Tetris.Block.position.x += x;
+
+ 
+
+  Tetris.Block.mesh.position.y += y*Tetris.blockSize;
+
+  Tetris.Block.position.y += y;
+
+ 
+
+  Tetris.Block.mesh.position.z += z*Tetris.blockSize;
+
+  Tetris.Block.position.z += z;
+
+  if(Tetris.Block.position.z == 0) Tetris.Block.hitBottom();
+
+}; Tetris.Block.move = function(x,y,z) {
+
+  Tetris.Block.mesh.position.x += x*Tetris.blockSize;
+
+  Tetris.Block.position.x += x;
+
+ 
+
+  Tetris.Block.mesh.position.y += y*Tetris.blockSize;
+
+  Tetris.Block.position.y += y;
+
+ 
+
+  Tetris.Block.mesh.position.z += z*Tetris.blockSize;
+
+  Tetris.Block.position.z += z;
+
+  if(Tetris.Block.position.z == 0) Tetris.Block.hitBottom();
+
+};  Касание пола и повторное создание Касание пола и повторное создание  hitBottom   Tetris.Block.hitBottom = function() {
+
+  Tetris.Block.petrify();
+
+  Tetris.scene.removeObject(Tetris.Block.mesh);
+
+  Tetris.Block.generate();
+
+}; Tetris.Block.hitBottom = function() {
+
+  Tetris.Block.petrify();
+
+  Tetris.scene.removeObject(Tetris.Block.mesh);
+
+  Tetris.Block.generate();
+
+};  generate() removeObject() petrify()   Tetris.Block.petrify = function() {
+
+  var shape = Tetris.Block.shape;
+
+  for(var i = 0 ; i < shape.length; i++) {
+
+    Tetris.addStaticBlock(Tetris.Block.position.x + shape[i].x, Tetris.Block.position.y + shape[i].y, Tetris.Block.position.z + shape[i].z);
+
+  }
+
+}; Tetris.Block.petrify = function() {
+
+  var shape = Tetris.Block.shape;
+
+  for(var i = 0 ; i < shape.length; i++) {
+
+    Tetris.addStaticBlock(Tetris.Block.position.x + shape[i].x, Tetris.Block.position.y + shape[i].y, Tetris.Block.position.z + shape[i].z);
+
+  }
+
+};  Tetris.Block.shape   Соединяем всё вместе Соединяем всё вместе  Tetris.start()   Tetris.start = function() {
+
+  document.getElementById("menu").style.display = "none";
+
+  Tetris.pointsDOM = document.getElementById("points");
+
+  Tetris.pointsDOM.style.display = "block";
+
+  Tetris.Block.generate(); // добавили эту строку
+
+  Tetris.animate();
+
+}; Tetris.start = function() {
+
+  document.getElementById("menu").style.display = "none";
+
+  Tetris.pointsDOM = document.getElementById("points");
+
+  Tetris.pointsDOM.style.display = "block";
+
+  Tetris.Block.generate(); // добавили эту строку
+
+  Tetris.animate();
+
+};  Tetris.animate()   while(Tetris.cumulatedFrameTime > Tetris.gameStepTime) {
+
+
+
+   Tetris.cumulatedFrameTime -= Tetris.gameStepTime;
+
+
+
+   Tetris.Block.move(0,0,-1); while(Tetris.cumulatedFrameTime > Tetris.gameStepTime) {
+
+
+
+   Tetris.cumulatedFrameTime -= Tetris.gameStepTime;
+
+
+
+   Tetris.Block.move(0,0,-1);  Клавиатура Клавиатура  события клавиатуры keydown keypress keypress KeyboardJS console.log(keycode)   window.addEventListener('keydown', function (event) {
+
+  var key = event.which ? event.which : event.keyCode;
+
+ 
+
+  switch(key) {
+
+    case 38: // вверх (стрелка)
+
+      Tetris.Block.move(0, 1, 0);
+
+      break;
+
+    case 40: // вниз (стрелка)
+
+      Tetris.Block.move(0, -1, 0);
+
+      break;
+
+    case 37: // влево (стрелка)
+
+      Tetris.Block.move(-1, 0, 0);
+
+      break;
+
+    case 39: // вправо (стрелка)
+
+      Tetris.Block.move(1, 0, 0);
+
+      break;
+
+    case 32: // пробел
+
+      Tetris.Block.move(0, 0, -1);
+
+      break;
+
+ 
+
+    case 87: // вверх (w)
+
+      Tetris.Block.rotate(90, 0, 0);
+
+      break;
+
+    case 83: // вниз (s)
+
+      Tetris.Block.rotate(-90, 0, 0);
+
+      break;
+
+ 
+
+    case 65: // влево (a)
+
+      Tetris.Block.rotate(0, 0, 90);
+
+      break;
+
+    case 68: // вправо (d)
+
+      Tetris.Block.rotate(0, 0, -90);
+
+      break;   
+
+ 
+
+    case 81: // (q)
+
+      Tetris.Block.rotate(0, 90, 0);
+
+      break;
+
+    case 69: // (e)
+
+      Tetris.Block.rotate(0, -90, 0);
+
+      break;
+
+  }
+
+}, false); window.addEventListener('keydown', function (event) {
+
+  var key = event.which ? event.which : event.keyCode;
+
+ 
+
+  switch(key) {
+
+    case 38: // вверх (стрелка)
+
+      Tetris.Block.move(0, 1, 0);
+
+      break;
+
+    case 40: // вниз (стрелка)
+
+      Tetris.Block.move(0, -1, 0);
+
+      break;
+
+    case 37: // влево (стрелка)
+
+      Tetris.Block.move(-1, 0, 0);
+
+      break;
+
+    case 39: // вправо (стрелка)
+
+      Tetris.Block.move(1, 0, 0);
+
+      break;
+
+    case 32: // пробел
+
+      Tetris.Block.move(0, 0, -1);
+
+      break;
+
+ 
+
+    case 87: // вверх (w)
+
+      Tetris.Block.rotate(90, 0, 0);
+
+      break;
+
+    case 83: // вниз (s)
+
+      Tetris.Block.rotate(-90, 0, 0);
+
+      break;
+
+ 
+
+    case 65: // влево (a)
+
+      Tetris.Block.rotate(0, 0, 90);
+
+      break;
+
+    case 68: // вправо (d)
+
+      Tetris.Block.rotate(0, 0, -90);
+
+      break;   
+
+ 
+
+    case 81: // (q)
+
+      Tetris.Block.rotate(0, 90, 0);
+
+      break;
+
+    case 69: // (e)
+
+      Tetris.Block.rotate(0, -90, 0);
+
+      break;
+
+  }
+
+}, false);    Объект поля Объект поля  const enum const enum JS 1.8.5 есть новая функция freeze enum   window.Tetris = window.Tetris  || {};
+
+Tetris.Board = {};
+
+ 
+
+Tetris.Board.COLLISION = {NONE:0, WALL:1, GROUND:2};
+
+Object.freeze(Tetris.Board.COLLISION);
+
+ 
+
+Tetris.Board.FIELD = {EMPTY:0, ACTIVE:1, PETRIFIED:2};
+
+Object.freeze(Tetris.Board.FIELD); window.Tetris = window.Tetris  || {};
+
+Tetris.Board = {};
+
+ 
+
+Tetris.Board.COLLISION = {NONE:0, WALL:1, GROUND:2};
+
+Object.freeze(Tetris.Board.COLLISION);
+
+ 
+
+Tetris.Board.FIELD = {EMPTY:0, ACTIVE:1, PETRIFIED:2};
+
+Object.freeze(Tetris.Board.FIELD);  enum   Tetris.Board.fields = [];
+
+ 
+
+Tetris.Board.init = function(_x,_y,_z) {
+
+    for(var x = 0; x < _x; x++) {
+
+        Tetris.Board.fields[x] = [];
+
+        for(var y = 0; y < _y; y++) {
+
+            Tetris.Board.fields[x][y] = [];
+
+            for(var z = 0; z < _z; z++) {
+
+                Tetris.Board.fields[x][y][z] = Tetris.Board.FIELD.EMPTY;
+
+            }
+
+        }
+
+    }
+
+}; Tetris.Board.fields = [];
+
+ 
+
+Tetris.Board.init = function(_x,_y,_z) {
+
+    for(var x = 0; x < _x; x++) {
+
+        Tetris.Board.fields[x] = [];
+
+        for(var y = 0; y < _y; y++) {
+
+            Tetris.Board.fields[x][y] = [];
+
+            for(var z = 0; z < _z; z++) {
+
+                Tetris.Board.fields[x][y][z] = Tetris.Board.FIELD.EMPTY;
+
+            }
+
+        }
+
+    }
+
+};  Tetris.Board.init() Tetris.init   // добавить в любое место Tetris.init
+
+Tetris.Board.init(boundingBoxConfig.splitX, boundingBoxConfig.splitY, boundingBoxConfig.splitZ); // добавить в любое место Tetris.init
+
+Tetris.Board.init(boundingBoxConfig.splitX, boundingBoxConfig.splitY, boundingBoxConfig.splitZ);  Tetris.Block.petrify   Tetris.Block.petrify = function () {
+
+    var shape = Tetris.Block.shape;
+
+    for (var i = 0; i < shape.length; i++) {
+
+        Tetris.addStaticBlock(Tetris.Block.position.x + shape[i].x, Tetris.Block.position.y + shape[i].y, Tetris.Block.position.z + shape[i].z);
+
+        Tetris.Board.fields[Tetris.Block.position.x + shape[i].x][Tetris.Block.position.y + shape[i].y][Tetris.Block.position.z + shape[i].z] = Tetris.Board.FIELD.PETRIFIED;
+
+    }
+
+}; Tetris.Block.petrify = function () {
+
+    var shape = Tetris.Block.shape;
+
+    for (var i = 0; i < shape.length; i++) {
+
+        Tetris.addStaticBlock(Tetris.Block.position.x + shape[i].x, Tetris.Block.position.y + shape[i].y, Tetris.Block.position.z + shape[i].z);
+
+        Tetris.Board.fields[Tetris.Block.position.x + shape[i].x][Tetris.Block.position.y + shape[i].y][Tetris.Block.position.z + shape[i].z] = Tetris.Board.FIELD.PETRIFIED;
+
+    }
+
+};  Распознавание коллизий Распознавание коллизий      Tetris.Board.testCollision = function (ground_check) {
+
+    var x, y, z, i;
+
+ 
+
+    // шорткаты
+
+    var fields = Tetris.Board.fields;
+
+    var posx = Tetris.Block.position.x, posy = Tetris.Block.position.y,
+
+        posz = Tetris.Block.position.z, shape = Tetris.Block.shape;
+
+ 
+
+    for (i = 0; i < shape.length; i++) {
+
+        // 4 распознавания стен для каждой части фигуры
+
+        if ((shape[i].x + posx) < 0 ||
+
+            (shape[i].y + posy) < 0 ||
+
+            (shape[i].x + posx) >= fields.length ||
+
+            (shape[i].y + posy) >= fields[0].length) {
+
+            return Tetris.Board.COLLISION.WALL;
+
+        } Tetris.Board.testCollision = function (ground_check) {
+
+    var x, y, z, i;
+
+ 
+
+    // шорткаты
+
+    var fields = Tetris.Board.fields;
+
+    var posx = Tetris.Block.position.x, posy = Tetris.Block.position.y,
+
+        posz = Tetris.Block.position.z, shape = Tetris.Block.shape;
+
+ 
+
+    for (i = 0; i < shape.length; i++) {
+
+        // 4 распознавания стен для каждой части фигуры
+
+        if ((shape[i].x + posx) < 0 ||
+
+            (shape[i].y + posy) < 0 ||
+
+            (shape[i].x + posx) >= fields.length ||
+
+            (shape[i].y + posy) >= fields[0].length) {
+
+            return Tetris.Board.COLLISION.WALL;
+
+        }  testCollision ground_check   if (fields[shape[i].x + posx][shape[i].y + posy][shape[i].z + posz - 1] === Tetris.Board.FIELD.PETRIFIED) {
+
+    return ground_check ? Tetris.Board.COLLISION.GROUND : Tetris.Board.COLLISION.WALL;
+
+} if (fields[shape[i].x + posx][shape[i].y + posy][shape[i].z + posz - 1] === Tetris.Board.FIELD.PETRIFIED) {
+
+    return ground_check ? Tetris.Board.COLLISION.GROUND : Tetris.Board.COLLISION.WALL;
+
+}      if((shape[i].z + posz) <= 0) {
+
+            return Tetris.Board.COLLISION.GROUND;
+
+        }
+
+    }
+
+};   if((shape[i].z + posz) <= 0) {
+
+            return Tetris.Board.COLLISION.GROUND;
+
+        }
+
+    }
+
+};  Реакция на коллизию Реакция на коллизию    Tetris.Block.generate   if (Tetris.Board.testCollision(true) === Tetris.Board.COLLISION.GROUND) {
+
+    Tetris.gameOver = true;
+
+    Tetris.pointsDOM.innerHTML = "GAME OVER";
+
+    Cufon.replace('#points');
+
+} if (Tetris.Board.testCollision(true) === Tetris.Board.COLLISION.GROUND) {
+
+    Tetris.gameOver = true;
+
+    Tetris.pointsDOM.innerHTML = "GAME OVER";
+
+    Cufon.replace('#points');
+
+}      hitBottom()   // добавляем вместо распознавания уровня пола
+
+var collision = Tetris.Board.testCollision((z != 0));
+
+if (collision === Tetris.Board.COLLISION.WALL) {
+
+    Tetris.Block.move(-x, -y, 0); // лень-матушка
+
+}
+
+if (collision === Tetris.Board.COLLISION.GROUND) {
+
+    Tetris.Block.hitBottom();
+
+} // добавляем вместо распознавания уровня пола
+
+var collision = Tetris.Board.testCollision((z != 0));
+
+if (collision === Tetris.Board.COLLISION.WALL) {
+
+    Tetris.Block.move(-x, -y, 0); // лень-матушка
+
+}
+
+if (collision === Tetris.Board.COLLISION.GROUND) {
+
+    Tetris.Block.hitBottom();
+
+}  Tetris.Block.mesh.rotation   Математика 3D Математика 3D    вектор                     кватернионов                                 Снова о вращении Снова о вращении  cloneVector   // добавляем в Tetris.Block.rotate()
+
+var rotationMatrix = new THREE.Matrix4();
+
+rotationMatrix.setRotationFromEuler(Tetris.Block.mesh.rotation);
+
+ 
+
+for (var i = 0; i < Tetris.Block.shape.length; i++) {
+
+    Tetris.Block.shape[i] = rotationMatrix.multiplyVector3(
+
+        Tetris.Utils.cloneVector(Tetris.Block.shapes[this.blockType][i])
+
+    );
+
+    Tetris.Utils.roundVector(Tetris.Block.shape[i]);
+
+} // добавляем в Tetris.Block.rotate()
+
+var rotationMatrix = new THREE.Matrix4();
+
+rotationMatrix.setRotationFromEuler(Tetris.Block.mesh.rotation);
+
+ 
+
+for (var i = 0; i < Tetris.Block.shape.length; i++) {
+
+    Tetris.Block.shape[i] = rotationMatrix.multiplyVector3(
+
+        Tetris.Utils.cloneVector(Tetris.Block.shapes[this.blockType][i])
+
+    );
+
+    Tetris.Utils.roundVector(Tetris.Block.shape[i]);
+
+}    Tetris.Utils.roundVector = function(v) {
+
+    v.x = Math.round(v.x);
+
+    v.y = Math.round(v.y);
+
+    v.z = Math.round(v.z);
+
+}; Tetris.Utils.roundVector = function(v) {
+
+    v.x = Math.round(v.x);
+
+    v.y = Math.round(v.y);
+
+    v.z = Math.round(v.z);
+
+};    // добавляем в Tetris.Block.rotate()
+
+if (Tetris.Board.testCollision(false) === Tetris.Board.COLLISION.WALL) {
+
+    Tetris.Block.rotate(-x, -y, -z); // лень-матушка
+
+} // добавляем в Tetris.Block.rotate()
+
+if (Tetris.Board.testCollision(false) === Tetris.Board.COLLISION.WALL) {
+
+    Tetris.Block.rotate(-x, -y, -z); // лень-матушка
+
+}  Заполненность срезов и подсчёт очков Заполненность срезов и подсчёт очков    Tetris.Board.checkCompleted = function() {
+
+  var x,y,z,x2,y2,z2, fields = Tetris.Board.fields;
+
+  var rebuild = false;
+
+ 
+
+  var sum, expected = fields[0].length*fields.length, bonus = 0;
+
+ 
+
+  for(z = 0; z < fields[0][0].length; z++) {
+
+    sum = 0;
+
+    for(y = 0; y < fields[0].length; y++) {
+
+      for(x = 0; x < fields.length; x++) {
+
+        if(fields[x][y][z] === Tetris.Board.FIELD.PETRIFIED) sum++;
+
+      }
+
+    } Tetris.Board.checkCompleted = function() {
+
+  var x,y,z,x2,y2,z2, fields = Tetris.Board.fields;
+
+  var rebuild = false;
+
+ 
+
+  var sum, expected = fields[0].length*fields.length, bonus = 0;
+
+ 
+
+  for(z = 0; z < fields[0][0].length; z++) {
+
+    sum = 0;
+
+    for(y = 0; y < fields[0].length; y++) {
+
+      for(x = 0; x < fields.length; x++) {
+
+        if(fields[x][y][z] === Tetris.Board.FIELD.PETRIFIED) sum++;
+
+      }
+
+    }     if(sum == expected) {
+
+    bonus += 1 + bonus; // 1, 3, 7, 15...
+
+ 
+
+    for(y2 = 0; y2 < fields[0].length; y2++) {
+
+      for(x2 = 0; x2 < fields.length; x2++) {
+
+        for(z2 = z; z2 < fields[0][0].length-1; z2++) {
+
+          Tetris.Board.fields[x2][y2][z2] = fields[x2][y2][z2+1]; // сдвиг
+
+        }
+
+        Tetris.Board.fields[x2][y2][fields[0][0].length-1] = Tetris.Board.FIELD.EMPTY;
+
+      }
+
+    }
+
+    rebuild = true;
+
+    z--;
+
+  }
+
+}
+
+if(bonus) {
+
+  Tetris.addPoints(1000 * bonus);
+
+}  if(sum == expected) {
+
+    bonus += 1 + bonus; // 1, 3, 7, 15...
+
+ 
+
+    for(y2 = 0; y2 < fields[0].length; y2++) {
+
+      for(x2 = 0; x2 < fields.length; x2++) {
+
+        for(z2 = z; z2 < fields[0][0].length-1; z2++) {
+
+          Tetris.Board.fields[x2][y2][z2] = fields[x2][y2][z2+1]; // сдвиг
+
+        }
+
+        Tetris.Board.fields[x2][y2][fields[0][0].length-1] = Tetris.Board.FIELD.EMPTY;
+
+      }
+
+    }
+
+    rebuild = true;
+
+    z--;
+
+  }
+
+}
+
+if(bonus) {
+
+  Tetris.addPoints(1000 * bonus);
+
+}  Tetris.Board.fields Tetris.staticBlocks   if(rebuild) {
+
+    for(var z = 0; z < fields[0][0].length-1; z++) {
+
+      for(var y = 0; y < fields[0].length; y++) {
+
+        for(var x = 0; x < fields.length; x++) {
+
+          if(fields[x][y][z] === Tetris.Board.FIELD.PETRIFIED && !Tetris.staticBlocks[x][y][z]) {
+
+            Tetris.addStaticBlock(x,y,z);
+
+          }
+
+          if(fields[x][y][z] == Tetris.Board.FIELD.EMPTY && Tetris.staticBlocks[x][y][z]) {
+
+            Tetris.scene.removeObject(Tetris.staticBlocks[x][y][z]);
+
+            Tetris.staticBlocks[x][y][z] = undefined;
+
+          }
+
+        }
+
+      }
+
+    }
+
+  }
+
+}; if(rebuild) {
+
+    for(var z = 0; z < fields[0][0].length-1; z++) {
+
+      for(var y = 0; y < fields[0].length; y++) {
+
+        for(var x = 0; x < fields.length; x++) {
+
+          if(fields[x][y][z] === Tetris.Board.FIELD.PETRIFIED && !Tetris.staticBlocks[x][y][z]) {
+
+            Tetris.addStaticBlock(x,y,z);
+
+          }
+
+          if(fields[x][y][z] == Tetris.Board.FIELD.EMPTY && Tetris.staticBlocks[x][y][z]) {
+
+            Tetris.scene.removeObject(Tetris.staticBlocks[x][y][z]);
+
+            Tetris.staticBlocks[x][y][z] = undefined;
+
+          }
+
+        }
+
+      }
+
+    }
+
+  }
+
+};  Audio API Audio API  HTML5 <audio>   <audio id="audio_theme" src="music/tetris.mp3" preload="auto"></audio>
+
+<audio id="audio_move" src="music/move.mp3" preload="auto"></audio>
+
+<audio id="audio_collision" src="music/collision.mp3" preload="auto"></audio>
+
+<audio id="audio_gameover" src="music/gameover.mp3" preload="auto"></audio>
+
+<audio id="audio_score" src="music/cash.mp3" preload="auto"></audio> <audio id="audio_theme" src="music/tetris.mp3" preload="auto"></audio>
+
+<audio id="audio_move" src="music/move.mp3" preload="auto"></audio>
+
+<audio id="audio_collision" src="music/collision.mp3" preload="auto"></audio>
+
+<audio id="audio_gameover" src="music/gameover.mp3" preload="auto"></audio>
+
+<audio id="audio_score" src="music/cash.mp3" preload="auto"></audio>    // перед Tetris.init()
+
+Tetris.sounds = {}; // перед Tetris.init()
+
+Tetris.sounds = {};    // в Tetris.init()
+
+Tetris.sounds["theme"] = document.getElementById("audio_theme");
+
+Tetris.sounds["collision"] = document.getElementById("audio_collision");
+
+Tetris.sounds["move"] = document.getElementById("audio_move");
+
+Tetris.sounds["gameover"] = document.getElementById("audio_gameover");
+
+Tetris.sounds["score"] = document.getElementById("audio_score"); // в Tetris.init()
+
+Tetris.sounds["theme"] = document.getElementById("audio_theme");
+
+Tetris.sounds["collision"] = document.getElementById("audio_collision");
+
+Tetris.sounds["move"] = document.getElementById("audio_move");
+
+Tetris.sounds["gameover"] = document.getElementById("audio_gameover");
+
+Tetris.sounds["score"] = document.getElementById("audio_score");  множество способов play() pause()   Tetris.sounds["theme"].play() – в Tetris.init(), сразу после инициализации объекта звука.
+Tetris.sounds["theme"].pause() – в Tetris.start().
+else {Tetris.sounds["move"].play();} – в Tetris.Block.move(), если нет коллизии с полом.
+Tetris.sounds["collision"].play(); – в Tetris.Block.move(), если коллизия с полом была.
+Tetris.sounds["score"].play(); – в Tetris.addPoints().
+Tetris.sounds["gameover"].play(); – в Tetris.Block.generate(), где мы выполняем проверку на проигрыш. Tetris.sounds["theme"].play() – в Tetris.init(), сразу после инициализации объекта звука. Tetris.sounds["theme"].play() Tetris.init() Tetris.sounds["theme"].pause() – в Tetris.start(). Tetris.sounds["theme"].pause() Tetris.start() else {Tetris.sounds["move"].play();} – в Tetris.Block.move(), если нет коллизии с полом. else {Tetris.sounds["move"].play();} Tetris.Block.move() Tetris.sounds["collision"].play(); – в Tetris.Block.move(), если коллизия с полом была. Tetris.sounds["collision"].play(); Tetris.Block.move() Tetris.sounds["score"].play(); – в Tetris.addPoints(). Tetris.sounds["score"].play(); Tetris.addPoints() Tetris.sounds["gameover"].play(); – в Tetris.Block.generate(), где мы выполняем проверку на проигрыш. Tetris.sounds["gameover"].play(); Tetris.Block.generate()  Заключение Заключение    этого туториала «Building the Game»    ]]></text>
+</doc>

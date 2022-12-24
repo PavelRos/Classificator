@@ -1,0 +1,37 @@
+<?xml version="1.0" ?>
+<doc>
+	<original_author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Colton Ogden]]></item>
+	</original_author>
+	<label auto="true" type="str" verify="true"><![CDATA[Other]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[BasicSloth]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-08-05, 10:34]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/post/680972/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Лекция 5. The Legend of Zelda — CS50`s Introduction to Game Development с русскими субтитрами]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Программирование]]></item>
+		<item type="str"><![CDATA[Разработка игр]]></item>
+		<item type="str"><![CDATA[Lua]]></item>
+		<item type="str"><![CDATA[Дизайн игр]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[love2d]]></item>
+		<item type="str"><![CDATA[lua]]></item>
+		<item type="str"><![CDATA[cs50]]></item>
+		<item type="str"><![CDATA[cs50 на русском]]></item>
+		<item type="str"><![CDATA[the legend of zelda]]></item>
+		<item type="str"><![CDATA[программирование]]></item>
+		<item type="str"><![CDATA[лекция]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[Привет! Перевод очередной лекции о создании The Legend of Zelda
+В этом видео:
+Игры с видом сверху
+Генерация бесконечного подземелья
+Хитбоксы и хертбоксы
+События и др. Привет! Перевод очередной лекции о создании The Legend of Zelda В этом видео: В этом видео: Игры с видом сверху
+Генерация бесконечного подземелья
+Хитбоксы и хертбоксы
+События и др. Игры с видом сверху Игры с видом сверху Генерация бесконечного подземелья Генерация бесконечного подземелья Хитбоксы и хертбоксы Хитбоксы и хертбоксы События и др. События и др.  ]]></text>
+</doc>

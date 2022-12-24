@@ -1,0 +1,493 @@
+<?xml version="1.0" ?>
+<doc>
+	<label auto="true" type="str" verify="true"><![CDATA[Other]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[FirstJohn]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-07-18, 11:00]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/company/first/blog/676282/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[YouTubeDrive: хранение файлов на YouTube]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Блог компании FirstVDS]]></item>
+		<item type="str"><![CDATA[Хостинг]]></item>
+		<item type="str"><![CDATA[Работа с видео]]></item>
+		<item type="str"><![CDATA[Хранение данных]]></item>
+		<item type="str"><![CDATA[Софт]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[FirstVDS]]></item>
+		<item type="str"><![CDATA[FirstDEDIC]]></item>
+		<item type="str"><![CDATA[YouTubeDrive]]></item>
+		<item type="str"><![CDATA[YouBit]]></item>
+		<item type="str"><![CDATA[YouTube]]></item>
+		<item type="str"><![CDATA[неограниченный хостинг]]></item>
+		<item type="str"><![CDATA[Wolfram Language]]></item>
+		<item type="str"><![CDATA[Mathematica]]></item>
+		<item type="str"><![CDATA[FFmpeg]]></item>
+		<item type="str"><![CDATA[youtube-upload]]></item>
+		<item type="str"><![CDATA[youtube-dl]]></item>
+		<item type="str"><![CDATA[yt-dlp]]></item>
+		<item type="str"><![CDATA[fvid]]></item>
+		<item type="str"><![CDATA[Habrastorage]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[Хостинг неограниченного размера? Звучит как нечто фантастическое и невозможное по законам природы. Примерно как вечный двигатель. Но что, если такое возможно? (не вечный двигатель, конечно, а неограниченный хостинг).
+
+Если подумать, ведь бесплатное хранилище неограниченного размера предоставляют десятки интернет-сервисов, от соцсетей до фотохостингов. Например, ограничение YouTube на размер одного видеоролика — 12 часов или 256 ГБ, но на количество видеороликов ограничений нет.
+
+Теоретически нескольких видеороликов по 256 ГБ достаточно, чтобы спрятать в них зашифрованную копию своего SSD.
+
+Единственное препятствие — они проверяют форматы файлов при загрузке, чтобы избежать злоупотребления сервисом. То есть чисто теоретически достаточно обойти эту проверку — и проблема решена. Но как её обойти?
+
+Сразу приходит в голову вариант изменить расширение файла. Но сегодня такой вариант не проходит практически ни на одном хостинге, потому что они проверяют метаданные и содержимое файлов. Слишком легко отличить медиафайл от случайного набора бит.
+
+Но что, если использовать методы стеганографии — и внедрять полезную нагрузку непосредственно в нативный медиафайл? И действительно, есть готовые инструменты для решения этой задачи. Вот некоторые из них.
+
+Ещё раз подчеркнём — статья носит исключительно образовательный и чисто теоретический характер, материалы описанные в статье не являются руководством к действию и не нарушают законодательство.
+
+YouTubeDrive
+
+YouTubeDrive — это пакет для Mathematica, который перекодирует любые файлы в пиксели RGB. То есть любой поток данных просто транскодируется в видеопоток — а потом обратно. Программа написана пять лет назад чисто для проверки концепции, что такое возможно (PoC).
+
+Промежуточный видеоформат создаётся с единственной целью — для видеохостинга.
+
+То есть схема такая:
+
+АРХИВ ФАЙЛОВ → ВИДЕО → YOUTUBE → и обратно АРХИВ ФАЙЛОВ
+
+YouTubeDrive написан на Wolfram Language (язык Mathematica). Он кодирует/декодирует произвольные данные, а видео автоматически загружаются и выгружаются с YouTube.
+
+Поскольку YouTube не накладывает никаких ограничений на общее количество видео, которые могут загружать пользователи, это обеспечивает фактически неограниченный хостинг. Правда, такой хостинг чрезвычайно медленный, потому что процедура кодирования/декодирования занимает время сначала на локальном ПК, а затем ещё на YouTube.
+
+Вот код пакета. Разумеется, для его работы должна быть установлена сама программа Mathematica.
+
+YouTubeDrive использует стандартные утилиты FFmpeg, youtube-upload и youtube-dl. Эти программы необходимо загрузить и установить отдельно, а перед первым использованием в пакете YouTubeDrive.wl (строчки 75–77) нужно указать места их установки:
+
+FFmpegExecutablePath = "FFMPEG_PATH_HERE";
+YouTubeUploadExecutablePath = "YOUTUBE-UPLOAD_PATH_HERE";
+YouTubeDLExecutablePath = "YOUTUBE-DL_PATH_HERE";
+
+Например, таким образом:
+
+75 | FFmpegExecutablePath = "C:\\ffmpeg.exe";
+76 | YouTubeUploadExecutablePath = Sequence["python",
+77 | "C:\\Users\\j0ker\\AppData\\Local\\Programs\\" <>
+78 | "Python\\Python35\\Scripts\\youtube-upload.py"];
+79 | YouTubeDLExecutablePath = "C:\\youtube-dl.exe";
+
+После установки этих программ и изменения конфигурационных файлов можно открыть сам пакет YouTubeDrive.wl в программе Mathematica (через File ⇨ Install... ⇨ Package ⇨ From File ⇨ YouTubeDrive.wl).
+
+
+Перед использованием с помощью youtube-upload загружаем тестовое видео в свой аккаунт, логинимся в YouTube — и получаем токен OAuth. Этот токен аутентификации понадобится для загрузки видеороликов через YouTubeDrive.
+
+Алгоритм работы YouTubeDrive довольно понятен. В пакете две основные функции:
+
+Функция YouTubeUpload[bytearr] кодирует массив данных bytearr как простое видео RGB, загружает на YouTube и возвращает ID видео.
+
+По умолчанию кодируется 64×36 пикселя RGB, которые масштабируются в 2304 квадратика 20×20 пикселей кадра 1280×720. Значения RGB только 0 или 255, то есть получается три бита на квадратик. Значения RGB записываются в файлы .PNG, которые с помощью кодека FFmpeg склеиваются в валидный видеоролик MP4, способный пережить дальнейшее транскодирование на сервере YouTube.
+
+ Monitor[Do[Image`ImportExportDump`ImageWritePNG[
+"frame_" <> IntegerString[i, 10, numDigits] <> ".png", frame[i]],
+{i, numFrames}], ProgressIndicator[i, {1, numFrames}]];
+
+If[numLeftoverBytes > 0, Image`ImportExportDump`ImageWritePNG[
+"frame_" <> IntegerString[numFrames + 1, 10, numDigits] <> ".png",
+finalFrame]];
+
+Run[FFmpegExecutablePath,
+"-i", "frame_%0" <> ToString[numDigits] <> "d.png",
+"-c:v", "libx264", "-preset", "ultrafast",
+"-vf", "scale=1280:720", "-sws_flags", "neighbor", "data.mp4"];
+
+procInfo = RunProcess[{YouTubeUploadExecutablePath,
+"--title=\"DATA-" <> ToUpperCase@CreateUUID[] <> "\"",
+"data.mp4"}];
+
+В реальности транскодер YouTube может случайно поменять местами значения отдельных пикселей 0 и 255, поэтому большие квадраты 20×20 выполняют роль механизма коррекции ошибок.
+
+Вторая функция YouTubeRetrieve возвращает видеоролик YouTube с указанным идентификатором ID videoid, декодирует его и возвращает полученные данные в видео объекта ByteArray:
+
+ RunProcess[{FFmpegExecutablePath,
+"-i", FileNameJoin[{tempDir, videoFile}], "frame_%d.png"}];
+numFrames = Max[FromDigits /@ StringTake[FileNames["frame_*.png"], {7, -5}]];
+
+rdata = Monitor[Join @@ Table[ByteArray[FromDigits[#, 2] & /@
+Partition[Join @@ classify /@ Join @@ ImagePartition[
+First@Image`ImportExportDump`ImageReadPNG[
+"frame_" <> ToString[i] <> ".png"], 20], 8]],
+{i, numFrames - 1}], ProgressIndicator[i, {1, numFrames - 1}]];
+
+lastParts = Join @@ ImagePartition[First@Image`ImportExportDump`ImageReadPNG[
+"frame_" <> ToString[numFrames] <> ".png"], 20];
+numPaddedBits = LengthWhile[
+Reverse[Join @@ classifyLast /@ lastParts], EqualTo[1 / 2]];
+rdata = Join[rdata, ByteArray[FromDigits[#, 2] & /@ Partition[
+Drop[Join @@ classify /@ lastParts, -numPaddedBits], 8]]];
+
+Вот и всё.
+
+Примечание. На самом сервере YouTube обработка маленького видеоролика размером около 10 МБ занимает примерно 5–10 минут. Таким образом, сразу после завершения YouTubeUpload[bytearr] файл ещё недоступен для скачивания, нужно немного подождать. Только потом можно запускать вызов YouTubeRetrieve.
+
+Пример использования
+
+Насколько мы поняли, для примера автор программы взял из функции Бесселя простенький ByteArray и запустил YouTubeUpload из нашего пакета. В программе Mathematica это делается примерно так:
+
+
+
+Результат кодирования массива данных объёмом чуть больше 18 КБ в видеоформат выглядит следующим образом:
+
+Если интересно, можно скачать видеоролик и посмотреть на него, можно даже расшифровать вручную. Вместо youtube-dl для скачивания видео с YouTube сейчас обычно используют более продвинутый форк yt-dlp.
+
+Список доступных форматов:
+
+yt-dlp --list-formats "https://www.youtube.com/watch?v=Fmm1AeYmbNU"
+[youtube] Fmm1AeYmbNU: Downloading webpage
+[youtube] Fmm1AeYmbNU: Downloading android player API JSON
+[info] Available formats for Fmm1AeYmbNU:
+ID EXT RESOLUTION FPS │ FILESIZE TBR PROTO │ VCODEC VBR ACODEC ABR ASR MORE INFO
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+sb0 mhtml 48x27 │ mhtml │ images storyboard
+139 m4a audio only │ 6.84KiB 54k https │ audio only mp4a.40.5 54k 22050Hz low, m4a_dash
+249 webm audio only │ 700.00B 6k https │ audio only opus 6k 48000Hz low, webm_dash
+250 webm audio only │ 700.00B 6k https │ audio only opus 6k 48000Hz low, webm_dash
+140 m4a audio only │ 15.43KiB 136k https │ audio only mp4a.40.2 136k 44100Hz medium, m4a_dash
+251 webm audio only │ 700.00B 6k https │ audio only opus 6k 48000Hz medium, webm_dash
+17 3gp 176x144 6 │ 26.54KiB 222k https │ mp4v.20.3 222k mp4a.40.2 0k 22050Hz 144p
+394 mp4 256x144 25 │ 25.28KiB 235k https │ av01.0.00M.08 235k video only 144p, mp4_dash
+160 mp4 256x144 25 │ 82.20KiB 765k https │ avc1.4d400c 765k video only 144p, mp4_dash
+278 webm 256x144 25 │ 72.33KiB 673k https │ vp9 673k video only 144p, webm_dash
+395 mp4 426x240 25 │ 66.86KiB 622k https │ av01.0.00M.08 622k video only 240p, mp4_dash
+133 mp4 426x240 25 │ 254.76KiB 2371k https │ avc1.4d4015 2371k video only 240p, mp4_dash
+242 webm 426x240 25 │ 163.19KiB 1519k https │ vp9 1519k video only 240p, webm_dash
+396 mp4 640x360 25 │ 89.98KiB 837k https │ av01.0.01M.08 837k video only 360p, mp4_dash
+134 mp4 640x360 25 │ 363.73KiB 3386k https │ avc1.4d401e 3386k video only 360p, mp4_dash
+18 mp4 640x360 25 │ ~440.62KiB 3524k https │ avc1.42001E 3524k mp4a.40.2 0k 44100Hz 360p
+243 webm 640x360 25 │ 238.27KiB 2218k https │ vp9 2218k video only 360p, webm_dash
+397 mp4 854x480 25 │ 116.18KiB 1081k https │ av01.0.04M.08 1081k video only 480p, mp4_dash
+135 mp4 854x480 25 │ 469.24KiB 4368k https │ avc1.4d401e 4368k video only 480p, mp4_dash
+244 webm 854x480 25 │ 298.72KiB 2780k https │ vp9 2780k video only 480p, webm_dash
+398 mp4 1280x720 25 │ 150.16KiB 1397k https │ av01.0.05M.08 1397k video only 720p, mp4_dash
+136 mp4 1280x720 25 │ 512.91KiB 4774k https │ avc1.64001f 4774k video only 720p, mp4_dash
+22 mp4 1280x720 25 │ ~614.20KiB 4913k https │ avc1.64001F 4913k mp4a.40.2 0k 44100Hz 720p
+247 webm 1280x720 25 │ 380.61KiB 3543k https │ vp9 3543k video only 720p, webm_dash
+
+Скачиваем формат 22:
+
+yt-dlp --format 22 "https://www.youtube.com/watch?v=Fmm1AeYmbNU"
+[youtube] Fmm1AeYmbNU: Downloading webpage
+[youtube] Fmm1AeYmbNU: Downloading android player API JSON
+[info] Fmm1AeYmbNU: Downloading 1 format(s): 22
+[download] Destination: DATA-34DFE96A-BFE6-4405-A9E3-CFB9959CD3CA [Fmm1AeYmbNU].mp4
+[download] 100% of 527.20KiB in 00:00
+
+На этом файле в Mathematica можно запустить функцию YouTubeRetrieve из пакета YouTubeDrive, которая выполнит обратное преобразование.
+
+Конечно, такая схема кодирования не очень эффективна — примерно 1 минута видео на 1 МБ информации. Этот параметр можно легко увеличить на порядок (до 10 МБ на минуту видео), если вместо квадратов 20×20 внедрить какой-нибудь нормальный алгоритм коррекции ошибок.
+
+YouTubeDrive — чисто экспериментальная программа. Автор подчёркивает, что ни в коем случае не поддерживает её использование в промышленных масштабах. Как мы уже сказали, программа написана пять лет назад чисто для доказательства концепции.
+
+YouBit
+
+Идея хранилища файлов на YouTube выглядит весьма привлекательно. Два года назад появилась программка fvid, которая кодирует файлы без необходимости устанавливать Mathematica. Из зависимостей ей нужен только FFmpeg и libmagic.
+
+Она работает проще. Кодирование произвольного файла в видеоформат:
+
+fvid -i [input file] -e
+fvid -i [input file] --framerate 1 -e
+fvid -i [input file] --password "xyz" -e
+
+Декодирование:
+
+fvid -i [input video] -d
+
+В продолжение этой темы недавно вышла утилита YouBit. Так сказать, последнее достижение прогресса в данной области.
+
+По сравнению с предшественниками — YouBit значительно усовершенствован. Можно сказать, что это новый уровень по качеству кодирования.
+
+Во-первых, здесь автор отказался от использования цветовой субдискретизации, а всю информации кодирует только в канале яркости. В результате получаются чёрно-белые видеоролики, но зато кодирование и декодирование становятся заметно проще — и выполняются быстрее.
+
+В канале яркости пиксели принимают значение от 0 до 255. Соответственно, если мы кодируем в пикселе один бит (параметр bpp: 1, то все значения от 128 до 255 воспринимаются как единица, а меньшие значения — как 0. Для примера, если кодировать в одном пикселе два бита (00, 01, 10 или 11), то весь диапазон яркости разбивается на четыре области (0–63, 64–127, 128–191, 192–255) и так далее. Чем больше бит на пиксель, тем меньше размер файла и выше вероятность некорректной расшифровки конкретного бита после транскодирования видео на серверах YouTube.
+
+Во-вторых, автор придумал оригинальный способ оптимизации видеороликов конкретно под специфический энкодер YouTube, чтобы повысить надёжность их последующего декодирования. Правда, теперь для успешного декодирования файлов уже необходимо их сначала залить на YouTube, а потом скачать результат.
+
+В-третьих, YouBit работает с видео любого разрешения. Оптимально 1920×1080.
+
+Наконец (в-четвёртых), автор реализовал функцию «нулевых фреймов» — вставки чёрных кадров между кадрами с полезной нагрузкой, что позволяет снизить битрейт примерно на 40% (и размер файла) при кодировании видео на сервере YouTube.
+
+Использование:
+
+python -m youbit upload C:/myfile.txt chrome
+
+Аргумент chrome указывает, из какого браузера YouBit должен извлечь куки для аутентификации на YouTube (соответственно, этот браузер должен авторизоваться на studio.youtube.com/, открыть сессию и получить куку).
+
+Затем загрузка происходит непосредственно с помощью headless-браузера Selenium в фоновом режиме. Очень грамотный подход.
+
+Скачивание и обратное декодирование видео:
+
+python -m youbit download https://youtu.be/dQw4w9WgXcQ
+
+Декодирование локального видео, скачанного с YouTube:
+
+python -m youbit decode C:/myvideo.mp4
+
+Все операции можно выполнять через Python API.
+
+Пример видео:
+
+Как мы уже говорили, ограничения YouTube на размер видеоролика — 12 часов или 256 ГБ. Если аккаунт не верифицирован, ограничение 15 минут.
+
+Настройка YouBit по умолчанию на размер одного файла — 9 ГБ, но её можно скорректировать при желании.
+
+Неограниченный хостинг в других местах
+
+Неограниченные хранилища файлов предоставляют и другие сервисы, например:
+
+Telegram (ограничение по размеру файлов 2 ГБ, в платной версии 4 ГБ)
+Соцсети (любые файлы можно хранить под видом видеозаписей и фотографий), обычно там хостинг неограниченного размера
+Habrastorage
+
+Для работы с этими «нетрадиционными хостингами» можно написать свой клиент/файл-менеджер — небольшую программку для закачки файлов через YouBit, чтобы не запускать её вручную.
+
+В идеале хотелось бы добавить туда следующие функции:
+
+Поддержка разных хостингов (разные соцсети, фото- и видеохостинги), чтобы YouBit копировал видео с нашими файлами не только на YouTube, но и на другие хостинги, которые предоставляют неограниченное дисковое пространство бесплатно.
+Резервное копирование. Поскольку каждая площадка рассматривается как временная, должно быть предусмотрено избыточное дублирование.
+Грамотная синхронизация: обновление новых версий или новых файлов без переписывания всего архива.
+
+Но это в идеале. В минимальном варианте хватит и простого скрипта, который в пакетном режиме просто кодирует через YouBit пару сотен файлов в формат MP4 — и заливает видеофайл на несколько видеохостингов.
+
+Что касается хранения файлов на YouTube (и в других сервисах крупных корпораций) — суть сводится к тому, чтобы использовать инфраструктуру не совсем так, как это предполагается, но при этом совершенно легально. Повторюсь, если пользователь маскирует свои личные файлы под видеоролики и заливает их на публичный хостинг, он никак не нарушает законодательство ни одной страны. В любом случае это не коммерческая программа, а просто теоретический эксперимент, а повторять его или нет — решать вам.
+
+НЛО прилетело и оставило здесь промокод для читателей нашего блога:
+
+— 15% на все тарифы VDS (кроме тарифа Прогрев) — HABRFIRSTVDS.      12 часов или 256 ГБ            Ещё раз подчеркнём — статья носит исключительно образовательный и чисто теоретический характер, материалы описанные в статье не являются руководством к действию и не нарушают законодательство. Ещё раз подчеркнём — статья носит исключительно образовательный и чисто теоретический характер, материалы описанные в статье не являются руководством к действию и не нарушают законодательство. теоретический  YouTubeDrive YouTubeDrive  YouTubeDrive       АРХИВ ФАЙЛОВ → ВИДЕО → YOUTUBE → и обратно АРХИВ ФАЙЛОВ      код пакета Mathematica   FFmpeg youtube-upload youtube-dl YouTubeDrive.wl   FFmpegExecutablePath = "FFMPEG_PATH_HERE";
+YouTubeUploadExecutablePath = "YOUTUBE-UPLOAD_PATH_HERE";
+YouTubeDLExecutablePath = "YOUTUBE-DL_PATH_HERE"; FFmpegExecutablePath = "FFMPEG_PATH_HERE";
+YouTubeUploadExecutablePath = "YOUTUBE-UPLOAD_PATH_HERE";
+YouTubeDLExecutablePath = "YOUTUBE-DL_PATH_HERE";    75 | FFmpegExecutablePath = "C:\\ffmpeg.exe";
+76 | YouTubeUploadExecutablePath = Sequence["python",
+77 | "C:\\Users\\j0ker\\AppData\\Local\\Programs\\" <>
+78 | "Python\\Python35\\Scripts\\youtube-upload.py"];
+79 | YouTubeDLExecutablePath = "C:\\youtube-dl.exe"; 75 | FFmpegExecutablePath = "C:\\ffmpeg.exe";
+76 | YouTubeUploadExecutablePath = Sequence["python",
+77 | "C:\\Users\\j0ker\\AppData\\Local\\Programs\\" <>
+78 | "Python\\Python35\\Scripts\\youtube-upload.py"];
+79 | YouTubeDLExecutablePath = "C:\\youtube-dl.exe";  File Install... Package From File YouTubeDrive.wl      youtube-upload OAuth     Функция YouTubeUpload[bytearr] кодирует массив данных bytearr как простое видео RGB, загружает на YouTube и возвращает ID видео.
+
+По умолчанию кодируется 64×36 пикселя RGB, которые масштабируются в 2304 квадратика 20×20 пикселей кадра 1280×720. Значения RGB только 0 или 255, то есть получается три бита на квадратик. Значения RGB записываются в файлы .PNG, которые с помощью кодека FFmpeg склеиваются в валидный видеоролик MP4, способный пережить дальнейшее транскодирование на сервере YouTube.
+
+ Monitor[Do[Image`ImportExportDump`ImageWritePNG[
+"frame_" <> IntegerString[i, 10, numDigits] <> ".png", frame[i]],
+{i, numFrames}], ProgressIndicator[i, {1, numFrames}]];
+
+If[numLeftoverBytes > 0, Image`ImportExportDump`ImageWritePNG[
+"frame_" <> IntegerString[numFrames + 1, 10, numDigits] <> ".png",
+finalFrame]];
+
+Run[FFmpegExecutablePath,
+"-i", "frame_%0" <> ToString[numDigits] <> "d.png",
+"-c:v", "libx264", "-preset", "ultrafast",
+"-vf", "scale=1280:720", "-sws_flags", "neighbor", "data.mp4"];
+
+procInfo = RunProcess[{YouTubeUploadExecutablePath,
+"--title=\"DATA-" <> ToUpperCase@CreateUUID[] <> "\"",
+"data.mp4"}];
+
+В реальности транскодер YouTube может случайно поменять местами значения отдельных пикселей 0 и 255, поэтому большие квадраты 20×20 выполняют роль механизма коррекции ошибок.
+
+Вторая функция YouTubeRetrieve возвращает видеоролик YouTube с указанным идентификатором ID videoid, декодирует его и возвращает полученные данные в видео объекта ByteArray:
+
+ RunProcess[{FFmpegExecutablePath,
+"-i", FileNameJoin[{tempDir, videoFile}], "frame_%d.png"}];
+numFrames = Max[FromDigits /@ StringTake[FileNames["frame_*.png"], {7, -5}]];
+
+rdata = Monitor[Join @@ Table[ByteArray[FromDigits[#, 2] & /@
+Partition[Join @@ classify /@ Join @@ ImagePartition[
+First@Image`ImportExportDump`ImageReadPNG[
+"frame_" <> ToString[i] <> ".png"], 20], 8]],
+{i, numFrames - 1}], ProgressIndicator[i, {1, numFrames - 1}]];
+
+lastParts = Join @@ ImagePartition[First@Image`ImportExportDump`ImageReadPNG[
+"frame_" <> ToString[numFrames] <> ".png"], 20];
+numPaddedBits = LengthWhile[
+Reverse[Join @@ classifyLast /@ lastParts], EqualTo[1 / 2]];
+rdata = Join[rdata, ByteArray[FromDigits[#, 2] & /@ Partition[
+Drop[Join @@ classify /@ lastParts, -numPaddedBits], 8]]];
+
+Вот и всё. Функция YouTubeUpload[bytearr] кодирует массив данных bytearr как простое видео RGB, загружает на YouTube и возвращает ID видео.
+
+По умолчанию кодируется 64×36 пикселя RGB, которые масштабируются в 2304 квадратика 20×20 пикселей кадра 1280×720. Значения RGB только 0 или 255, то есть получается три бита на квадратик. Значения RGB записываются в файлы .PNG, которые с помощью кодека FFmpeg склеиваются в валидный видеоролик MP4, способный пережить дальнейшее транскодирование на сервере YouTube.
+
+ Monitor[Do[Image`ImportExportDump`ImageWritePNG[
+"frame_" <> IntegerString[i, 10, numDigits] <> ".png", frame[i]],
+{i, numFrames}], ProgressIndicator[i, {1, numFrames}]];
+
+If[numLeftoverBytes > 0, Image`ImportExportDump`ImageWritePNG[
+"frame_" <> IntegerString[numFrames + 1, 10, numDigits] <> ".png",
+finalFrame]];
+
+Run[FFmpegExecutablePath,
+"-i", "frame_%0" <> ToString[numDigits] <> "d.png",
+"-c:v", "libx264", "-preset", "ultrafast",
+"-vf", "scale=1280:720", "-sws_flags", "neighbor", "data.mp4"];
+
+procInfo = RunProcess[{YouTubeUploadExecutablePath,
+"--title=\"DATA-" <> ToUpperCase@CreateUUID[] <> "\"",
+"data.mp4"}];
+
+В реальности транскодер YouTube может случайно поменять местами значения отдельных пикселей 0 и 255, поэтому большие квадраты 20×20 выполняют роль механизма коррекции ошибок. YouTubeUpload[bytearr] bytearr      Monitor[Do[Image`ImportExportDump`ImageWritePNG[
+"frame_" <> IntegerString[i, 10, numDigits] <> ".png", frame[i]],
+{i, numFrames}], ProgressIndicator[i, {1, numFrames}]];
+
+If[numLeftoverBytes > 0, Image`ImportExportDump`ImageWritePNG[
+"frame_" <> IntegerString[numFrames + 1, 10, numDigits] <> ".png",
+finalFrame]];
+
+Run[FFmpegExecutablePath,
+"-i", "frame_%0" <> ToString[numDigits] <> "d.png",
+"-c:v", "libx264", "-preset", "ultrafast",
+"-vf", "scale=1280:720", "-sws_flags", "neighbor", "data.mp4"];
+
+procInfo = RunProcess[{YouTubeUploadExecutablePath,
+"--title=\"DATA-" <> ToUpperCase@CreateUUID[] <> "\"",
+"data.mp4"}];  Monitor[Do[Image`ImportExportDump`ImageWritePNG[
+"frame_" <> IntegerString[i, 10, numDigits] <> ".png", frame[i]],
+{i, numFrames}], ProgressIndicator[i, {1, numFrames}]];
+
+If[numLeftoverBytes > 0, Image`ImportExportDump`ImageWritePNG[
+"frame_" <> IntegerString[numFrames + 1, 10, numDigits] <> ".png",
+finalFrame]];
+
+Run[FFmpegExecutablePath,
+"-i", "frame_%0" <> ToString[numDigits] <> "d.png",
+"-c:v", "libx264", "-preset", "ultrafast",
+"-vf", "scale=1280:720", "-sws_flags", "neighbor", "data.mp4"];
+
+procInfo = RunProcess[{YouTubeUploadExecutablePath,
+"--title=\"DATA-" <> ToUpperCase@CreateUUID[] <> "\"",
+"data.mp4"}];    Вторая функция YouTubeRetrieve возвращает видеоролик YouTube с указанным идентификатором ID videoid, декодирует его и возвращает полученные данные в видео объекта ByteArray:
+
+ RunProcess[{FFmpegExecutablePath,
+"-i", FileNameJoin[{tempDir, videoFile}], "frame_%d.png"}];
+numFrames = Max[FromDigits /@ StringTake[FileNames["frame_*.png"], {7, -5}]];
+
+rdata = Monitor[Join @@ Table[ByteArray[FromDigits[#, 2] & /@
+Partition[Join @@ classify /@ Join @@ ImagePartition[
+First@Image`ImportExportDump`ImageReadPNG[
+"frame_" <> ToString[i] <> ".png"], 20], 8]],
+{i, numFrames - 1}], ProgressIndicator[i, {1, numFrames - 1}]];
+
+lastParts = Join @@ ImagePartition[First@Image`ImportExportDump`ImageReadPNG[
+"frame_" <> ToString[numFrames] <> ".png"], 20];
+numPaddedBits = LengthWhile[
+Reverse[Join @@ classifyLast /@ lastParts], EqualTo[1 / 2]];
+rdata = Join[rdata, ByteArray[FromDigits[#, 2] & /@ Partition[
+Drop[Join @@ classify /@ lastParts, -numPaddedBits], 8]]];
+
+Вот и всё. YouTubeRetrieve ID videoid ByteArray    RunProcess[{FFmpegExecutablePath,
+"-i", FileNameJoin[{tempDir, videoFile}], "frame_%d.png"}];
+numFrames = Max[FromDigits /@ StringTake[FileNames["frame_*.png"], {7, -5}]];
+
+rdata = Monitor[Join @@ Table[ByteArray[FromDigits[#, 2] & /@
+Partition[Join @@ classify /@ Join @@ ImagePartition[
+First@Image`ImportExportDump`ImageReadPNG[
+"frame_" <> ToString[i] <> ".png"], 20], 8]],
+{i, numFrames - 1}], ProgressIndicator[i, {1, numFrames - 1}]];
+
+lastParts = Join @@ ImagePartition[First@Image`ImportExportDump`ImageReadPNG[
+"frame_" <> ToString[numFrames] <> ".png"], 20];
+numPaddedBits = LengthWhile[
+Reverse[Join @@ classifyLast /@ lastParts], EqualTo[1 / 2]];
+rdata = Join[rdata, ByteArray[FromDigits[#, 2] & /@ Partition[
+Drop[Join @@ classify /@ lastParts, -numPaddedBits], 8]]];  RunProcess[{FFmpegExecutablePath,
+"-i", FileNameJoin[{tempDir, videoFile}], "frame_%d.png"}];
+numFrames = Max[FromDigits /@ StringTake[FileNames["frame_*.png"], {7, -5}]];
+
+rdata = Monitor[Join @@ Table[ByteArray[FromDigits[#, 2] & /@
+Partition[Join @@ classify /@ Join @@ ImagePartition[
+First@Image`ImportExportDump`ImageReadPNG[
+"frame_" <> ToString[i] <> ".png"], 20], 8]],
+{i, numFrames - 1}], ProgressIndicator[i, {1, numFrames - 1}]];
+
+lastParts = Join @@ ImagePartition[First@Image`ImportExportDump`ImageReadPNG[
+"frame_" <> ToString[numFrames] <> ".png"], 20];
+numPaddedBits = LengthWhile[
+Reverse[Join @@ classifyLast /@ lastParts], EqualTo[1 / 2]];
+rdata = Join[rdata, ByteArray[FromDigits[#, 2] & /@ Partition[
+Drop[Join @@ classify /@ lastParts, -numPaddedBits], 8]]];   Примечание YouTubeUpload[bytearr] YouTubeRetrieve   Пример использования Пример использования  ByteArray YouTubeUpload      выглядит следующим образом     youtube-dl yt-dlp     yt-dlp --list-formats "https://www.youtube.com/watch?v=Fmm1AeYmbNU"
+[youtube] Fmm1AeYmbNU: Downloading webpage
+[youtube] Fmm1AeYmbNU: Downloading android player API JSON
+[info] Available formats for Fmm1AeYmbNU:
+ID EXT RESOLUTION FPS │ FILESIZE TBR PROTO │ VCODEC VBR ACODEC ABR ASR MORE INFO
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+sb0 mhtml 48x27 │ mhtml │ images storyboard
+139 m4a audio only │ 6.84KiB 54k https │ audio only mp4a.40.5 54k 22050Hz low, m4a_dash
+249 webm audio only │ 700.00B 6k https │ audio only opus 6k 48000Hz low, webm_dash
+250 webm audio only │ 700.00B 6k https │ audio only opus 6k 48000Hz low, webm_dash
+140 m4a audio only │ 15.43KiB 136k https │ audio only mp4a.40.2 136k 44100Hz medium, m4a_dash
+251 webm audio only │ 700.00B 6k https │ audio only opus 6k 48000Hz medium, webm_dash
+17 3gp 176x144 6 │ 26.54KiB 222k https │ mp4v.20.3 222k mp4a.40.2 0k 22050Hz 144p
+394 mp4 256x144 25 │ 25.28KiB 235k https │ av01.0.00M.08 235k video only 144p, mp4_dash
+160 mp4 256x144 25 │ 82.20KiB 765k https │ avc1.4d400c 765k video only 144p, mp4_dash
+278 webm 256x144 25 │ 72.33KiB 673k https │ vp9 673k video only 144p, webm_dash
+395 mp4 426x240 25 │ 66.86KiB 622k https │ av01.0.00M.08 622k video only 240p, mp4_dash
+133 mp4 426x240 25 │ 254.76KiB 2371k https │ avc1.4d4015 2371k video only 240p, mp4_dash
+242 webm 426x240 25 │ 163.19KiB 1519k https │ vp9 1519k video only 240p, webm_dash
+396 mp4 640x360 25 │ 89.98KiB 837k https │ av01.0.01M.08 837k video only 360p, mp4_dash
+134 mp4 640x360 25 │ 363.73KiB 3386k https │ avc1.4d401e 3386k video only 360p, mp4_dash
+18 mp4 640x360 25 │ ~440.62KiB 3524k https │ avc1.42001E 3524k mp4a.40.2 0k 44100Hz 360p
+243 webm 640x360 25 │ 238.27KiB 2218k https │ vp9 2218k video only 360p, webm_dash
+397 mp4 854x480 25 │ 116.18KiB 1081k https │ av01.0.04M.08 1081k video only 480p, mp4_dash
+135 mp4 854x480 25 │ 469.24KiB 4368k https │ avc1.4d401e 4368k video only 480p, mp4_dash
+244 webm 854x480 25 │ 298.72KiB 2780k https │ vp9 2780k video only 480p, webm_dash
+398 mp4 1280x720 25 │ 150.16KiB 1397k https │ av01.0.05M.08 1397k video only 720p, mp4_dash
+136 mp4 1280x720 25 │ 512.91KiB 4774k https │ avc1.64001f 4774k video only 720p, mp4_dash
+22 mp4 1280x720 25 │ ~614.20KiB 4913k https │ avc1.64001F 4913k mp4a.40.2 0k 44100Hz 720p
+247 webm 1280x720 25 │ 380.61KiB 3543k https │ vp9 3543k video only 720p, webm_dash yt-dlp --list-formats "https://www.youtube.com/watch?v=Fmm1AeYmbNU"
+[youtube] Fmm1AeYmbNU: Downloading webpage
+[youtube] Fmm1AeYmbNU: Downloading android player API JSON
+[info] Available formats for Fmm1AeYmbNU:
+ID EXT RESOLUTION FPS │ FILESIZE TBR PROTO │ VCODEC VBR ACODEC ABR ASR MORE INFO
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+sb0 mhtml 48x27 │ mhtml │ images storyboard
+139 m4a audio only │ 6.84KiB 54k https │ audio only mp4a.40.5 54k 22050Hz low, m4a_dash
+249 webm audio only │ 700.00B 6k https │ audio only opus 6k 48000Hz low, webm_dash
+250 webm audio only │ 700.00B 6k https │ audio only opus 6k 48000Hz low, webm_dash
+140 m4a audio only │ 15.43KiB 136k https │ audio only mp4a.40.2 136k 44100Hz medium, m4a_dash
+251 webm audio only │ 700.00B 6k https │ audio only opus 6k 48000Hz medium, webm_dash
+17 3gp 176x144 6 │ 26.54KiB 222k https │ mp4v.20.3 222k mp4a.40.2 0k 22050Hz 144p
+394 mp4 256x144 25 │ 25.28KiB 235k https │ av01.0.00M.08 235k video only 144p, mp4_dash
+160 mp4 256x144 25 │ 82.20KiB 765k https │ avc1.4d400c 765k video only 144p, mp4_dash
+278 webm 256x144 25 │ 72.33KiB 673k https │ vp9 673k video only 144p, webm_dash
+395 mp4 426x240 25 │ 66.86KiB 622k https │ av01.0.00M.08 622k video only 240p, mp4_dash
+133 mp4 426x240 25 │ 254.76KiB 2371k https │ avc1.4d4015 2371k video only 240p, mp4_dash
+242 webm 426x240 25 │ 163.19KiB 1519k https │ vp9 1519k video only 240p, webm_dash
+396 mp4 640x360 25 │ 89.98KiB 837k https │ av01.0.01M.08 837k video only 360p, mp4_dash
+134 mp4 640x360 25 │ 363.73KiB 3386k https │ avc1.4d401e 3386k video only 360p, mp4_dash
+18 mp4 640x360 25 │ ~440.62KiB 3524k https │ avc1.42001E 3524k mp4a.40.2 0k 44100Hz 360p
+243 webm 640x360 25 │ 238.27KiB 2218k https │ vp9 2218k video only 360p, webm_dash
+397 mp4 854x480 25 │ 116.18KiB 1081k https │ av01.0.04M.08 1081k video only 480p, mp4_dash
+135 mp4 854x480 25 │ 469.24KiB 4368k https │ avc1.4d401e 4368k video only 480p, mp4_dash
+244 webm 854x480 25 │ 298.72KiB 2780k https │ vp9 2780k video only 480p, webm_dash
+398 mp4 1280x720 25 │ 150.16KiB 1397k https │ av01.0.05M.08 1397k video only 720p, mp4_dash
+136 mp4 1280x720 25 │ 512.91KiB 4774k https │ avc1.64001f 4774k video only 720p, mp4_dash
+22 mp4 1280x720 25 │ ~614.20KiB 4913k https │ avc1.64001F 4913k mp4a.40.2 0k 44100Hz 720p
+247 webm 1280x720 25 │ 380.61KiB 3543k https │ vp9 3543k video only 720p, webm_dash    yt-dlp --format 22 "https://www.youtube.com/watch?v=Fmm1AeYmbNU"
+[youtube] Fmm1AeYmbNU: Downloading webpage
+[youtube] Fmm1AeYmbNU: Downloading android player API JSON
+[info] Fmm1AeYmbNU: Downloading 1 format(s): 22
+[download] Destination: DATA-34DFE96A-BFE6-4405-A9E3-CFB9959CD3CA [Fmm1AeYmbNU].mp4
+[download] 100% of 527.20KiB in 00:00 yt-dlp --format 22 "https://www.youtube.com/watch?v=Fmm1AeYmbNU"
+[youtube] Fmm1AeYmbNU: Downloading webpage
+[youtube] Fmm1AeYmbNU: Downloading android player API JSON
+[info] Fmm1AeYmbNU: Downloading 1 format(s): 22
+[download] Destination: DATA-34DFE96A-BFE6-4405-A9E3-CFB9959CD3CA [Fmm1AeYmbNU].mp4
+[download] 100% of 527.20KiB in 00:00  YouTubeRetrieve YouTubeDrive   алгоритм коррекции ошибок     YouBit YouBit  fvid     fvid -i [input file] -e
+fvid -i [input file] --framerate 1 -e
+fvid -i [input file] --password "xyz" -e fvid -i [input file] -e
+fvid -i [input file] --framerate 1 -e
+fvid -i [input file] --password "xyz" -e    fvid -i [input video] -d fvid -i [input video] -d  YouBit     цветовой субдискретизации   bpp: 1   необходимо         python -m youbit upload C:/myfile.txt chrome python -m youbit upload C:/myfile.txt chrome  chrome studio.youtube.com/   Selenium     python -m youbit download https://youtu.be/dQw4w9WgXcQ python -m youbit download https://youtu.be/dQw4w9WgXcQ    python -m youbit decode C:/myvideo.mp4 python -m youbit decode C:/myvideo.mp4    Пример видео         Неограниченный хостинг в других местах Неограниченный хостинг в других местах    Telegram (ограничение по размеру файлов 2 ГБ, в платной версии 4 ГБ)
+Соцсети (любые файлы можно хранить под видом видеозаписей и фотографий), обычно там хостинг неограниченного размера
+Habrastorage Telegram (ограничение по размеру файлов 2 ГБ, в платной версии 4 ГБ)  Соцсети (любые файлы можно хранить под видом видеозаписей и фотографий), обычно там хостинг неограниченного размера  Habrastorage      Поддержка разных хостингов (разные соцсети, фото- и видеохостинги), чтобы YouBit копировал видео с нашими файлами не только на YouTube, но и на другие хостинги, которые предоставляют неограниченное дисковое пространство бесплатно.
+Резервное копирование. Поскольку каждая площадка рассматривается как временная, должно быть предусмотрено избыточное дублирование.
+Грамотная синхронизация: обновление новых версий или новых файлов без переписывания всего архива. Поддержка разных хостингов (разные соцсети, фото- и видеохостинги), чтобы YouBit копировал видео с нашими файлами не только на YouTube, но и на другие хостинги, которые предоставляют неограниченное дисковое пространство бесплатно.  Резервное копирование. Поскольку каждая площадка рассматривается как временная, должно быть предусмотрено избыточное дублирование.  Грамотная синхронизация: обновление новых версий или новых файлов без переписывания всего архива.    легально      15% на все тарифы VDS HABRFIRSTVDS HABRFIRSTVDS]]></text>
+</doc>

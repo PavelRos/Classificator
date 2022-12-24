@@ -1,0 +1,302 @@
+<?xml version="1.0" ?>
+<doc>
+	<original_author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Majid Jabrayilov]]></item>
+	</original_author>
+	<label auto="true" type="str" verify="true"><![CDATA[Develop]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[SwiftBook]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-11-28, 10:33]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/post/701864/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Создание пользовательского (индивидуального) макета в SwiftUI. Основы]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Разработка под iOS]]></item>
+		<item type="str"><![CDATA[Swift]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[swift]]></item>
+		<item type="str"><![CDATA[ios]]></item>
+		<item type="str"><![CDATA[swiftui]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[В настоящее время SwiftUI предоставляет протокол Layout, позволяющий нам создавать суперпользовательские (сверхиндивидуальные мне кажется здесь больше подходит) макеты, копаясь в системе компоновки без использования GeometryReader. Протокол Layout дает нам невероятную силу создания и повторного использования любого макета, который вы можете себе представить. На этой неделе мы узнаем, как использовать новый протокол Layout для создания макета потока в SwiftUI.
+Любой макет, который вы хотите создать, должен соответствовать новому Layout протоколу. Для реализации у него есть две необходимые функции.
+@available(iOS 16.0, macOS 13.0, tvOS 16.0, watchOS 9.0, *)
+public protocol Layout : Animatable {
+    func sizeThatFits(
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout Self.Cache
+    ) -> CGSize
+    
+    func placeSubviews(
+        in bounds: CGRect,
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout Self.Cache
+    ) 
+}
+Функция sizeThatFits должна вычислить и вернуть окончательный размер вашего макета.
+Функция placeSubviews должна размещать сабвью в соответствии с вашими правилами компоновки.
+Сегодня мы начнем изучать протокол Layout, реализуя flow layout (схема или макет потока) в SwiftUI. Flow layout обычно ведет себя как HStack, но он отбрасывает линию, как только вью заполняют доступное горизонтальное пространство.
+Давайте начнем с расчета окончательного размера нашего flow layout. Он должен произвести итерацию по всем сабвью и суммировать ширину данных  вью до тех пор, пока у нас не появится доступное пространство по горизонтали. Как только мы достигнем конца этого пространства, мы должны обозначить внизу линию расположения и продолжить размещать новые вью от этой линии.
+struct FlowLayout: Layout {
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let sizes = subviews.map { $0.sizeThatFits(.unspecified) }
+        
+        var totalHeight: CGFloat = 0
+        var totalWidth: CGFloat = 0
+        
+        var lineWidth: CGFloat = 0
+        var lineHeight: CGFloat = 0
+        
+          for size in sizes {
+            if lineWidth + size.width > proposal.width ?? 0 {
+                totalHeight += lineHeight
+                lineWidth = size.width
+                lineHeight = size.height
+            } else {
+                lineWidth += size.width
+                lineHeight = max(lineHeight, size.height)
+            }
+
+            totalWidth = max(totalWidth, lineWidth)
+        }
+
+        totalHeight += lineHeight
+        
+        return .init(width: totalWidth, height: totalHeight)
+    }
+}
+В примере выше у нас есть реализация функции sizeThatFits. Эта функция предоставляет несколько интересных параметров, которые мы будем использовать для расчета окончательного размера нашего макета. Первый - это ProposedViewSize, предоставляющий нам размер, который предлагает родитель. Второй - это экземпляр класса с типом Subviews, который является прокси-экземпляром для коллекции сабвью, позволяющий нам размещать и измерять размер данных вью.
+Мы используем экземпляр прокси (*с полномочиями) Subviews для итерации всех дочерних элементов и расчета их идеальных размеров с помощью функции sizeThatFits. Он принимает параметр, позволяющий нам получить его минимальные, максимальные и идеальные размеры. В приведенном выше примере мы используем параметр unspecified (неуказанный), который означает идеальный размер. Но вы также можете использовать экземпляры zero и infinity, чтобы получить его минимальный и максимальный размер соответственно.
+После расчета идеальных размеров для всех вью, мы проходим по ним, чтобы рассчитать общую ширину и высоту окончательного макета. Мы применяем параметр ProposedViewSize, чтобы понять ширину, которую предоставляет нам родительский вью, - так мы узнаем, когда нам нужно бросить линию макета потока.
+Наконец, мы создаем и возвращаем окончательный размер макета потока, используя все знания, которые предоставляет нам система компоновки SwiftUI. Теперь мы можем перейти к деталям реализации функции placeSubviews.
+struct FlowLayout: Layout {
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let sizes = subviews.map { $0.sizeThatFits(.unspecified) }
+        
+        var lineX = bounds.minX
+        var lineY = bounds.minY
+        var lineHeight: CGFloat = 0
+        
+        for index in subviews.indices {
+            if lineX + sizes[index].width > (proposal.width ?? 0) {
+                lineY += lineHeight
+                lineHeight = 0
+                lineX = bounds.minX
+            }
+            
+            subviews[index].place(
+                at: .init(
+                    x: lineX + sizes[index].width / 2,
+                    y: lineY + sizes[index].height / 2
+                ),
+                anchor: .center,
+                proposal: ProposedViewSize(sizes[index])
+            )
+            
+            lineHeight = max(lineHeight, sizes[index].height)
+            lineX += sizes[index].width
+        }
+    }
+}
+Как вы можете видеть в примере выше, функция placeSubviews имеет тот же набор параметров, что и  sizeThatFits, но также предоставляет нам прямоугольник с границами. Прямоугольник с границами - это место в иерархии вью, которое мы заполним нашими сабвью. Пожалуйста, не стоит полагать, что у него нулевое начало, так как его можно разместить в любом месте экрана; и чтобы идеально разместить свои вью, вам следует использовать свойства minX, minY, maxX, maxY, midX, midY,.
+Тип Subviews позволяет нам получить доступ к прокси вью по индексу и использовать его функцию place для размещения вью в определенном положении. Это также позволяет нам перемещать точку привязки вью в соответствии с позицией, которую мы проходим.
+struct ContentView: View {
+    var body: some View {
+        FlowLayout {
+            ForEach(0..<5) { _ in
+                Group {
+                    Text("Hello")
+                        .font(.largeTitle)
+                    Text("World")
+                        .font(.title)
+                    Text("!!!")
+                        .font(.title3)
+                }
+                .border(Color.red)
+            }
+        }
+    }
+}
+Сегодня мы изучили основы протокола Layout и создали элементарную версию flow layout. Мы продолжим копаться в протоколе Layout в следующих постах, чтобы создавать более гибкие конфигурации. Не стесняйтесь следить за мной в Twitter и задавать свои вопросы, связанные с этим постом.
+Спасибо за прочтение, увидимся на следующей неделе!
+ Оригинал статьи
+Подписывайся на наши соцсети: Telegram / VKontakte
+Вступай в открытый чат для iOS-разработчиков: t.me/swiftbook_chat
+Смотри бесплатные уроки по iOS-разработке с нуля В настоящее время SwiftUI предоставляет протокол Layout, позволяющий нам создавать суперпользовательские (сверхиндивидуальные мне кажется здесь больше подходит) макеты, копаясь в системе компоновки без использования GeometryReader. Протокол Layout дает нам невероятную силу создания и повторного использования любого макета, который вы можете себе представить. На этой неделе мы узнаем, как использовать новый протокол Layout для создания макета потока в SwiftUI. Любой макет, который вы хотите создать, должен соответствовать новому Layout протоколу. Для реализации у него есть две необходимые функции. @available(iOS 16.0, macOS 13.0, tvOS 16.0, watchOS 9.0, *)
+public protocol Layout : Animatable {
+    func sizeThatFits(
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout Self.Cache
+    ) -> CGSize
+    
+    func placeSubviews(
+        in bounds: CGRect,
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout Self.Cache
+    ) 
+} @available(iOS 16.0, macOS 13.0, tvOS 16.0, watchOS 9.0, *)
+public protocol Layout : Animatable {
+    func sizeThatFits(
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout Self.Cache
+    ) -> CGSize
+    
+    func placeSubviews(
+        in bounds: CGRect,
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout Self.Cache
+    ) 
+} Функция sizeThatFits должна вычислить и вернуть окончательный размер вашего макета.
+Функция placeSubviews должна размещать сабвью в соответствии с вашими правилами компоновки. Функция sizeThatFits должна вычислить и вернуть окончательный размер вашего макета. Функция sizeThatFits должна вычислить и вернуть окончательный размер вашего макета. Функция placeSubviews должна размещать сабвью в соответствии с вашими правилами компоновки. Функция placeSubviews должна размещать сабвью в соответствии с вашими правилами компоновки. Сегодня мы начнем изучать протокол Layout, реализуя flow layout (схема или макет потока) в SwiftUI. Flow layout обычно ведет себя как HStack, но он отбрасывает линию, как только вью заполняют доступное горизонтальное пространство. Давайте начнем с расчета окончательного размера нашего flow layout. Он должен произвести итерацию по всем сабвью и суммировать ширину данных  вью до тех пор, пока у нас не появится доступное пространство по горизонтали. Как только мы достигнем конца этого пространства, мы должны обозначить внизу линию расположения и продолжить размещать новые вью от этой линии. struct FlowLayout: Layout {
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let sizes = subviews.map { $0.sizeThatFits(.unspecified) }
+        
+        var totalHeight: CGFloat = 0
+        var totalWidth: CGFloat = 0
+        
+        var lineWidth: CGFloat = 0
+        var lineHeight: CGFloat = 0
+        
+          for size in sizes {
+            if lineWidth + size.width > proposal.width ?? 0 {
+                totalHeight += lineHeight
+                lineWidth = size.width
+                lineHeight = size.height
+            } else {
+                lineWidth += size.width
+                lineHeight = max(lineHeight, size.height)
+            }
+
+            totalWidth = max(totalWidth, lineWidth)
+        }
+
+        totalHeight += lineHeight
+        
+        return .init(width: totalWidth, height: totalHeight)
+    }
+} struct FlowLayout: Layout {
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let sizes = subviews.map { $0.sizeThatFits(.unspecified) }
+        
+        var totalHeight: CGFloat = 0
+        var totalWidth: CGFloat = 0
+        
+        var lineWidth: CGFloat = 0
+        var lineHeight: CGFloat = 0
+        
+          for size in sizes {
+            if lineWidth + size.width > proposal.width ?? 0 {
+                totalHeight += lineHeight
+                lineWidth = size.width
+                lineHeight = size.height
+            } else {
+                lineWidth += size.width
+                lineHeight = max(lineHeight, size.height)
+            }
+
+            totalWidth = max(totalWidth, lineWidth)
+        }
+
+        totalHeight += lineHeight
+        
+        return .init(width: totalWidth, height: totalHeight)
+    }
+} В примере выше у нас есть реализация функции sizeThatFits. Эта функция предоставляет несколько интересных параметров, которые мы будем использовать для расчета окончательного размера нашего макета. Первый - это ProposedViewSize, предоставляющий нам размер, который предлагает родитель. Второй - это экземпляр класса с типом Subviews, который является прокси-экземпляром для коллекции сабвью, позволяющий нам размещать и измерять размер данных вью. Мы используем экземпляр прокси (*с полномочиями) Subviews для итерации всех дочерних элементов и расчета их идеальных размеров с помощью функции sizeThatFits. Он принимает параметр, позволяющий нам получить его минимальные, максимальные и идеальные размеры. В приведенном выше примере мы используем параметр unspecified (неуказанный), который означает идеальный размер. Но вы также можете использовать экземпляры zero и infinity, чтобы получить его минимальный и максимальный размер соответственно. После расчета идеальных размеров для всех вью, мы проходим по ним, чтобы рассчитать общую ширину и высоту окончательного макета. Мы применяем параметр ProposedViewSize, чтобы понять ширину, которую предоставляет нам родительский вью, - так мы узнаем, когда нам нужно бросить линию макета потока. Наконец, мы создаем и возвращаем окончательный размер макета потока, используя все знания, которые предоставляет нам система компоновки SwiftUI. Теперь мы можем перейти к деталям реализации функции placeSubviews. struct FlowLayout: Layout {
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let sizes = subviews.map { $0.sizeThatFits(.unspecified) }
+        
+        var lineX = bounds.minX
+        var lineY = bounds.minY
+        var lineHeight: CGFloat = 0
+        
+        for index in subviews.indices {
+            if lineX + sizes[index].width > (proposal.width ?? 0) {
+                lineY += lineHeight
+                lineHeight = 0
+                lineX = bounds.minX
+            }
+            
+            subviews[index].place(
+                at: .init(
+                    x: lineX + sizes[index].width / 2,
+                    y: lineY + sizes[index].height / 2
+                ),
+                anchor: .center,
+                proposal: ProposedViewSize(sizes[index])
+            )
+            
+            lineHeight = max(lineHeight, sizes[index].height)
+            lineX += sizes[index].width
+        }
+    }
+} struct FlowLayout: Layout {
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let sizes = subviews.map { $0.sizeThatFits(.unspecified) }
+        
+        var lineX = bounds.minX
+        var lineY = bounds.minY
+        var lineHeight: CGFloat = 0
+        
+        for index in subviews.indices {
+            if lineX + sizes[index].width > (proposal.width ?? 0) {
+                lineY += lineHeight
+                lineHeight = 0
+                lineX = bounds.minX
+            }
+            
+            subviews[index].place(
+                at: .init(
+                    x: lineX + sizes[index].width / 2,
+                    y: lineY + sizes[index].height / 2
+                ),
+                anchor: .center,
+                proposal: ProposedViewSize(sizes[index])
+            )
+            
+            lineHeight = max(lineHeight, sizes[index].height)
+            lineX += sizes[index].width
+        }
+    }
+} Как вы можете видеть в примере выше, функция placeSubviews имеет тот же набор параметров, что и  sizeThatFits, но также предоставляет нам прямоугольник с границами. Прямоугольник с границами - это место в иерархии вью, которое мы заполним нашими сабвью. Пожалуйста, не стоит полагать, что у него нулевое начало, так как его можно разместить в любом месте экрана; и чтобы идеально разместить свои вью, вам следует использовать свойства minX, minY, maxX, maxY, midX, midY,. Тип Subviews позволяет нам получить доступ к прокси вью по индексу и использовать его функцию place для размещения вью в определенном положении. Это также позволяет нам перемещать точку привязки вью в соответствии с позицией, которую мы проходим. struct ContentView: View {
+    var body: some View {
+        FlowLayout {
+            ForEach(0..<5) { _ in
+                Group {
+                    Text("Hello")
+                        .font(.largeTitle)
+                    Text("World")
+                        .font(.title)
+                    Text("!!!")
+                        .font(.title3)
+                }
+                .border(Color.red)
+            }
+        }
+    }
+} struct ContentView: View {
+    var body: some View {
+        FlowLayout {
+            ForEach(0..<5) { _ in
+                Group {
+                    Text("Hello")
+                        .font(.largeTitle)
+                    Text("World")
+                        .font(.title)
+                    Text("!!!")
+                        .font(.title3)
+                }
+                .border(Color.red)
+            }
+        }
+    }
+}   Сегодня мы изучили основы протокола Layout и создали элементарную версию flow layout. Мы продолжим копаться в протоколе Layout в следующих постах, чтобы создавать более гибкие конфигурации. Не стесняйтесь следить за мной в Twitter и задавать свои вопросы, связанные с этим постом. Twitter Спасибо за прочтение, увидимся на следующей неделе!  Оригинал статьи Оригинал статьи Подписывайся на наши соцсети: Telegram / VKontakte
+Вступай в открытый чат для iOS-разработчиков: t.me/swiftbook_chat
+Смотри бесплатные уроки по iOS-разработке с нуля Подписывайся на наши соцсети:  Telegram Telegram]]></text>
+</doc>

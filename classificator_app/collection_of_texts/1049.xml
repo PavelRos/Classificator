@@ -1,0 +1,47 @@
+<?xml version="1.0" ?>
+<doc>
+	<label auto="true" type="str" verify="true"><![CDATA[Other]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[thenonsense]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-08-25, 21:13]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/post/684502/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Godot | Open Dungeon | Часть beta]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Open source]]></item>
+		<item type="str"><![CDATA[Разработка игр]]></item>
+		<item type="str"><![CDATA[Прототипирование]]></item>
+		<item type="str"><![CDATA[Игры и игровые консоли]]></item>
+		<item type="str"><![CDATA[Godot]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[godot]]></item>
+		<item type="str"><![CDATA[программирование]]></item>
+		<item type="str"><![CDATA[туториал]]></item>
+		<item type="str"><![CDATA[gamedev]]></item>
+		<item type="str"><![CDATA[opensourсe]]></item>
+		<item type="str"><![CDATA[gdscript]]></item>
+		<item type="str"><![CDATA[обучение]]></item>
+		<item type="str"><![CDATA[разработка игр]]></item>
+		<item type="str"><![CDATA[прототипирование]]></item>
+		<item type="str"><![CDATA[3d]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[Больше функционала для минималистичного прототипа игры: объекты уровня, враги, апгрейд управления, глобальный скрипт и статичные выстрелы.
+Архив с готовыми файлами проекта можно взять на странице: https://thenonsense.itch.io/opendungeon
+Open Dungeon
+thenonsense.itch.io
+В этой статье мы пошагово обновим прототип alpha до состояния beta.
+Запускаем Godot. Открываем проект Open Dungeon, который мы создали ранее в части alpha . Открывается сцена MainScene.
+Уровень
+Сундуки
+Заготовка для врага
+Глобальный скрипт и враг-преследователь
+Улучшаем управление
+Выстрелы и прочее
+На этом пока и остановимся.
+Код получившихся в итоге скриптов
+Предыдущая статья:
+Часть alpha Больше функционала для минималистичного прототипа игры: объекты уровня, враги, апгрейд управления, глобальный скрипт и статичные выстрелы.  Архив с готовыми файлами проекта можно взять на странице: https://thenonsense.itch.io/opendungeon https://thenonsense.itch.io/opendungeon Open Dungeon
+thenonsense.itch.io  Open Dungeon
+thenonsense.itch.io Open Dungeon Open Dungeon thenonsense.itch.io В этой статье мы пошагово обновим прототип alpha до состояния beta. Запускаем Godot. Открываем проект Open Dungeon, который мы создали ранее в части alpha . Открывается сцена MainScene. Open Dungeon части alpha MainScene Уровень Уровень                                                  Сундуки Сундуки                                                                                     Заготовка для врага Заготовка для врага                                                                                                                                                         Глобальный скрипт и враг-преследователь Глобальный скрипт и враг-преследователь                                                                                    ]]></text>
+</doc>

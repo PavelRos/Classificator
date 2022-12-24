@@ -1,0 +1,363 @@
+<?xml version="1.0" ?>
+<doc>
+	<original_author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[thevinter]]></item>
+	</original_author>
+	<label auto="true" type="str" verify="true"><![CDATA[Other]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[honyaki]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-05-09, 23:36]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/company/skillfactory/blog/664956/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Как я случайно удалил 7 терабайт видео перед запуском в продакшн]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Блог компании SkillFactory]]></item>
+		<item type="str"><![CDATA[Python]]></item>
+		<item type="str"><![CDATA[Программирование]]></item>
+		<item type="str"><![CDATA[IT-инфраструктура]]></item>
+		<item type="str"><![CDATA[Интерфейсы]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[skillfactory]]></item>
+		<item type="str"><![CDATA[программирование]]></item>
+		<item type="str"><![CDATA[тестирование]]></item>
+		<item type="str"><![CDATA[веб-сервисы]]></item>
+		<item type="str"><![CDATA[vimeo]]></item>
+		<item type="str"><![CDATA[python]]></item>
+		<item type="str"><![CDATA[playwright]]></item>
+		<item type="str"><![CDATA[автоматизация]]></item>
+		<item type="str"><![CDATA[кликер]]></item>
+		<item type="str"><![CDATA[клики]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[К старту курса по автоматизированному тестированию на Python делимся материалом о том, насколько вредным может стать привыкание к библиотекам и насколько полезными — инструменты автоматизированного тестирования. За подробностями приглашаем под кат.
+Хочу предупредить, что я младший разработчик с реальным опытом меньше одного года. Вещи, которые могут показаться вам очевидными, для меня могут не быть такими. Историю поймут не все. Она о плохих методах и ошибках всех участников истории.
+«Силиконовой долине» эта история может показаться чуждой, но она точно рисует картину развития небольших IT-компаний. Сегодня я работаю в крошечной итальянской компании из 10 сотрудников.
+Мы разрабатываем и управляем сайтами и инструментами для местного бизнеса, заключили крупный контракт с одной из самых больших спортивных компаний Италии, Великобритании и Южной Африке.
+Легко показать пальцем и обвинить кого-то, но это не то, что я собираюсь делать. Тем более что совершаем ошибки и принимаем неправильные решения мы все. Поэтому я просто хочу рассказать, что случилось.
+Проект
+Я подписал соглашение о неразглашении, поэтому не могу раскрывать слишком много, но достаточно сказать, что сейчас мы работаем над проектом, в котором нужно использовать видео, размещённые на Vimeo.
+Компания работает с VimeoOTT. Эта платформа предоставляет стандартный интерфейс для контента. С OTT хотелось перейти на Vimeo Enterprise, а на OTT оставалось около 500 видео, которые нуждались в переносе. Простого способа мигрировать у Vimeo не оказалось.
+Примерно в октябре я спросил службу поддержки, можно ли выполнить миграцию. Они сказали нам, что «рассмотрят это», с тех пор ничего не сообщив. А значит, видео нужно было загружать снова.
+Я предложил написать кастомный API-скрипт, загружающий видео из OTT в Enterprise и в наш продукт, но руководство отклонило предложение, вместо этого решили заплатить человеку, который сделает это вручную.
+С ноября нанятый человек загрузил 500 видео из OTT и ещё 400 новых, исчерпав около 9 ТБ из 11 на тарифе Enterprise. Всё шло хорошо, хотя не очень быстро. Затем наступил апрель.
+Проблема
+В апреле, ничего нам не сообщив, Vimeo решил выполнить нашу просьбу и выгрузил все видео OTT на новую платформу. Никаких вопросов они не задавали. Очевидно, никого в Vimeo это не волновало.
+Они дублировали уже загруженные видео.
+Общий размер всех видео составил около 15 ТБ — на 4 ТБ больше лимита.
+Это означало, что если мы не удалили материал, никто больше не мог загружать видео. Мы спросили Vimeo, можно ли отменить изменение и получили отрицательный ответ.
+И самое худшее — примерно через неделю мы должны были запускать продакшн. За удаление лишних видео отвечал я. К сожалению, я совершил огромную ошибку.
+"Решение"
+Чтобы вы понимали, я работаю с React последние 7 месяцев. Это немного объясняет ошибку. В нашей БД каждому видео назначен  VimeoId, поэтому первое решение, что пришло мне в голову, было таким:
+for each video in vimeo:
+    if video not in our_vimeo_ids:
+    delete("api.vimeo.com/videos/{video}"
+Два запроса разбиты на страницы (немного по-разному), поэтому я написал такой код:
+page = 0
+url = f"https://api.ourservice.com/media?page={page}&step=100"
+our_ids = []
+for i in range(10):
+    page = i
+    res = requests.get(url)
+    videos = res.json()['list']
+    ids = [video['vimeoId'] for video in videos]
+    our_ids += ids
+
+next = '/me?page=1'
+vimeo_ids = []
+while next is not None:
+    res = requests.get(f'https://api.vimeo.com/videos{next}')
+    res = res.json()
+    videos = res['data']
+    ids = [video['id'] for video in videos]
+    vimeo_ids += ids
+    next = res['pagination']['next']
+
+for id in vimeo_ids:
+    if id not in our_ids:
+        requests.delete(f'https://api.vimeo.com/videos/{id}')
+Думаю, вы легко найдёте ошибку. Я тоже могу найти её, но тогда код казался мне совершенно правильным. Если вы не видите ошибку, вот она:
+url = f"https://api.ourservice.com/media?page{page}&step=100"
+our_ids = []
+for i in range(10):
+    page = i
+    res = requests.get(url)
+Я сильно привык к React и почему-то думал, что url обновится, как только изменится page. Конечно, это не так. Этим скриптом я удалил с Vimeo все видео, которых не было на первой странице базы данных. Была и ещё одна проблема: код я протестировал, используя цикл с ошибкой из первого примера.
+page = 0
+url = f"https://api.ourservice.com/media?page{page}&step=100
+our_ids = []
+for i in range(10):
+    page = i
+    res = requests.get(url)
+    videos = res.json()['list']
+    ids = [video['vimeoId'] for video in videos]
+    for id in ids:
+    res = requests.get(f'https://api.vimeo.com/videos/{id}')
+        if res.status_code != 200:
+        print(f"There was something wrong. You have deleted a wrong video -> {id}")
+А ещё я протестировал вручную только первую страницу базы. Наверное, этих ошибок можно было легко избежать.
+Последствия
+Хорошей новостью стало то, что физически файлы по-прежнему находились в папке Google Диска, а информация о них — в нашей базе. Плохая новость — всё случилось в пятницу, и создать резервную копию, то есть загрузить ~8 ТБ данных на скорости соединения 30 МБ/с, нужно было максимум до утра вторника.
+Первое решение, которое пришло в голову, — использовать API Google Диска. У нас были имена файлов всех загруженных в базу видео, поэтому я быстро написал примерно такой код:
+page = 0
+file_names = get_our_filenames(page) # This time without the mistake in the for loop
+for name in file_names:
+    download_and_save_from_drive(name)
+    upload_to_vimeo(name)
+Теперь я мог запускать скрипт несколько раз с разными страницами, «распараллелив» процедуру в разных сетях. Выполнить код хотелось в среде с высокой скоростью загрузки, но удобного места без огромных комиссий у нас не было, а исчерпать тариф по загрузке за 4 дня — не лучшее решение. И тогда мне в голову пришла идея.
+Решение
+Нельзя ли загрузить видео с Google Диска напрямую? Я проверил страницу загрузки и увидел, что можно! Была небольшая проблема: отсутствовал API для автоматизации, и загрузить видео можно было только вручную.
+Хорошо, что загрузка оказалась почти мгновенной. Может быть, есть решение лучше, но я о нём не знаю, поэтому в ответ на озарение загрузил Playwright — инструмент сквозной автоматизации, имитирующий действия пользователя.
+Он позволяет запрограммировать клики по веб-страницам. Чувствуете, к чему я клоню? Извините, что код некрасивый: я только начал работу с Playwright, а его нужно было написать очень быстро:
+test('Videos', async ({ page }) => {
+  // We login into vimeo
+  await page.goto('https://vimeo.com/upload/videos');
+  await page.fill(
+    'input[name="email"]',
+    'xxx'
+  );
+  await page.fill('input[name="password"]', 'xxx');
+  await page.click('input[type=submit]');
+
+  // We click on the Drive button and then login into Google Drive
+  // We need to manage it as an iframe
+  const [popup] = await Promise.all([
+    page.waitForEvent('popup'),
+    page.click('text=Drive'),
+  ]);
+  await popup.fill('input[type="email"]', 'xxx');
+  await popup.click('button:has-text("Next")');
+  await popup.fill('input[type="password"]', 'xxx');
+  await popup.click('button:has-text("Next")');
+  await timeout(5000);
+
+  // For all the filenames we obtained before we upload them
+  for (let i = 0; i < videos.length; i++) {
+    if (i > 0) {
+      page.click('text=Drive');
+      await timeout(5000);
+    }
+    let found = false;
+    while(!found) {
+    for (let frame of page.frames()) {
+        const searchbox = await frame.$('input[aria-label="Search terms"]');
+        const button = await frame.$('div[data-tooltip="Search"]');
+        if (searchbox) {
+            await temp.fill(videos[i]);
+            await button.click();
+            }
+        }
+    }
+    await timeout(5000);
+
+    // Whenever we search google regenerates the iframe so we have to search again
+    for (let frame of page.frames()) {
+      const temp = await frame.$('table[role="listbox"]  div[tabindex="0"]');
+      if (temp) {
+        const select = await frame.$('div[id="picker:ap:2"]');
+        await select.click();
+      }
+    }
+    await page.goto('https://vimeo.com/upload/videos');
+  }
+});
+Код плохой: обратите внимание на тайм-ауты для борьбы с ненадёжностью click(). Но он работает, кроме того, что мне не удалось заставить работать клик на найденном видео, код работает только по кнопке "Select". Понятия не имею, как заставить его работать.
+Чтобы выбрать видео и продолжить работу программы, каждые 10 секунд мне приходилось кликать рукой. Я проделывал это 10 минут, а потом спросил себя, зачем это делаю, скачал xclicker и поставил его кликать каждые 5 секунд. Примерно по 13 секунд на видео, 1000 файлов — и 4 часа спустя все видео загружены. О, чудо! 
+Теперь у файлов были новые vimeoIds, поэтому я вернулся к нашей базе и обновил их. Это легко делается скриптом Python вроде предыдущих. Наконец, все видео были загружены, и я спасён.
+Выводы
+Происшествие научило меня при выполнении разрушительных действий делать разнообразные тесты. Наверное, чему-то должны научиться Vimeo и моя компания, но сомневаюсь, что они чему-то научатся. Да, загрузка по какой-то причине до сих пор выполняется вручную.
+А мы поможем вам прокачать скиллы или с самого начала освоить профессию, актуальную в любое время:
+Курс QA-инженер на Python
+Профессия Fullstack-разработчик на Python
+Выбрать другую востребованную профессию.
+Краткий список курсов и профессий   К старту курса по автоматизированному тестированию на Python делимся материалом о том, насколько вредным может стать привыкание к библиотекам и насколько полезными — инструменты автоматизированного тестирования. За подробностями приглашаем под кат. автоматизированному тестированию на Python автоматизированному тестированию на Python  Хочу предупредить, что я младший разработчик с реальным опытом меньше одного года. Вещи, которые могут показаться вам очевидными, для меня могут не быть такими. Историю поймут не все. Она о плохих методах и ошибках всех участников истории. «Силиконовой долине» эта история может показаться чуждой, но она точно рисует картину развития небольших IT-компаний. Сегодня я работаю в крошечной итальянской компании из 10 сотрудников. Мы разрабатываем и управляем сайтами и инструментами для местного бизнеса, заключили крупный контракт с одной из самых больших спортивных компаний Италии, Великобритании и Южной Африке. Легко показать пальцем и обвинить кого-то, но это не то, что я собираюсь делать. Тем более что совершаем ошибки и принимаем неправильные решения мы все. Поэтому я просто хочу рассказать, что случилось. Проект Я подписал соглашение о неразглашении, поэтому не могу раскрывать слишком много, но достаточно сказать, что сейчас мы работаем над проектом, в котором нужно использовать видео, размещённые на Vimeo. Компания работает с VimeoOTT. Эта платформа предоставляет стандартный интерфейс для контента. С OTT хотелось перейти на Vimeo Enterprise, а на OTT оставалось около 500 видео, которые нуждались в переносе. Простого способа мигрировать у Vimeo не оказалось. Примерно в октябре я спросил службу поддержки, можно ли выполнить миграцию. Они сказали нам, что «рассмотрят это», с тех пор ничего не сообщив. А значит, видео нужно было загружать снова. Я предложил написать кастомный API-скрипт, загружающий видео из OTT в Enterprise и в наш продукт, но руководство отклонило предложение, вместо этого решили заплатить человеку, который сделает это вручную. С ноября нанятый человек загрузил 500 видео из OTT и ещё 400 новых, исчерпав около 9 ТБ из 11 на тарифе Enterprise. Всё шло хорошо, хотя не очень быстро. Затем наступил апрель. Проблема В апреле, ничего нам не сообщив, Vimeo решил выполнить нашу просьбу и выгрузил все видео OTT на новую платформу. Никаких вопросов они не задавали. Очевидно, никого в Vimeo это не волновало. Они дублировали уже загруженные видео.
+Общий размер всех видео составил около 15 ТБ — на 4 ТБ больше лимита. Они дублировали уже загруженные видео. Они дублировали уже загруженные видео. Общий размер всех видео составил около 15 ТБ — на 4 ТБ больше лимита. Общий размер всех видео составил около 15 ТБ — на 4 ТБ больше лимита. Это означало, что если мы не удалили материал, никто больше не мог загружать видео. Мы спросили Vimeo, можно ли отменить изменение и получили отрицательный ответ. И самое худшее — примерно через неделю мы должны были запускать продакшн. За удаление лишних видео отвечал я. К сожалению, я совершил огромную ошибку. "Решение" Чтобы вы понимали, я работаю с React последние 7 месяцев. Это немного объясняет ошибку. В нашей БД каждому видео назначен  VimeoId, поэтому первое решение, что пришло мне в голову, было таким: for each video in vimeo:
+    if video not in our_vimeo_ids:
+    delete("api.vimeo.com/videos/{video}" for each video in vimeo:
+    if video not in our_vimeo_ids:
+    delete("api.vimeo.com/videos/{video}" Два запроса разбиты на страницы (немного по-разному), поэтому я написал такой код: page = 0
+url = f"https://api.ourservice.com/media?page={page}&step=100"
+our_ids = []
+for i in range(10):
+    page = i
+    res = requests.get(url)
+    videos = res.json()['list']
+    ids = [video['vimeoId'] for video in videos]
+    our_ids += ids
+
+next = '/me?page=1'
+vimeo_ids = []
+while next is not None:
+    res = requests.get(f'https://api.vimeo.com/videos{next}')
+    res = res.json()
+    videos = res['data']
+    ids = [video['id'] for video in videos]
+    vimeo_ids += ids
+    next = res['pagination']['next']
+
+for id in vimeo_ids:
+    if id not in our_ids:
+        requests.delete(f'https://api.vimeo.com/videos/{id}') page = 0
+url = f"https://api.ourservice.com/media?page={page}&step=100"
+our_ids = []
+for i in range(10):
+    page = i
+    res = requests.get(url)
+    videos = res.json()['list']
+    ids = [video['vimeoId'] for video in videos]
+    our_ids += ids
+
+next = '/me?page=1'
+vimeo_ids = []
+while next is not None:
+    res = requests.get(f'https://api.vimeo.com/videos{next}')
+    res = res.json()
+    videos = res['data']
+    ids = [video['id'] for video in videos]
+    vimeo_ids += ids
+    next = res['pagination']['next']
+
+for id in vimeo_ids:
+    if id not in our_ids:
+        requests.delete(f'https://api.vimeo.com/videos/{id}') Думаю, вы легко найдёте ошибку. Я тоже могу найти её, но тогда код казался мне совершенно правильным. Если вы не видите ошибку, вот она: url = f"https://api.ourservice.com/media?page{page}&step=100"
+our_ids = []
+for i in range(10):
+    page = i
+    res = requests.get(url) url = f"https://api.ourservice.com/media?page{page}&step=100"
+our_ids = []
+for i in range(10):
+    page = i
+    res = requests.get(url) Я сильно привык к React и почему-то думал, что url обновится, как только изменится page. Конечно, это не так. Этим скриптом я удалил с Vimeo все видео, которых не было на первой странице базы данных. Была и ещё одна проблема: код я протестировал, используя цикл с ошибкой из первого примера. . page = 0
+url = f"https://api.ourservice.com/media?page{page}&step=100
+our_ids = []
+for i in range(10):
+    page = i
+    res = requests.get(url)
+    videos = res.json()['list']
+    ids = [video['vimeoId'] for video in videos]
+    for id in ids:
+    res = requests.get(f'https://api.vimeo.com/videos/{id}')
+        if res.status_code != 200:
+        print(f"There was something wrong. You have deleted a wrong video -> {id}") page = 0
+url = f"https://api.ourservice.com/media?page{page}&step=100
+our_ids = []
+for i in range(10):
+    page = i
+    res = requests.get(url)
+    videos = res.json()['list']
+    ids = [video['vimeoId'] for video in videos]
+    for id in ids:
+    res = requests.get(f'https://api.vimeo.com/videos/{id}')
+        if res.status_code != 200:
+        print(f"There was something wrong. You have deleted a wrong video -> {id}") А ещё я протестировал вручную только первую страницу базы. Наверное, этих ошибок можно было легко избежать. Последствия Хорошей новостью стало то, что физически файлы по-прежнему находились в папке Google Диска, а информация о них — в нашей базе. Плохая новость — всё случилось в пятницу, и создать резервную копию, то есть загрузить ~8 ТБ данных на скорости соединения 30 МБ/с, нужно было максимум до утра вторника. Первое решение, которое пришло в голову, — использовать API Google Диска. У нас были имена файлов всех загруженных в базу видео, поэтому я быстро написал примерно такой код: page = 0
+file_names = get_our_filenames(page) # This time without the mistake in the for loop
+for name in file_names:
+    download_and_save_from_drive(name)
+    upload_to_vimeo(name) page = 0
+file_names = get_our_filenames(page) # This time without the mistake in the for loop
+for name in file_names:
+    download_and_save_from_drive(name)
+    upload_to_vimeo(name) Теперь я мог запускать скрипт несколько раз с разными страницами, «распараллелив» процедуру в разных сетях. Выполнить код хотелось в среде с высокой скоростью загрузки, но удобного места без огромных комиссий у нас не было, а исчерпать тариф по загрузке за 4 дня — не лучшее решение. И тогда мне в голову пришла идея. Решение Нельзя ли загрузить видео с Google Диска напрямую? Я проверил страницу загрузки и увидел, что можно! Была небольшая проблема: отсутствовал API для автоматизации, и загрузить видео можно было только вручную. Хорошо, что загрузка оказалась почти мгновенной. Может быть, есть решение лучше, но я о нём не знаю, поэтому в ответ на озарение загрузил Playwright — инструмент сквозной автоматизации, имитирующий действия пользователя. Он позволяет запрограммировать клики по веб-страницам. Чувствуете, к чему я клоню? Извините, что код некрасивый: я только начал работу с Playwright, а его нужно было написать очень быстро: test('Videos', async ({ page }) => {
+  // We login into vimeo
+  await page.goto('https://vimeo.com/upload/videos');
+  await page.fill(
+    'input[name="email"]',
+    'xxx'
+  );
+  await page.fill('input[name="password"]', 'xxx');
+  await page.click('input[type=submit]');
+
+  // We click on the Drive button and then login into Google Drive
+  // We need to manage it as an iframe
+  const [popup] = await Promise.all([
+    page.waitForEvent('popup'),
+    page.click('text=Drive'),
+  ]);
+  await popup.fill('input[type="email"]', 'xxx');
+  await popup.click('button:has-text("Next")');
+  await popup.fill('input[type="password"]', 'xxx');
+  await popup.click('button:has-text("Next")');
+  await timeout(5000);
+
+  // For all the filenames we obtained before we upload them
+  for (let i = 0; i < videos.length; i++) {
+    if (i > 0) {
+      page.click('text=Drive');
+      await timeout(5000);
+    }
+    let found = false;
+    while(!found) {
+    for (let frame of page.frames()) {
+        const searchbox = await frame.$('input[aria-label="Search terms"]');
+        const button = await frame.$('div[data-tooltip="Search"]');
+        if (searchbox) {
+            await temp.fill(videos[i]);
+            await button.click();
+            }
+        }
+    }
+    await timeout(5000);
+
+    // Whenever we search google regenerates the iframe so we have to search again
+    for (let frame of page.frames()) {
+      const temp = await frame.$('table[role="listbox"]  div[tabindex="0"]');
+      if (temp) {
+        const select = await frame.$('div[id="picker:ap:2"]');
+        await select.click();
+      }
+    }
+    await page.goto('https://vimeo.com/upload/videos');
+  }
+}); test('Videos', async ({ page }) => {
+  // We login into vimeo
+  await page.goto('https://vimeo.com/upload/videos');
+  await page.fill(
+    'input[name="email"]',
+    'xxx'
+  );
+  await page.fill('input[name="password"]', 'xxx');
+  await page.click('input[type=submit]');
+
+  // We click on the Drive button and then login into Google Drive
+  // We need to manage it as an iframe
+  const [popup] = await Promise.all([
+    page.waitForEvent('popup'),
+    page.click('text=Drive'),
+  ]);
+  await popup.fill('input[type="email"]', 'xxx');
+  await popup.click('button:has-text("Next")');
+  await popup.fill('input[type="password"]', 'xxx');
+  await popup.click('button:has-text("Next")');
+  await timeout(5000);
+
+  // For all the filenames we obtained before we upload them
+  for (let i = 0; i < videos.length; i++) {
+    if (i > 0) {
+      page.click('text=Drive');
+      await timeout(5000);
+    }
+    let found = false;
+    while(!found) {
+    for (let frame of page.frames()) {
+        const searchbox = await frame.$('input[aria-label="Search terms"]');
+        const button = await frame.$('div[data-tooltip="Search"]');
+        if (searchbox) {
+            await temp.fill(videos[i]);
+            await button.click();
+            }
+        }
+    }
+    await timeout(5000);
+
+    // Whenever we search google regenerates the iframe so we have to search again
+    for (let frame of page.frames()) {
+      const temp = await frame.$('table[role="listbox"]  div[tabindex="0"]');
+      if (temp) {
+        const select = await frame.$('div[id="picker:ap:2"]');
+        await select.click();
+      }
+    }
+    await page.goto('https://vimeo.com/upload/videos');
+  }
+}); Код плохой: обратите внимание на тайм-ауты для борьбы с ненадёжностью click(). Но он работает, кроме того, что мне не удалось заставить работать клик на найденном видео, код работает только по кнопке "Select". Понятия не имею, как заставить его работать. Чтобы выбрать видео и продолжить работу программы, каждые 10 секунд мне приходилось кликать рукой. Я проделывал это 10 минут, а потом спросил себя, зачем это делаю, скачал xclicker и поставил его кликать каждые 5 секунд. Примерно по 13 секунд на видео, 1000 файлов — и 4 часа спустя все видео загружены. О, чудо!  Теперь у файлов были новые vimeoIds, поэтому я вернулся к нашей базе и обновил их. Это легко делается скриптом Python вроде предыдущих. Наконец, все видео были загружены, и я спасён. Выводы Происшествие научило меня при выполнении разрушительных действий делать разнообразные тесты. Наверное, чему-то должны научиться Vimeo и моя компания, но сомневаюсь, что они чему-то научатся. Да, загрузка по какой-то причине до сих пор выполняется вручную. А мы поможем вам прокачать скиллы или с самого начала освоить профессию, актуальную в любое время: Курс QA-инженер на Python
+Профессия Fullstack-разработчик на Python Курс QA-инженер на Python Курс QA-инженер на Python Курс QA-инженер на Python Профессия Fullstack-разработчик на Python Профессия Fullstack-разработчик на Python Профессия Fullstack-разработчик на Python Выбрать другую востребованную профессию. востребованную профессию   Краткий список курсов и профессий Краткий список курсов и профессий                                                                                       ]]></text>
+</doc>

@@ -1,0 +1,923 @@
+<?xml version="1.0" ?>
+<doc>
+	<label auto="true" type="str" verify="true"><![CDATA[Develop]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[MaxRokatansky]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-12-05, 16:44]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/company/otus/blog/703612/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Geb Framework для автотестов]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Блог компании OTUS]]></item>
+		<item type="str"><![CDATA[Программирование]]></item>
+		<item type="str"><![CDATA[Groovy & Grails]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[geb]]></item>
+		<item type="str"><![CDATA[groovy]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[Добрый день, коллеги. Один из самых известных и популярных фреймворков для написания автотестов - это Selenium. У этого фреймворка множество плюсов и возможностей, но в то же время есть некоторые неудобства в конфигурации, настройке и написании тестов. Поэтому появились фреймворки, которые расширяют Selenium.
+Один из таких фреймворков - Geb Framework, он написан на Groovy и использует возможности groovy DSL на полную мощность.
+Прежде чем приступать к изучению Geb и работе с ним, необходимо освежить в памяти темы, связанные с Groovy:
+сравнение замыканий Groovy и лямбд Java;
+использование возможностей метаклассов;
+инструмент сборки Gradle;
+фреймворк юнит-тестирования Spock;
+В качестве фреймворка запуска и создания тестов в основе Geb лежит Spock.
+Spock отличается от JUnit и предоставляет множество удобностей и “плюшек”.:
+Веб-консоль (deprecated): https://github.com/spockframework/spockwebconsole 
+Примеры: https://github.com/spockframework/spock-example 
+Доклады: https://github.com/spockframework/spock-gr8conf-2019\
+С Geb можно ознакомиться на официальном сайте: https://www.gebish.org/manual/current/#introduction
+Geb основан на Selenium Web Driver.
+Как с ним работать:
+Выстраивается цепочка из тестовых классов:
+*SpockSpec -> Browser.drive -> *Page -> *Module
+SpockSpec - классы тестов, описанные с помощью фреймворка Spock.
+Page и Module - доменные классы, могут взаимодействовать с Navigator.
+Полезные ссылки:
+https://www.gebish.org/manual/current/
+https://www.gebish.org/
+https://github.com/geb/geb-example-maven
+Основной паттерн, который используется при работе с Selenium и также с Geb - это Page Object: https://github.com/SeleniumHQ/selenium/wiki/PageObjects.
+В пользовательском интерфейсе вашего веб-приложения есть области, с которыми взаимодействуют ваши тесты. Объект страницы (Page Object) просто моделирует их как объекты в тестовом коде. Это уменьшает количество дублированного кода и означает, что при изменении пользовательского интерфейса исправление нужно применять только в одном месте.
+Примеры выбора данных:
+Прежде чем перейти к реализации паттерна Page Object, рассмотрим, как можно получать данные с веб-страницы.
+Для выборки данных используются селекторы (привет, jquery).
+$(«css selector», «index or range», «attribute / text matchers»)
+$("div") 
+Сопоставляет все "div" элементы на странице
+$("div", 0) 
+Сопоставляет первый  "div" элемент на странице
+$("div", title: "section") 
+Сопоставляет все "div"  на странице со значением атрибута tittle = "section".
+$("div", 0, title: "section") 
+Сопоставляет первый "div" элемент со значением атрибута title  "section".
+$("div.main") 
+Сопоставляет все "div" элементы, которые имеют класс  "main".
+$("div.main", 0)
+Сопоставляет первый "div"  с классом "main".
+Также можно использовать By из WebDriver:
+$(By.id("some-id"))
+$(By.className("some-class"))
+$(By.xpath('//p[@class="xpath"]'))
+Существует два способа выборки данных:
+Inline (с помощью селекторов прямо в коде тестов)
+С использованием Page Object
+Рассмотрим примеры:
+Для начала посмотрим как делать выборку данных с помощью Inline:
+import geb.Browser
+
+   Browser.drive {
+        go "http://gebish.org"
+
+        assert title == "Geb - Very Groovy Browser Automation"
+
+        $("div.menu a.manuals").click()
+        waitFor { !$("#manuals-menu").hasClass("animating") }
+
+        $("#manuals-menu a")[0].click()
+
+        assert title.startsWith("The Book Of Geb")
+    }
+Более правильным будет воспользоваться паттерном Page Object:
+import geb.Module
+import geb.Page
+
+class ManualsMenuModule extends Module {
+    static content = {
+        toggle { $("div.menu a.manuals") }
+        linksContainer { $("#manuals-menu") }
+        links { linksContainer.find("a") }
+    }
+
+    void open() {
+        toggle.click()
+        waitFor { !linksContainer.hasClass("animating") }
+    }
+}
+import geb.Page
+import modules.ManualsMenuModule
+
+class GebHomePage extends Page {
+    static url = "http://gebish.org"
+
+    static at = { title == "Geb - Very Groovy Browser Automation" }
+
+    static content = {
+        manualsMenu { module(ManualsMenuModule) }
+    }
+}
+class TheBookOfGebPage extends Page {
+    static at = { title.startsWith("The Book Of Geb") }
+}
+Далее можно запустить тест с использованием Page Object-ов.
+import geb.Browser
+
+Browser.drive {
+    to GebHomePage
+
+    manualsMenu.open()
+
+    manualsMenu.links[0].click()
+
+    at TheBookOfGebPage
+}
+Как сделать тесты удобнее для проектирования и изучения? Интегрировать с Spock!
+import geb.spock.GebSpec
+
+class GebHomepageSpec extends GebSpec {
+
+    def "can access The Book of Geb via homepage"() {
+        given:
+        to GebHomePage
+
+        when:
+        manualsMenu.open()
+        manualsMenu.links[0].click()
+
+        then:
+        at TheBookOfGebPage
+    }
+
+}
+Рассмотрим код более подробно.
+Самая малая часть - селекторы и базовые классы фреймворка.
+Browser: 
+Browser.drive {
+    go "signup"
+    assert $("h1").text() == "Signup Page"
+}
+baseUrl - задается в конфигурации при создании объекта Browser.
+Пример использования:
+Browser.drive {
+    go() 
+
+    go "signup" 
+
+    go "signup", param1: "value1", param2: "value2" 
+}
+Что происходит в данном фрагменте кода?
+Переход на  base URL.
+Переход на  относительный URL от  base URL
+Переход на  URL с нужными параметрами: http://localhost/signup?param1=value1&param2=value2
+Можно работать с разными окнами браузера:
+Browser.drive {
+    go()
+    $("a").click()
+    withWindow({ title == "Geb - Very Groovy Browser Automation" }) {
+        assert $(".slogan").text().startsWith("Very Groovy browser automation.")
+    }
+}
+Выборка данных (класс Navigator):
+Рассмотрим имеющиеся в классе Navigator методы:
+Case Sensitive
+Case Insensitive
+Description
+startsWith
+iStartsWith
+Сопоставляет значения, которые начинаются с заданного значения
+contains
+iContains
+Сопоставляет значения, которые содержат заданное значение в любом месте
+endsWith
+iEndsWith
+Сопоставляет значения, которые заканчиваются на заданное значение
+containsWord
+iContainsWord
+Сопоставляет значения, которые содержат заданное значение, окруженное либо пробелом, либо началом или концом значения.
+notStartsWith
+iNotStartsWith
+Сопоставляет значения, которые НЕ начинаются с заданного значения
+notContains
+iNotContains
+Сопоставляет значения, которые нигде НЕ содержат данное значение
+notEndsWith
+iNotEndsWith
+Сопоставляет значения, которые НЕ заканчиваются заданным значением
+notContainsWord
+iNotContainsWord
+Сопоставляет значения, которые НЕ содержат заданное значение, окруженное либо пробелом, либо началом или концом значения.
+Можно комбинировать несколько Matcher:
+allOf - работает, если все matcher-ы сработают
+anyOf - работает, если хотя бы один matcher сработает
+Можно отслеживать события:
+Можно зарегистрировать слушатель, который будет получать уведомления каждый раз, когда происходят определенные события Navigator. Лучшим справочником по событиям, которые можно прослушать, является документация NavigatorEventListener интерфейс.Если вы хотите слушать только подмножество событий навигатора, тогда NavigatorEventListenerSupport может пригодиться, поскольку он поставляется со стандартными пустыми реализациями всех методов  NavigatorEventListener.
+Пример:
+import geb.Browser
+import geb.navigator.Navigator
+import geb.navigator.event.NavigatorEventListenerSupport
+
+navigatorEventListener = new NavigatorEventListenerSupport() {
+    void afterClick(Browser browser, Navigator navigator) {
+        println "${navigator*.tag()} was clicked"
+    }
+}
+Можно объединять несколько селекторов:
+assert $($("p.a"), $("p.b"))*.text() == ["1", "2"]
+или с помощью метода add():
+assert $("p.a").add("p.b").add(By.className("c"))*.text() == ["1", "2", "3"]
+Помимо получения данных со страницы, в автотестах необходимо выполнять определенные действия со страницей.
+Взаимодействие с элементами страницы
+Нажатие на элемент (click()):
+У класса Page есть несколько методов click():
+click(Class) , click(Page) and click(List)
+Пример:
+$("a.login").click(LoginPage)
+Фокусировка (focused()):
+$(name: "description").click()
+
+assert focused().attr("name") == "description"
+assert $(name: "description").focused
+Ввод текста (<<):
+$("input") << "foo"
+assert $("input").value() == "foo"
+или нетекстовых данных:
+import org.openqa.selenium.Keys
+
+$("input") << Keys.chord(Keys.CONTROL, "c")
+Выбор значений в списках:
+$("form").artist = "1" 
+Первая опция, выбранная по значению  ее атрибута.
+$("form").artist = 2 
+Второй вариант выбирается по его атрибуту value с приведением типа аргумента.
+$("form").artist = "Alexander"
+Третий вариант выбран по его тексту.
+Для списков со множественным выбором:
+$("form").genres = ["2", "3"] 
+Второй и третий варианты выбираются по их атрибутам значения.
+$("form").genres = [1, 4, 5] 
+Первая, четвертая и пятая опции выбираются по их атрибутам значения с приведением аргумента.
+$("form").genres = ["Alt folk", "Hair metal"] 
+Первый и последний варианты выбираются по их тексту.
+$("form").genres = []
+Все опции на выбор.
+Для чекбоксов:
+$("form").pet = true
+Множественный выбор:
+$("form").pet = ["dog", "lizard"]
+$("form").pet = ["Canis familiaris", "Lacerta"]
+Загрузка файлов:
+Переменная uploadedFile содержит экземпляр File, указывающий на файл, который вы хотите загрузить. Вот так вы можете загрузить файл:
+$("form").csvFile = uploadedFile.absolutePath
+Сложные взаимодействия (секция interact()):
+Примеры:
+interact {
+    keyDown Keys.SHIFT
+    click $("li.clicky")
+    keyUp Keys.SHIFT
+}
+
+interact {
+    clickAndHold($('#draggable'))
+    moveByOffset(150, 200)
+    release()
+}
+или
+interact {
+    dragAndDropBy($("#draggable"), 150, 200)
+}
+Content:
+у каждого объекта Page можно настроить секцию Content - описание контента страницы.
+Структура Content: «name» { «definition» }
+Пример:
+<div id="a">a</div>
+class PageWithDiv extends Page {
+    static content = {
+        theDiv { $('div', id: 'a') }
+    }
+}
+Как использовать?
+обращаться к свойствам объекта page
+напрямую к полям
+Пример:
+Browser.drive {
+    to PageWithDiv
+
+    // Following two lines are equivalent
+    assert theDiv.text() == "a"
+    assert theDiv().text() == "a"
+}
+
+Browser.drive {
+    to PageWithDiv
+    assert page.theDiv.text() == "a"
+}
+Шаблоны:
+«name»(«options map») { «definition» }
+Пример:
+theDiv(cache: false, required: false) { $("div", id: "a") }
+Какие есть опции?
+required
+max, min
+cache
+to - option allows the definition of which page the browser will be sent to if the content is clicked
+wait - ожидание определенного времени, пока не произойдет какое-то событие (в целом аналог waitFor).
+page - для фреймов
+Примеры:
+static content = {
+    loginButton(to: [LoginSuccessfulPage, LoginFailedPage]) { $("input.loginButton") }
+}
+
+class DynamicPageWithWaiting extends Page {
+    static content = {
+        dynamicallyAdded(wait: true) { $("p.dynamic") }
+    }
+}
+class PageWithFrame extends Page {
+    static content = {
+        myFrame(page: FrameDescribingPage) { $('#frame-id') }
+    }
+}
+
+class FrameDescribingPage extends Page {
+    static content = {
+        frameContentsText { $('span').text() }
+    }
+Модули
+Нужны для описания компонентов, которые могут переиспользоваться на разных страницах Page.
+Пример:
+class ParameterizedModule extends Module {
+    static content = {
+        button {
+            $("form", id: formId).find("input", type: "button")
+        }
+    }
+    String formId
+}
+Использование экземпляра модуля:
+class ParameterizedModulePage extends Page {
+    static content = {
+        form { id -> module(new ParameterizedModule(formId: id)) }
+    }
+}
+Browser.drive {
+    to ParameterizedModulePage
+    form("personal-data").button.click()
+}
+Таким образом, комбинируя различные Page (страницы), Content-ы и модули, вы можете писать очень гибко настраиваемые автотесты. Наибольшую гибкость и удобство использования обеспечивает использование языка groovy при написании тестов и внутри фреймворка Geb.
+Статья подготовлена в преддверии старта курса Groovy Developer. Также приглашаем всех на бесплатный урок курса, где посмотрим на пайплайны в Jenkins: из каких шагов и блоков состоят, научимся писать groovy скрипты для создания пайплайнов, изучим их составные части.
+Зарегистрироваться на бесплатный урок   Добрый день, коллеги. Один из самых известных и популярных фреймворков для написания автотестов - это Selenium. У этого фреймворка множество плюсов и возможностей, но в то же время есть некоторые неудобства в конфигурации, настройке и написании тестов. Поэтому появились фреймворки, которые расширяют Selenium. Один из таких фреймворков - Geb Framework, он написан на Groovy и использует возможности groovy DSL на полную мощность. Прежде чем приступать к изучению Geb и работе с ним, необходимо освежить в памяти темы, связанные с Groovy: сравнение замыканий Groovy и лямбд Java;
+использование возможностей метаклассов;
+инструмент сборки Gradle;
+фреймворк юнит-тестирования Spock; сравнение замыканий Groovy и лямбд Java; сравнение замыканий Groovy и лямбд Java; использование возможностей метаклассов; использование возможностей метаклассов; инструмент сборки Gradle; инструмент сборки Gradle; фреймворк юнит-тестирования Spock; фреймворк юнит-тестирования Spock; В качестве фреймворка запуска и создания тестов в основе Geb лежит Spock. Spock отличается от JUnit и предоставляет множество удобностей и “плюшек”.: Веб-консоль (deprecated): https://github.com/spockframework/spockwebconsole 
+Примеры: https://github.com/spockframework/spock-example 
+Доклады: https://github.com/spockframework/spock-gr8conf-2019\ Веб-консоль (deprecated): https://github.com/spockframework/spockwebconsole  Веб-консоль (deprecated): https://github.com/spockframework/spockwebconsole  https://github.com/spockframework/spockwebconsole https://github.com/spockframework/spockwebconsole Примеры: https://github.com/spockframework/spock-example  Примеры: https://github.com/spockframework/spock-example  https://github.com/spockframework/spock-example https://github.com/spockframework/spock-example Доклады: https://github.com/spockframework/spock-gr8conf-2019\ Доклады: https://github.com/spockframework/spock-gr8conf-2019\ https://github.com/spockframework/spock-gr8conf-2019\ https://github.com/spockframework/spock-gr8conf-2019\ С Geb можно ознакомиться на официальном сайте: https://www.gebish.org/manual/current/#introduction https://www.gebish.org/manual/current/#introduction https://www.gebish.org/manual/current/#introduction Geb основан на Selenium Web Driver. Selenium Web Driver Как с ним работать: Выстраивается цепочка из тестовых классов: *SpockSpec -> Browser.drive -> *Page -> *Module *SpockSpec -> Browser.drive -> *Page -> *Module SpockSpec - классы тестов, описанные с помощью фреймворка Spock. SpockSpec Page и Module - доменные классы, могут взаимодействовать с Navigator. Page Module Полезные ссылки: https://www.gebish.org/manual/current/
+https://www.gebish.org/
+https://github.com/geb/geb-example-maven https://www.gebish.org/manual/current/ https://www.gebish.org/manual/current/ https://www.gebish.org/manual/current/ https://www.gebish.org/manual/current/ https://www.gebish.org/ https://www.gebish.org/ https://www.gebish.org/ https://www.gebish.org/ https://github.com/geb/geb-example-maven https://github.com/geb/geb-example-maven https://github.com/geb/geb-example-maven https://github.com/geb/geb-example-maven Основной паттерн, который используется при работе с Selenium и также с Geb - это Page Object: https://github.com/SeleniumHQ/selenium/wiki/PageObjects. Page Object: https://github.com/SeleniumHQ/selenium/wiki/PageObjects https://github.com/SeleniumHQ/selenium/wiki/PageObjects В пользовательском интерфейсе вашего веб-приложения есть области, с которыми взаимодействуют ваши тесты. Объект страницы (Page Object) просто моделирует их как объекты в тестовом коде. Это уменьшает количество дублированного кода и означает, что при изменении пользовательского интерфейса исправление нужно применять только в одном месте. Примеры выбора данных: Прежде чем перейти к реализации паттерна Page Object, рассмотрим, как можно получать данные с веб-страницы. Для выборки данных используются селекторы (привет, jquery). селекторы $(«css selector», «index or range», «attribute / text matchers») $(«css selector», «index or range», «attribute / text matchers») $("div") 
+Сопоставляет все "div" элементы на странице
+$("div", 0) 
+Сопоставляет первый  "div" элемент на странице
+$("div", title: "section") 
+Сопоставляет все "div"  на странице со значением атрибута tittle = "section".
+$("div", 0, title: "section") 
+Сопоставляет первый "div" элемент со значением атрибута title  "section".
+$("div.main") 
+Сопоставляет все "div" элементы, которые имеют класс  "main".
+$("div.main", 0)
+Сопоставляет первый "div"  с классом "main". $("div") 
+Сопоставляет все "div" элементы на странице
+$("div", 0) 
+Сопоставляет первый  "div" элемент на странице
+$("div", title: "section") 
+Сопоставляет все "div"  на странице со значением атрибута tittle = "section".
+$("div", 0, title: "section") 
+Сопоставляет первый "div" элемент со значением атрибута title  "section".
+$("div.main") 
+Сопоставляет все "div" элементы, которые имеют класс  "main".
+$("div.main", 0)
+Сопоставляет первый "div"  с классом "main". $("div") 
+Сопоставляет все "div" элементы на странице
+$("div", 0) 
+Сопоставляет первый  "div" элемент на странице
+$("div", title: "section") 
+Сопоставляет все "div"  на странице со значением атрибута tittle = "section".
+$("div", 0, title: "section") 
+Сопоставляет первый "div" элемент со значением атрибута title  "section".
+$("div.main") 
+Сопоставляет все "div" элементы, которые имеют класс  "main".
+$("div.main", 0)
+Сопоставляет первый "div"  с классом "main". $("div") 
+Сопоставляет все "div" элементы на странице
+$("div", 0) 
+Сопоставляет первый  "div" элемент на странице
+$("div", title: "section") 
+Сопоставляет все "div"  на странице со значением атрибута tittle = "section".
+$("div", 0, title: "section") 
+Сопоставляет первый "div" элемент со значением атрибута title  "section".
+$("div.main") 
+Сопоставляет все "div" элементы, которые имеют класс  "main".
+$("div.main", 0)
+Сопоставляет первый "div"  с классом "main". $("div") 
+Сопоставляет все "div" элементы на странице $("div")  $("div")  $("div")  Сопоставляет все "div" элементы на странице Сопоставляет все "div" элементы на странице Сопоставляет все "div" элементы на странице $("div", 0) 
+Сопоставляет первый  "div" элемент на странице $("div", 0)  $("div", 0)  $("div", 0)  Сопоставляет первый  "div" элемент на странице Сопоставляет первый  "div" элемент на странице Сопоставляет первый  "div" элемент на странице $("div", title: "section") 
+Сопоставляет все "div"  на странице со значением атрибута tittle = "section". $("div", title: "section")  $("div", title: "section")  $("div", title: "section")  Сопоставляет все "div"  на странице со значением атрибута tittle = "section". Сопоставляет все "div"  на странице со значением атрибута tittle = "section". Сопоставляет все "div"  на странице со значением атрибута tittle = "section". $("div", 0, title: "section") 
+Сопоставляет первый "div" элемент со значением атрибута title  "section". $("div", 0, title: "section")  $("div", 0, title: "section")  $("div", 0, title: "section")  Сопоставляет первый "div" элемент со значением атрибута title  "section". Сопоставляет первый "div" элемент со значением атрибута title  "section". Сопоставляет первый "div" элемент со значением атрибута title  "section". $("div.main") 
+Сопоставляет все "div" элементы, которые имеют класс  "main". $("div.main")  $("div.main")  $("div.main")  Сопоставляет все "div" элементы, которые имеют класс  "main". Сопоставляет все "div" элементы, которые имеют класс  "main". Сопоставляет все "div" элементы, которые имеют класс  "main". $("div.main", 0)
+Сопоставляет первый "div"  с классом "main". $("div.main", 0) $("div.main", 0) $("div.main", 0) Сопоставляет первый "div"  с классом "main". Сопоставляет первый "div"  с классом "main". Сопоставляет первый "div"  с классом "main". Также можно использовать By из WebDriver: By WebDriver $(By.id("some-id"))
+$(By.className("some-class"))
+$(By.xpath('//p[@class="xpath"]')) $(By.id("some-id"))
+$(By.className("some-class"))
+$(By.xpath('//p[@class="xpath"]')) Существует два способа выборки данных: Существует два способа выборки данных: Inline (с помощью селекторов прямо в коде тестов)
+С использованием Page Object Inline (с помощью селекторов прямо в коде тестов) Inline (с помощью селекторов прямо в коде тестов) С использованием Page Object С использованием Page Object Рассмотрим примеры: Для начала посмотрим как делать выборку данных с помощью Inline: import geb.Browser
+
+   Browser.drive {
+        go "http://gebish.org"
+
+        assert title == "Geb - Very Groovy Browser Automation"
+
+        $("div.menu a.manuals").click()
+        waitFor { !$("#manuals-menu").hasClass("animating") }
+
+        $("#manuals-menu a")[0].click()
+
+        assert title.startsWith("The Book Of Geb")
+    } import geb.Browser
+
+   Browser.drive {
+        go "http://gebish.org"
+
+        assert title == "Geb - Very Groovy Browser Automation"
+
+        $("div.menu a.manuals").click()
+        waitFor { !$("#manuals-menu").hasClass("animating") }
+
+        $("#manuals-menu a")[0].click()
+
+        assert title.startsWith("The Book Of Geb")
+    } Более правильным будет воспользоваться паттерном Page Object: import geb.Module
+import geb.Page
+
+class ManualsMenuModule extends Module {
+    static content = {
+        toggle { $("div.menu a.manuals") }
+        linksContainer { $("#manuals-menu") }
+        links { linksContainer.find("a") }
+    }
+
+    void open() {
+        toggle.click()
+        waitFor { !linksContainer.hasClass("animating") }
+    }
+} import geb.Module
+import geb.Page
+
+class ManualsMenuModule extends Module {
+    static content = {
+        toggle { $("div.menu a.manuals") }
+        linksContainer { $("#manuals-menu") }
+        links { linksContainer.find("a") }
+    }
+
+    void open() {
+        toggle.click()
+        waitFor { !linksContainer.hasClass("animating") }
+    }
+} import geb.Page
+import modules.ManualsMenuModule
+
+class GebHomePage extends Page {
+    static url = "http://gebish.org"
+
+    static at = { title == "Geb - Very Groovy Browser Automation" }
+
+    static content = {
+        manualsMenu { module(ManualsMenuModule) }
+    }
+} import geb.Page
+import modules.ManualsMenuModule
+
+class GebHomePage extends Page {
+    static url = "http://gebish.org"
+
+    static at = { title == "Geb - Very Groovy Browser Automation" }
+
+    static content = {
+        manualsMenu { module(ManualsMenuModule) }
+    }
+} class TheBookOfGebPage extends Page {
+    static at = { title.startsWith("The Book Of Geb") }
+} class TheBookOfGebPage extends Page {
+    static at = { title.startsWith("The Book Of Geb") }
+} Далее можно запустить тест с использованием Page Object-ов. import geb.Browser
+
+Browser.drive {
+    to GebHomePage
+
+    manualsMenu.open()
+
+    manualsMenu.links[0].click()
+
+    at TheBookOfGebPage
+} import geb.Browser
+
+Browser.drive {
+    to GebHomePage
+
+    manualsMenu.open()
+
+    manualsMenu.links[0].click()
+
+    at TheBookOfGebPage
+} Как сделать тесты удобнее для проектирования и изучения? Интегрировать с Spock! import geb.spock.GebSpec
+
+class GebHomepageSpec extends GebSpec {
+
+    def "can access The Book of Geb via homepage"() {
+        given:
+        to GebHomePage
+
+        when:
+        manualsMenu.open()
+        manualsMenu.links[0].click()
+
+        then:
+        at TheBookOfGebPage
+    }
+
+} import geb.spock.GebSpec
+
+class GebHomepageSpec extends GebSpec {
+
+    def "can access The Book of Geb via homepage"() {
+        given:
+        to GebHomePage
+
+        when:
+        manualsMenu.open()
+        manualsMenu.links[0].click()
+
+        then:
+        at TheBookOfGebPage
+    }
+
+} Рассмотрим код более подробно. Самая малая часть - селекторы и базовые классы фреймворка. Browser:  Browser: Browser.drive {
+    go "signup"
+    assert $("h1").text() == "Signup Page"
+} Browser.drive {
+    go "signup"
+    assert $("h1").text() == "Signup Page"
+} baseUrl - задается в конфигурации при создании объекта Browser. Пример использования: Browser.drive {
+    go() 
+
+    go "signup" 
+
+    go "signup", param1: "value1", param2: "value2" 
+} Browser.drive {
+    go() 
+
+    go "signup" 
+
+    go "signup", param1: "value1", param2: "value2" 
+} Что происходит в данном фрагменте кода? Переход на  base URL.
+Переход на  относительный URL от  base URL
+Переход на  URL с нужными параметрами: http://localhost/signup?param1=value1&param2=value2 Переход на  base URL. Переход на  base URL. Переход на  относительный URL от  base URL Переход на  относительный URL от  base URL Переход на  URL с нужными параметрами: http://localhost/signup?param1=value1&param2=value2 Переход на  URL с нужными параметрами: http://localhost/signup?param1=value1&param2=value2 Можно работать с разными окнами браузера: Browser.drive {
+    go()
+    $("a").click()
+    withWindow({ title == "Geb - Very Groovy Browser Automation" }) {
+        assert $(".slogan").text().startsWith("Very Groovy browser automation.")
+    }
+} Browser.drive {
+    go()
+    $("a").click()
+    withWindow({ title == "Geb - Very Groovy Browser Automation" }) {
+        assert $(".slogan").text().startsWith("Very Groovy browser automation.")
+    }
+} Выборка данных (класс Navigator): Выборка данных (класс Navigator): Рассмотрим имеющиеся в классе Navigator методы: Case Sensitive
+Case Insensitive
+Description
+startsWith
+iStartsWith
+Сопоставляет значения, которые начинаются с заданного значения
+contains
+iContains
+Сопоставляет значения, которые содержат заданное значение в любом месте
+endsWith
+iEndsWith
+Сопоставляет значения, которые заканчиваются на заданное значение
+containsWord
+iContainsWord
+Сопоставляет значения, которые содержат заданное значение, окруженное либо пробелом, либо началом или концом значения.
+notStartsWith
+iNotStartsWith
+Сопоставляет значения, которые НЕ начинаются с заданного значения
+notContains
+iNotContains
+Сопоставляет значения, которые нигде НЕ содержат данное значение
+notEndsWith
+iNotEndsWith
+Сопоставляет значения, которые НЕ заканчиваются заданным значением
+notContainsWord
+iNotContainsWord
+Сопоставляет значения, которые НЕ содержат заданное значение, окруженное либо пробелом, либо началом или концом значения. Case Sensitive
+Case Insensitive
+Description
+startsWith
+iStartsWith
+Сопоставляет значения, которые начинаются с заданного значения
+contains
+iContains
+Сопоставляет значения, которые содержат заданное значение в любом месте
+endsWith
+iEndsWith
+Сопоставляет значения, которые заканчиваются на заданное значение
+containsWord
+iContainsWord
+Сопоставляет значения, которые содержат заданное значение, окруженное либо пробелом, либо началом или концом значения.
+notStartsWith
+iNotStartsWith
+Сопоставляет значения, которые НЕ начинаются с заданного значения
+notContains
+iNotContains
+Сопоставляет значения, которые нигде НЕ содержат данное значение
+notEndsWith
+iNotEndsWith
+Сопоставляет значения, которые НЕ заканчиваются заданным значением
+notContainsWord
+iNotContainsWord
+Сопоставляет значения, которые НЕ содержат заданное значение, окруженное либо пробелом, либо началом или концом значения. Case Sensitive
+Case Insensitive
+Description
+startsWith
+iStartsWith
+Сопоставляет значения, которые начинаются с заданного значения
+contains
+iContains
+Сопоставляет значения, которые содержат заданное значение в любом месте
+endsWith
+iEndsWith
+Сопоставляет значения, которые заканчиваются на заданное значение
+containsWord
+iContainsWord
+Сопоставляет значения, которые содержат заданное значение, окруженное либо пробелом, либо началом или концом значения.
+notStartsWith
+iNotStartsWith
+Сопоставляет значения, которые НЕ начинаются с заданного значения
+notContains
+iNotContains
+Сопоставляет значения, которые нигде НЕ содержат данное значение
+notEndsWith
+iNotEndsWith
+Сопоставляет значения, которые НЕ заканчиваются заданным значением
+notContainsWord
+iNotContainsWord
+Сопоставляет значения, которые НЕ содержат заданное значение, окруженное либо пробелом, либо началом или концом значения. Case Sensitive
+Case Insensitive
+Description
+startsWith
+iStartsWith
+Сопоставляет значения, которые начинаются с заданного значения
+contains
+iContains
+Сопоставляет значения, которые содержат заданное значение в любом месте
+endsWith
+iEndsWith
+Сопоставляет значения, которые заканчиваются на заданное значение
+containsWord
+iContainsWord
+Сопоставляет значения, которые содержат заданное значение, окруженное либо пробелом, либо началом или концом значения.
+notStartsWith
+iNotStartsWith
+Сопоставляет значения, которые НЕ начинаются с заданного значения
+notContains
+iNotContains
+Сопоставляет значения, которые нигде НЕ содержат данное значение
+notEndsWith
+iNotEndsWith
+Сопоставляет значения, которые НЕ заканчиваются заданным значением
+notContainsWord
+iNotContainsWord
+Сопоставляет значения, которые НЕ содержат заданное значение, окруженное либо пробелом, либо началом или концом значения. Case Sensitive
+Case Insensitive
+Description Case Sensitive Case Sensitive Case Sensitive Case Insensitive Case Insensitive Case Insensitive Description Description Description startsWith
+iStartsWith
+Сопоставляет значения, которые начинаются с заданного значения startsWith startsWith startsWith iStartsWith iStartsWith iStartsWith Сопоставляет значения, которые начинаются с заданного значения Сопоставляет значения, которые начинаются с заданного значения contains
+iContains
+Сопоставляет значения, которые содержат заданное значение в любом месте contains contains contains iContains iContains iContains Сопоставляет значения, которые содержат заданное значение в любом месте Сопоставляет значения, которые содержат заданное значение в любом месте endsWith
+iEndsWith
+Сопоставляет значения, которые заканчиваются на заданное значение endsWith endsWith endsWith iEndsWith iEndsWith iEndsWith Сопоставляет значения, которые заканчиваются на заданное значение Сопоставляет значения, которые заканчиваются на заданное значение containsWord
+iContainsWord
+Сопоставляет значения, которые содержат заданное значение, окруженное либо пробелом, либо началом или концом значения. containsWord containsWord containsWord iContainsWord iContainsWord iContainsWord Сопоставляет значения, которые содержат заданное значение, окруженное либо пробелом, либо началом или концом значения. Сопоставляет значения, которые содержат заданное значение, окруженное либо пробелом, либо началом или концом значения. notStartsWith
+iNotStartsWith
+Сопоставляет значения, которые НЕ начинаются с заданного значения notStartsWith notStartsWith notStartsWith iNotStartsWith iNotStartsWith iNotStartsWith Сопоставляет значения, которые НЕ начинаются с заданного значения Сопоставляет значения, которые НЕ начинаются с заданного значения notContains
+iNotContains
+Сопоставляет значения, которые нигде НЕ содержат данное значение notContains notContains notContains iNotContains iNotContains iNotContains Сопоставляет значения, которые нигде НЕ содержат данное значение Сопоставляет значения, которые нигде НЕ содержат данное значение notEndsWith
+iNotEndsWith
+Сопоставляет значения, которые НЕ заканчиваются заданным значением notEndsWith notEndsWith notEndsWith iNotEndsWith iNotEndsWith iNotEndsWith Сопоставляет значения, которые НЕ заканчиваются заданным значением Сопоставляет значения, которые НЕ заканчиваются заданным значением notContainsWord
+iNotContainsWord
+Сопоставляет значения, которые НЕ содержат заданное значение, окруженное либо пробелом, либо началом или концом значения. notContainsWord notContainsWord notContainsWord iNotContainsWord iNotContainsWord iNotContainsWord Сопоставляет значения, которые НЕ содержат заданное значение, окруженное либо пробелом, либо началом или концом значения. Сопоставляет значения, которые НЕ содержат заданное значение, окруженное либо пробелом, либо началом или концом значения. Можно комбинировать несколько Matcher: allOf - работает, если все matcher-ы сработают
+anyOf - работает, если хотя бы один matcher сработает allOf - работает, если все matcher-ы сработают allOf - работает, если все matcher-ы сработают anyOf - работает, если хотя бы один matcher сработает anyOf - работает, если хотя бы один matcher сработает Можно отслеживать события: Можно зарегистрировать слушатель, который будет получать уведомления каждый раз, когда происходят определенные события Navigator. Лучшим справочником по событиям, которые можно прослушать, является документация NavigatorEventListener интерфейс.Если вы хотите слушать только подмножество событий навигатора, тогда NavigatorEventListenerSupport может пригодиться, поскольку он поставляется со стандартными пустыми реализациями всех методов  NavigatorEventListener. NavigatorEventListener NavigatorEventListener NavigatorEventListenerSupport NavigatorEventListenerSupport NavigatorEventListener NavigatorEventListener Пример: import geb.Browser
+import geb.navigator.Navigator
+import geb.navigator.event.NavigatorEventListenerSupport
+
+navigatorEventListener = new NavigatorEventListenerSupport() {
+    void afterClick(Browser browser, Navigator navigator) {
+        println "${navigator*.tag()} was clicked"
+    }
+} import geb.Browser
+import geb.navigator.Navigator
+import geb.navigator.event.NavigatorEventListenerSupport
+
+navigatorEventListener = new NavigatorEventListenerSupport() {
+    void afterClick(Browser browser, Navigator navigator) {
+        println "${navigator*.tag()} was clicked"
+    }
+} Можно объединять несколько селекторов: assert $($("p.a"), $("p.b"))*.text() == ["1", "2"] assert $($("p.a"), $("p.b"))*.text() == ["1", "2"] или с помощью метода add(): assert $("p.a").add("p.b").add(By.className("c"))*.text() == ["1", "2", "3"] assert $("p.a").add("p.b").add(By.className("c"))*.text() == ["1", "2", "3"] Помимо получения данных со страницы, в автотестах необходимо выполнять определенные действия со страницей. Взаимодействие с элементами страницы Нажатие на элемент (click()): Нажатие на элемент (click()) У класса Page есть несколько методов click(): click() click(Class) , click(Page) and click(List) click(Class) , click(Page) and click(List) Пример: $("a.login").click(LoginPage) $("a.login").click(LoginPage) Фокусировка (focused()): Фокусировка (focused()) $(name: "description").click()
+
+assert focused().attr("name") == "description"
+assert $(name: "description").focused $(name: "description").click()
+
+assert focused().attr("name") == "description"
+assert $(name: "description").focused Ввод текста (<<): Ввод текста (<<) $("input") << "foo"
+assert $("input").value() == "foo" $("input") << "foo"
+assert $("input").value() == "foo" или нетекстовых данных: import org.openqa.selenium.Keys
+
+$("input") << Keys.chord(Keys.CONTROL, "c") import org.openqa.selenium.Keys
+
+$("input") << Keys.chord(Keys.CONTROL, "c") Выбор значений в списках: Выбор значений в списках: $("form").artist = "1" 
+Первая опция, выбранная по значению  ее атрибута.
+$("form").artist = 2 
+Второй вариант выбирается по его атрибуту value с приведением типа аргумента.
+$("form").artist = "Alexander"
+Третий вариант выбран по его тексту. $("form").artist = "1" 
+Первая опция, выбранная по значению  ее атрибута.
+$("form").artist = 2 
+Второй вариант выбирается по его атрибуту value с приведением типа аргумента.
+$("form").artist = "Alexander"
+Третий вариант выбран по его тексту. $("form").artist = "1" 
+Первая опция, выбранная по значению  ее атрибута.
+$("form").artist = 2 
+Второй вариант выбирается по его атрибуту value с приведением типа аргумента.
+$("form").artist = "Alexander"
+Третий вариант выбран по его тексту. $("form").artist = "1" 
+Первая опция, выбранная по значению  ее атрибута.
+$("form").artist = 2 
+Второй вариант выбирается по его атрибуту value с приведением типа аргумента.
+$("form").artist = "Alexander"
+Третий вариант выбран по его тексту. $("form").artist = "1" 
+Первая опция, выбранная по значению  ее атрибута. $("form").artist = "1"  $("form").artist = "1"  Первая опция, выбранная по значению  ее атрибута. Первая опция, выбранная по значению  ее атрибута. $("form").artist = 2 
+Второй вариант выбирается по его атрибуту value с приведением типа аргумента. $("form").artist = 2  $("form").artist = 2  Второй вариант выбирается по его атрибуту value с приведением типа аргумента. Второй вариант выбирается по его атрибуту value с приведением типа аргумента. $("form").artist = "Alexander"
+Третий вариант выбран по его тексту. $("form").artist = "Alexander" $("form").artist = "Alexander" Третий вариант выбран по его тексту. Третий вариант выбран по его тексту. Для списков со множественным выбором: $("form").genres = ["2", "3"] 
+Второй и третий варианты выбираются по их атрибутам значения.
+$("form").genres = [1, 4, 5] 
+Первая, четвертая и пятая опции выбираются по их атрибутам значения с приведением аргумента.
+$("form").genres = ["Alt folk", "Hair metal"] 
+Первый и последний варианты выбираются по их тексту.
+$("form").genres = []
+Все опции на выбор. $("form").genres = ["2", "3"] 
+Второй и третий варианты выбираются по их атрибутам значения.
+$("form").genres = [1, 4, 5] 
+Первая, четвертая и пятая опции выбираются по их атрибутам значения с приведением аргумента.
+$("form").genres = ["Alt folk", "Hair metal"] 
+Первый и последний варианты выбираются по их тексту.
+$("form").genres = []
+Все опции на выбор. $("form").genres = ["2", "3"] 
+Второй и третий варианты выбираются по их атрибутам значения.
+$("form").genres = [1, 4, 5] 
+Первая, четвертая и пятая опции выбираются по их атрибутам значения с приведением аргумента.
+$("form").genres = ["Alt folk", "Hair metal"] 
+Первый и последний варианты выбираются по их тексту.
+$("form").genres = []
+Все опции на выбор. $("form").genres = ["2", "3"] 
+Второй и третий варианты выбираются по их атрибутам значения.
+$("form").genres = [1, 4, 5] 
+Первая, четвертая и пятая опции выбираются по их атрибутам значения с приведением аргумента.
+$("form").genres = ["Alt folk", "Hair metal"] 
+Первый и последний варианты выбираются по их тексту.
+$("form").genres = []
+Все опции на выбор. $("form").genres = ["2", "3"] 
+Второй и третий варианты выбираются по их атрибутам значения. $("form").genres = ["2", "3"]  $("form").genres = ["2", "3"]    Второй и третий варианты выбираются по их атрибутам значения. Второй и третий варианты выбираются по их атрибутам значения. $("form").genres = [1, 4, 5] 
+Первая, четвертая и пятая опции выбираются по их атрибутам значения с приведением аргумента. $("form").genres = [1, 4, 5]  $("form").genres = [1, 4, 5]    Первая, четвертая и пятая опции выбираются по их атрибутам значения с приведением аргумента. Первая, четвертая и пятая опции выбираются по их атрибутам значения с приведением аргумента. $("form").genres = ["Alt folk", "Hair metal"] 
+Первый и последний варианты выбираются по их тексту. $("form").genres = ["Alt folk", "Hair metal"]  $("form").genres = ["Alt folk", "Hair metal"]    Первый и последний варианты выбираются по их тексту. Первый и последний варианты выбираются по их тексту. $("form").genres = []
+Все опции на выбор. $("form").genres = [] $("form").genres = [] []   Все опции на выбор. Все опции на выбор. Для чекбоксов: Для чекбоксов: $("form").pet = true $("form").pet = true Множественный выбор: $("form").pet = ["dog", "lizard"]
+$("form").pet = ["Canis familiaris", "Lacerta"] $("form").pet = ["dog", "lizard"]
+$("form").pet = ["Canis familiaris", "Lacerta"] Загрузка файлов: Загрузка файлов: Переменная uploadedFile содержит экземпляр File, указывающий на файл, который вы хотите загрузить. Вот так вы можете загрузить файл: $("form").csvFile = uploadedFile.absolutePath $("form").csvFile = uploadedFile.absolutePath Сложные взаимодействия (секция interact()): Сложные взаимодействия (секция interact()): Примеры: interact {
+    keyDown Keys.SHIFT
+    click $("li.clicky")
+    keyUp Keys.SHIFT
+}
+
+interact {
+    clickAndHold($('#draggable'))
+    moveByOffset(150, 200)
+    release()
+} interact {
+    keyDown Keys.SHIFT
+    click $("li.clicky")
+    keyUp Keys.SHIFT
+}
+
+interact {
+    clickAndHold($('#draggable'))
+    moveByOffset(150, 200)
+    release()
+} или interact {
+    dragAndDropBy($("#draggable"), 150, 200)
+} interact {
+    dragAndDropBy($("#draggable"), 150, 200)
+} Content: у каждого объекта Page можно настроить секцию Content - описание контента страницы. Структура Content: «name» { «definition» } «name» { «definition» } Пример: <div id="a">a</div>
+class PageWithDiv extends Page {
+    static content = {
+        theDiv { $('div', id: 'a') }
+    }
+} <div id="a">a</div>
+class PageWithDiv extends Page {
+    static content = {
+        theDiv { $('div', id: 'a') }
+    }
+} Как использовать? обращаться к свойствам объекта page
+напрямую к полям обращаться к свойствам объекта page обращаться к свойствам объекта page напрямую к полям напрямую к полям Пример: Browser.drive {
+    to PageWithDiv
+
+    // Following two lines are equivalent
+    assert theDiv.text() == "a"
+    assert theDiv().text() == "a"
+}
+
+Browser.drive {
+    to PageWithDiv
+    assert page.theDiv.text() == "a"
+} Browser.drive {
+    to PageWithDiv
+
+    // Following two lines are equivalent
+    assert theDiv.text() == "a"
+    assert theDiv().text() == "a"
+}
+
+Browser.drive {
+    to PageWithDiv
+    assert page.theDiv.text() == "a"
+} Шаблоны: «name»(«options map») { «definition» } «name»(«options map») { «definition» } Пример: theDiv(cache: false, required: false) { $("div", id: "a") } theDiv(cache: false, required: false) { $("div", id: "a") } Какие есть опции? required
+max, min
+cache
+to - option allows the definition of which page the browser will be sent to if the content is clicked
+wait - ожидание определенного времени, пока не произойдет какое-то событие (в целом аналог waitFor).
+page - для фреймов required required max, min max, min cache cache to - option allows the definition of which page the browser will be sent to if the content is clicked to - option allows the definition of which page the browser will be sent to if the content is clicked wait - ожидание определенного времени, пока не произойдет какое-то событие (в целом аналог waitFor). wait - ожидание определенного времени, пока не произойдет какое-то событие (в целом аналог waitFor). page - для фреймов page - для фреймов Примеры: static content = {
+    loginButton(to: [LoginSuccessfulPage, LoginFailedPage]) { $("input.loginButton") }
+}
+
+class DynamicPageWithWaiting extends Page {
+    static content = {
+        dynamicallyAdded(wait: true) { $("p.dynamic") }
+    }
+}
+class PageWithFrame extends Page {
+    static content = {
+        myFrame(page: FrameDescribingPage) { $('#frame-id') }
+    }
+}
+
+class FrameDescribingPage extends Page {
+    static content = {
+        frameContentsText { $('span').text() }
+    } static content = {
+    loginButton(to: [LoginSuccessfulPage, LoginFailedPage]) { $("input.loginButton") }
+}
+
+class DynamicPageWithWaiting extends Page {
+    static content = {
+        dynamicallyAdded(wait: true) { $("p.dynamic") }
+    }
+}
+class PageWithFrame extends Page {
+    static content = {
+        myFrame(page: FrameDescribingPage) { $('#frame-id') }
+    }
+}
+
+class FrameDescribingPage extends Page {
+    static content = {
+        frameContentsText { $('span').text() }
+    } Модули Нужны для описания компонентов, которые могут переиспользоваться на разных страницах Page. Пример: class ParameterizedModule extends Module {
+    static content = {
+        button {
+            $("form", id: formId).find("input", type: "button")
+        }
+    }
+    String formId
+} class ParameterizedModule extends Module {
+    static content = {
+        button {
+            $("form", id: formId).find("input", type: "button")
+        }
+    }
+    String formId
+} Использование экземпляра модуля: class ParameterizedModulePage extends Page {
+    static content = {
+        form { id -> module(new ParameterizedModule(formId: id)) }
+    }
+}
+Browser.drive {
+    to ParameterizedModulePage
+    form("personal-data").button.click()
+} class ParameterizedModulePage extends Page {
+    static content = {
+        form { id -> module(new ParameterizedModule(formId: id)) }
+    }
+}
+Browser.drive {
+    to ParameterizedModulePage
+    form("personal-data").button.click()
+} Таким образом, комбинируя различные Page (страницы), Content-ы и модули, вы можете писать очень гибко настраиваемые автотесты. Наибольшую гибкость и удобство использования обеспечивает использование языка groovy при написании тестов и внутри фреймворка Geb. Статья подготовлена в преддверии старта курса Groovy Developer. Также приглашаем всех на бесплатный урок курса, где посмотрим на пайплайны в Jenkins: из каких шагов и блоков состоят, научимся писать groovy скрипты для создания пайплайнов, изучим их составные части. Groovy Developer бесплатный урок курса Зарегистрироваться на бесплатный урок Зарегистрироваться на бесплатный урок Зарегистрироваться на бесплатный урок Зарегистрироваться на бесплатный урок ]]></text>
+</doc>

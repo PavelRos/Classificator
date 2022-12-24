@@ -1,0 +1,30 @@
+<?xml version="1.0" ?>
+<doc>
+	<label auto="true" type="str" verify="true"><![CDATA[Other]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[rimecode]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-04-24, 03:07]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/company/hostkey/blog/662592/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Многопоточный энкодинг: переплатить вдвое или уйти на «встройку»?]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Блог компании HOSTKEY]]></item>
+		<item type="str"><![CDATA[Open source]]></item>
+		<item type="str"><![CDATA[Работа с видео]]></item>
+		<item type="str"><![CDATA[Видеокарты]]></item>
+		<item type="str"><![CDATA[Видеоконференцсвязь]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[gpu]]></item>
+		<item type="str"><![CDATA[nvidia]]></item>
+		<item type="str"><![CDATA[энкод видео]]></item>
+		<item type="str"><![CDATA[энкодер]]></item>
+		<item type="str"><![CDATA[ffmpeg]]></item>
+		<item type="str"><![CDATA[стриминг]]></item>
+		<item type="str"><![CDATA[трансляция видео]]></item>
+		<item type="str"><![CDATA[видеостриминг]]></item>
+		<item type="str"><![CDATA[многопоточная]]></item>
+		<item type="str"><![CDATA[quick sync video]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[]]></text>
+</doc>

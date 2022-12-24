@@ -1,0 +1,328 @@
+<?xml version="1.0" ?>
+<doc>
+	<label auto="true" type="str" verify="true"><![CDATA[Other]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[FunnyBlort]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-09-28, 13:16]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/post/690576/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Очумелый саморучник — спрайты как в Doom'е без дорисовывания]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Python]]></item>
+		<item type="str"><![CDATA[Работа с 3D-графикой]]></item>
+		<item type="str"><![CDATA[Unity]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[sprites]]></item>
+		<item type="str"><![CDATA[спрайтовая графика]]></item>
+		<item type="str"><![CDATA[дум]]></item>
+		<item type="str"><![CDATA[doom]]></item>
+		<item type="str"><![CDATA[рендеринг]]></item>
+		<item type="str"><![CDATA[эффекты]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[И так. Можно и эдак.
+Но лучше все по порядку.
+В далёкий 1993 год Raven Software решили лицензировать у ID Software движок id Tech 1.
+Поскольку работали на время - часть спрайтов была отрендерена с дополнительной дорисовкой поверх отрендереных изображений. В большинстве спрайтов это не так заметно, но вот в некоторых - очень даже.
+Решил попробовать свои силы в этом деле.
+Для начала была скручена моделька
+Делалось это дело для замены старой, и довольно корявой версии пушки demon tech repeater для мода Complex Doom Invasion. В скриншотах одни из первых итерации, до того как были добавлены последние элементы.
+Первые рендеры напрямую из Блендера вышли размытыми, понятное дело antialiasing делает своё дело.
+Поскольку ранее я уже кодил рендеринг спрайтов на Unity - было принято решение работать дальше в нём.
+Первые рендеры из Unity просто с размытием и даже с уменьшением через Lancoz фильтр все равно были довольно уродливы:
+Пришлось прибегнуть вдобавок к использованию Питона (Пайтона, как вам угодно) и дописать скрипты для уменьшения разрешения (код тут).
+Далее вдобавок был отрендерен outline. Работает так - берём legacy image effects из assetstore'а, и подставляем edge detection с режимом triangle depth normals. Не забываем уменьшить. В данном случае для уменьшения как раз таки использовался lancoz.
+Наложил одно на другое (все через скрипты):
+Чуть чуть дорисовал, добавил 50% постеризацию (не путать с пАстеризацией - на Русском термин называется Изогелия https://ru.wikipedia.org/wiki/Изогелия ) со смешиванием (как эффект камеры) а также SSAO для теней.
+Код шейдера постеризации и код скрипта для его применения поверх камеры:
+Shader "Hidden/LightPosterize"
+{
+  //стандартная рыба CG шейдера, мы только добавляем 
+  //дополнительные переменные для силы Изогелии и силы смешивания
+    Properties
+    {
+        _MainTex ("Texture", 2D) = "white" {}
+  _Precision ("Precision", Range(0.001, 0.1)) = 0.15
+  _Interp("Interp", Range(0,1)) = 1
+    }
+    SubShader
+    {
+        // No culling or depth
+        Cull Off ZWrite Off ZTest Always
+
+        Pass
+        {
+            CGPROGRAM
+            #pragma vertex vert
+            #pragma fragment frag
+
+            #include "UnityCG.cginc"
+
+            struct appdata
+            {
+                float4 vertex : POSITION;
+                float2 uv : TEXCOORD0;
+            };
+
+            struct v2f
+            {
+                float2 uv : TEXCOORD0;
+                float4 vertex : SV_POSITION;
+            };
+
+            v2f vert (appdata v)
+            {
+                v2f o;
+                o.vertex = UnityObjectToClipPos(v.vertex);
+                o.uv = v.uv;
+                return o;
+            }
+
+            sampler2D _MainTex;
+          //подхватываем карту глубин-нормалей
+   sampler2D _CameraDepthNormalsTexture;
+   float _Precision, _Interp;
+            fixed4 frag (v2f i) : SV_Target
+            {
+                fixed4 col = tex2D(_MainTex, i.uv);
+    float3 normalValues;
+    float depthValue;
+
+
+    DecodeDepthNormal(tex2D(_CameraDepthNormalsTexture, i.uv), depthValue, normalValues);
+                //обрезаем эффект если слишком глубоко - позволяет избавиться от артефактов
+    if (depthValue > 0.99) return col;
+              //собственно рабочий код - постеризуем
+    float3 upscaled = col.rgb / _Precision + float3(0.5, 0.5, 0.5)*_Precision;
+
+    float3 final = round( upscaled )* _Precision;
+
+    col.rgb = lerp(col.rgb, final, _Interp);
+                return col;
+            }
+            ENDCG
+        }
+    }
+}
+using UnityEngine;
+using System.Collections;
+[ExecuteInEditMode]
+public class ShaderApply : MonoBehaviour
+{
+    public Material mat;
+    public DepthTextureMode mode;
+    Camera cam;
+//как обычно для эффектов которые накладываются на стандарную камеру - 
+//подсасываемся через OnRenderImage
+    void OnRenderImage(RenderTexture source, RenderTexture destination)
+    {
+        cam = GetComponent<Camera>();
+//если материала на скрипте нет - прогоняем картинку дальше
+        if (mat == null)
+        {
+  
+            Graphics.Blit(source, destination);
+            return;
+        }
+//если есть - берем что у нас сейчас в source rendertexture'е и прогоняем через наш шейдер
+        cam.depthTextureMode = mode;
+        //mat is the material containing your shader
+        Graphics.Blit(source, destination, mat);
+    }
+}
+Получилось вот так:
+Ну и вдобавок как все это выглядит когда вся анимация отрендеренна и прогнана через скрипты:
+И теперь алгоритм по порядку:
+Рендерим в разрешении 640x400 с повышенной резкостью, SSAO и постеризацией.
+Рендерим эффект плазмы. В данном случае я рендерю на чёрном фоне без альфа канала, перекидываю в Питон, создаю альфа канал из чёрного цвета и нормализую цвет - таким образом избегая colorbanding
+Рендерим outline в разрешении 1280x800 отдельно, перекидываю тоже в питон. Скрипт уменьшает спрайт аутлайна, множит основной спрайт на аутлайн (50% помножение), затем скрипт закидывает получившийся спрайт поверх эффекта плазмы, если тот присутствует в ряду кадров.
+Готово. Надеюсь статья была полезной. И так. Можно и эдак.   Но лучше все по порядку. В далёкий 1993 год Raven Software решили лицензировать у ID Software движок id Tech 1.    Поскольку работали на время - часть спрайтов была отрендерена с дополнительной дорисовкой поверх отрендереных изображений. В большинстве спрайтов это не так заметно, но вот в некоторых - очень даже. Решил попробовать свои силы в этом деле. Для начала была скручена моделька     Делалось это дело для замены старой, и довольно корявой версии пушки demon tech repeater для мода Complex Doom Invasion. В скриншотах одни из первых итерации, до того как были добавлены последние элементы. Первые рендеры напрямую из Блендера вышли размытыми, понятное дело antialiasing делает своё дело. Поскольку ранее я уже кодил рендеринг спрайтов на Unity - было принято решение работать дальше в нём. Первые рендеры из Unity просто с размытием и даже с уменьшением через Lancoz фильтр все равно были довольно уродливы:     Пришлось прибегнуть вдобавок к использованию Питона (Пайтона, как вам угодно) и дописать скрипты для уменьшения разрешения (код тут). код тут   Далее вдобавок был отрендерен outline. Работает так - берём legacy image effects из assetstore'а, и подставляем edge detection с режимом triangle depth normals. Не забываем уменьшить. В данном случае для уменьшения как раз таки использовался lancoz.   Наложил одно на другое (все через скрипты):   Чуть чуть дорисовал, добавил 50% постеризацию (не путать с пАстеризацией - на Русском термин называется Изогелия https://ru.wikipedia.org/wiki/Изогелия ) со смешиванием (как эффект камеры) а также SSAO для теней. https://ru.wikipedia.org/wiki/Изогелия Код шейдера постеризации и код скрипта для его применения поверх камеры: Shader "Hidden/LightPosterize"
+{
+  //стандартная рыба CG шейдера, мы только добавляем 
+  //дополнительные переменные для силы Изогелии и силы смешивания
+    Properties
+    {
+        _MainTex ("Texture", 2D) = "white" {}
+  _Precision ("Precision", Range(0.001, 0.1)) = 0.15
+  _Interp("Interp", Range(0,1)) = 1
+    }
+    SubShader
+    {
+        // No culling or depth
+        Cull Off ZWrite Off ZTest Always
+
+        Pass
+        {
+            CGPROGRAM
+            #pragma vertex vert
+            #pragma fragment frag
+
+            #include "UnityCG.cginc"
+
+            struct appdata
+            {
+                float4 vertex : POSITION;
+                float2 uv : TEXCOORD0;
+            };
+
+            struct v2f
+            {
+                float2 uv : TEXCOORD0;
+                float4 vertex : SV_POSITION;
+            };
+
+            v2f vert (appdata v)
+            {
+                v2f o;
+                o.vertex = UnityObjectToClipPos(v.vertex);
+                o.uv = v.uv;
+                return o;
+            }
+
+            sampler2D _MainTex;
+          //подхватываем карту глубин-нормалей
+   sampler2D _CameraDepthNormalsTexture;
+   float _Precision, _Interp;
+            fixed4 frag (v2f i) : SV_Target
+            {
+                fixed4 col = tex2D(_MainTex, i.uv);
+    float3 normalValues;
+    float depthValue;
+
+
+    DecodeDepthNormal(tex2D(_CameraDepthNormalsTexture, i.uv), depthValue, normalValues);
+                //обрезаем эффект если слишком глубоко - позволяет избавиться от артефактов
+    if (depthValue > 0.99) return col;
+              //собственно рабочий код - постеризуем
+    float3 upscaled = col.rgb / _Precision + float3(0.5, 0.5, 0.5)*_Precision;
+
+    float3 final = round( upscaled )* _Precision;
+
+    col.rgb = lerp(col.rgb, final, _Interp);
+                return col;
+            }
+            ENDCG
+        }
+    }
+} Shader "Hidden/LightPosterize"
+{
+  //стандартная рыба CG шейдера, мы только добавляем 
+  //дополнительные переменные для силы Изогелии и силы смешивания
+    Properties
+    {
+        _MainTex ("Texture", 2D) = "white" {}
+  _Precision ("Precision", Range(0.001, 0.1)) = 0.15
+  _Interp("Interp", Range(0,1)) = 1
+    }
+    SubShader
+    {
+        // No culling or depth
+        Cull Off ZWrite Off ZTest Always
+
+        Pass
+        {
+            CGPROGRAM
+            #pragma vertex vert
+            #pragma fragment frag
+
+            #include "UnityCG.cginc"
+
+            struct appdata
+            {
+                float4 vertex : POSITION;
+                float2 uv : TEXCOORD0;
+            };
+
+            struct v2f
+            {
+                float2 uv : TEXCOORD0;
+                float4 vertex : SV_POSITION;
+            };
+
+            v2f vert (appdata v)
+            {
+                v2f o;
+                o.vertex = UnityObjectToClipPos(v.vertex);
+                o.uv = v.uv;
+                return o;
+            }
+
+            sampler2D _MainTex;
+          //подхватываем карту глубин-нормалей
+   sampler2D _CameraDepthNormalsTexture;
+   float _Precision, _Interp;
+            fixed4 frag (v2f i) : SV_Target
+            {
+                fixed4 col = tex2D(_MainTex, i.uv);
+    float3 normalValues;
+    float depthValue;
+
+
+    DecodeDepthNormal(tex2D(_CameraDepthNormalsTexture, i.uv), depthValue, normalValues);
+                //обрезаем эффект если слишком глубоко - позволяет избавиться от артефактов
+    if (depthValue > 0.99) return col;
+              //собственно рабочий код - постеризуем
+    float3 upscaled = col.rgb / _Precision + float3(0.5, 0.5, 0.5)*_Precision;
+
+    float3 final = round( upscaled )* _Precision;
+
+    col.rgb = lerp(col.rgb, final, _Interp);
+                return col;
+            }
+            ENDCG
+        }
+    }
+} using UnityEngine;
+using System.Collections;
+[ExecuteInEditMode]
+public class ShaderApply : MonoBehaviour
+{
+    public Material mat;
+    public DepthTextureMode mode;
+    Camera cam;
+//как обычно для эффектов которые накладываются на стандарную камеру - 
+//подсасываемся через OnRenderImage
+    void OnRenderImage(RenderTexture source, RenderTexture destination)
+    {
+        cam = GetComponent<Camera>();
+//если материала на скрипте нет - прогоняем картинку дальше
+        if (mat == null)
+        {
+  
+            Graphics.Blit(source, destination);
+            return;
+        }
+//если есть - берем что у нас сейчас в source rendertexture'е и прогоняем через наш шейдер
+        cam.depthTextureMode = mode;
+        //mat is the material containing your shader
+        Graphics.Blit(source, destination, mat);
+    }
+} using UnityEngine;
+using System.Collections;
+[ExecuteInEditMode]
+public class ShaderApply : MonoBehaviour
+{
+    public Material mat;
+    public DepthTextureMode mode;
+    Camera cam;
+//как обычно для эффектов которые накладываются на стандарную камеру - 
+//подсасываемся через OnRenderImage
+    void OnRenderImage(RenderTexture source, RenderTexture destination)
+    {
+        cam = GetComponent<Camera>();
+//если материала на скрипте нет - прогоняем картинку дальше
+        if (mat == null)
+        {
+  
+            Graphics.Blit(source, destination);
+            return;
+        }
+//если есть - берем что у нас сейчас в source rendertexture'е и прогоняем через наш шейдер
+        cam.depthTextureMode = mode;
+        //mat is the material containing your shader
+        Graphics.Blit(source, destination, mat);
+    }
+} Получилось вот так:   Ну и вдобавок как все это выглядит когда вся анимация отрендеренна и прогнана через скрипты:  И теперь алгоритм по порядку:      Рендерим в разрешении 640x400 с повышенной резкостью, SSAO и постеризацией.
+Рендерим эффект плазмы. В данном случае я рендерю на чёрном фоне без альфа канала, перекидываю в Питон, создаю альфа канал из чёрного цвета и нормализую цвет - таким образом избегая colorbanding
+Рендерим outline в разрешении 1280x800 отдельно, перекидываю тоже в питон. Скрипт уменьшает спрайт аутлайна, множит основной спрайт на аутлайн (50% помножение), затем скрипт закидывает получившийся спрайт поверх эффекта плазмы, если тот присутствует в ряду кадров. Рендерим в разрешении 640x400 с повышенной резкостью, SSAO и постеризацией. Рендерим в разрешении 640x400 с повышенной резкостью, SSAO и постеризацией. Рендерим эффект плазмы. В данном случае я рендерю на чёрном фоне без альфа канала, перекидываю в Питон, создаю альфа канал из чёрного цвета и нормализую цвет - таким образом избегая colorbanding Рендерим эффект плазмы. В данном случае я рендерю на чёрном фоне без альфа канала, перекидываю в Питон, создаю альфа канал из чёрного цвета и нормализую цвет - таким образом избегая colorbanding Рендерим outline в разрешении 1280x800 отдельно, перекидываю тоже в питон. Скрипт уменьшает спрайт аутлайна, множит основной спрайт на аутлайн (50% помножение), затем скрипт закидывает получившийся спрайт поверх эффекта плазмы, если тот присутствует в ряду кадров. Рендерим outline в разрешении 1280x800 отдельно, перекидываю тоже в питон. Скрипт уменьшает спрайт аутлайна, множит основной спрайт на аутлайн (50% помножение), затем скрипт закидывает получившийся спрайт поверх эффекта плазмы, если тот присутствует в ряду кадров. Готово. Надеюсь статья была полезной. ]]></text>
+</doc>

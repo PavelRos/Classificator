@@ -1,0 +1,362 @@
+<?xml version="1.0" ?>
+<doc>
+	<label auto="true" type="str" verify="true"><![CDATA[Develop]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[lmewmewl]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-12-06, 16:43]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/company/nordclan/blog/703632/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Flutter, создание Home Widget на платформе iOS]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Блог компании Норд Клан]]></item>
+		<item type="str"><![CDATA[Разработка под iOS]]></item>
+		<item type="str"><![CDATA[Swift]]></item>
+		<item type="str"><![CDATA[Flutter]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[flutter]]></item>
+		<item type="str"><![CDATA[swift]]></item>
+		<item type="str"><![CDATA[home widget]]></item>
+		<item type="str"><![CDATA[widget]]></item>
+		<item type="str"><![CDATA[виджет]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[Всем привет! Меня зовут Константин, я Flutter-разработчик в компании Nord Clan.
+
+В данной статье мы с моей коллегой Анной хотели бы поделиться нашим опытом связки Flutter и home  виджетов на платформе iOS.
+Каждый из нас, пользуясь смартфоном на любой из ОС на главных (или не очень) экранах, сталкивался с виджетами. Виджетами называются маленькие приложения которые выполняют не сложные действия, носят какой-либо информационный характер или же просто украшают ваш экран, учитывая что в данной статье идет речь про Flutter в котором «все это виджет», важно не запутаться, поэтому лучше всего сразу обозначить, что Widget мы будем относить к Flutter, а Home Widget (HW - для сокращения) относить как раз к вспомогательному приложению/виджету нативной системы.
+Так же важно понимать какую проблему решает HW, в нашем случае это сокращение пользовательских действий  (открытие магнитного замка двери через эндпоинт), но как уже писалось выше у Вас может быть иная задача.
+Важно пояснить, для написания HW нам в требуется нативный код, по умолчанию любой HW относится к системе с которой мы работаем, Flutter в данном случае может только получать или передавать определенные данные. 
+Вся бизнес логика была написана на Flutter, осталось разобраться исключительно с нативным кодом. Для этого мне пришлось задействовать мою коллегу, так как на текущий момент Swift я не знаю :)
+Далее я передаю слово Анне, нашему потрясающему iOS разработчику :)
+Для начала хотелось бы пройтись по некоторым нюансам iOS.
+При добавлении WidgetKit (iOS 14, *) в приложение, существуют ограничения платформы, которые нужно было решить.
+Во-первых, HW пишутся исключительно на новом декларативном фреймворке SwiftUI. На UIKit написать его невозможно, что довольно ограничивающее условие, если необходимо добавить HW в приложение.
+Во-вторых, HW имеют статус read-only, что означает, что они лишь отображают информацию из приложения, но не являются чем-то самостоятельным. Такое поведение HW лишает нас интерактива, с которым может взаимодействовать пользователь. По сути, HW в iOS - просто картинка с информацией, по тапе на которую откроется приложение. Единственная возможность как-то взаимодействовать с приложением через HW - это подцепить к нему WidgetURL() и передать туда ссылку на конкретный экран в приложении, но на этом всё.
+Большая проблема: HW всегда будет открывать приложение. Это ограничение не дает нам возможности послать запрос в приложение по тапу на HW и при этом не открыть приложение во весь экран. 
+Отсюда мы понимаем, что HW разных размеров имеют разные tap area, что маленький виджет ведет себя как одна кнопка, а на среднего и большого размера HW уже можно навесить таргеты для открытия разных экранов в приложении, если такое необходимо реализовать. С этим уже можно работать.
+В итоге эти ограничения платформы дают нам следующее: 
+ HW всегда будет открывать приложение.
+HW не интерактивный, в нем нельзя поменять что-то, что есть в приложении, можно лишь в приложении поменять данные и отобразить их на HW.
+Разная реализация обработки урлов под все размеры HW.
+Вишенка на торте: вся настройка HW возможна только на SwiftUI, никакого UIKit.
+Выводы которые были сделаны: 
+Необходимо создать метод, который будет возвращать, открыто ли приложение с HW и с какого именно. Это необходимо, чтобы мы со стороны Flutter могли поставить условие, что если приложение открыто с HW, то идет запрос на открытие двери. Если приложение просто открыто по тапу на него, ничего не должно происходить.
+Далее переходим к реализации.
+Задача: по нажатию на HW запустить приложение, вызвать в нем метод по открытию двери, отобразить то, что запрос отработал показав баннер и плавно скрыть приложение.
+Проблема: Использование Home Widget на нативной платформе и бизнес логики написанной на Flutter. 
+Как решали: со стороны Flutter создали канал связи (FlutterMethodChannel) имя которого должно совпадать с тем, которое мы создаем со стороны iOS, важно не ошибиться (как и всегда):
+  static const platformChannel = MethodChannel('widgetChannel');
+В AppDelegate настраиваем связь с созданным каналом, в методе didFinishLaunchingWithOptions:
+ override func application(
+  _
+   application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
+    ) -> Bool {
+        
+        let controller: FlutterViewController = window?.rootViewController as! FlutterViewController
+        let channelName = "widgetChannel"
+        let methodChannel = FlutterMethodChannel(name: channelName,
+                                                 binaryMessenger: controller.binaryMessenger)
+Создаем контроллер, канал и настраиваем все это в methodChannel, таким образом у нас появляется связь с приложением, но нужно еще настроить то, посредством чего мы будем общаться. Здесь это происходит по средством передачи сообщений, в нашем случае мы передаем Bool:
+Future<void> resultFromIosWidget(BuildContext context) async {
+    try {
+      final bool result =
+          await platformChannel.invokeMethod('openedFromWidget');
+      
+      if (result == true) {
+        await MainRequests().openDoor(UrlConsts.doorUrlUl);} 
+    } on PlatformException catch (e) {
+      '${e.message}';
+    } 
+}
+Нужно создать условие во Flutter, под критерии которого будет подходить метод открытия HW на iOS.
+Со стороны iOS создаем переменную:
+@UIApplicationMain
+@objc class AppDelegate: FlutterAppDelegate {
+    
+    var isTappedOnWidget: Bool = false
+Изначально значение ставим на false, чтобы каждый раз при открытии приложение не срабатывало это условие. Нам нужно только, чтобы этот сценарий срабатывал по открытию приложения из HW.
+В расширении AppDelegate создаем метод, который будет ловить нажатие и понимать, что приложение открыто именно с HW:
+extension AppDelegate {
+   private func openedFromWidget(url: URL, isTapped: Bool) {
+        var tapped = isTappedOnWidget
+        if url.scheme == "widget", url.host == "widgetFamily", tapped == true {
+            let widgetFamily = url.lastPathComponent
+            tapped = isTapped
+        }
+    }
+}
+Ссылку создаем и формируем при настройке HW:
+import WidgetKit
+import SwiftUI
+
+struct DoorOpenerWidgetEntryView: View {
+    @Environment(\.widgetFamily) var widgetFamily
+    var entry: Provider.Entry
+ 
+    @ViewBuilder
+    var body: some View {
+
+        switch widgetFamily {
+        case .systemSmall, .systemMedium:
+            SystemWidgetView()
+                .widgetURL(widgetLink)
+        case .accessoryRectangular, .accessoryCircular:
+          AccessoryWidgetView()
+                .widgetURL(widgetLink)
+        default:
+            Text(Constants.errorWidget)
+        }
+    }
+    private var widgetLink: URL {
+        URL(string: "widget://widgetFamily/\(widgetFamily)")!
+    }
+}
+Таким образом мы будем знать, что приложение раскрыто именно с HW, и даже узнаем с какого именно.
+Возвращаемся в AppDelegate, создаем обработчик для канала, который будет принимать наше условие и сравнивать его с тем, какое условие необходимо со стороны Flutter, чтобы запустить запрос openDoor().
+В recieveResult() получаем актуальное значение isTappedOnWidget и передаем его в prepareMethodHandler(), далее этот метод вызываем в didFinishLaunchingWithOptions перед return true:
+private func prepareMethodHandler(channel: FlutterMethodChannel) {
+        channel.setMethodCallHandler({
+            (call: FlutterMethodCall, result: @escaping FlutterResult) -> Void in
+            if call.method == "openedFromWidget" {
+                self.recieveResult(result)
+            } else {
+                result(FlutterMethodNotImplemented)
+                return
+            }
+        })
+    }
+
+ private func recieveResult(_ result: FlutterResult) {
+        let answer = isTappedOnWidget
+        result(answer)
+    }
+Но если сейчас все собрать - ничего не сработает, потому что мы нигде не меняем наше Bool условие с false на true, и не вызываем метод openFromWidget с нужным нам булем. 
+Поэтому переопределяем метод application(app, open, options) в AppDelegate, в котором будем менять условие. Этот метод будет отрабатывать только при открытии приложения из HW, т.к. он отслеживает ранее созданные нами урлы. И если мы зашли в приложение по одному из урлов виджета и наш флаг isTappedOnWidget = true, то мы наконец-то попадаем под все условия, которые обозначили для себя со стороны Flutter:
+override func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey : Any] = [:]) -> Bool {
+    
+        isTappedOnWidget = true
+
+        if isTappedOnWidget == true {
+            openedFromWidget(url: url, isTapped: isTappedOnWidget)
+        }
+
+        return true
+    }
+Что уже сделано: У нас открывается приложение с HW и идет запрос, мы получаем ответ и открываем дверь. Но приложение еще на экране, нужно его плавно скрыть. Это делаем через DispatchQueue.main.asyncAfter() в отдельной функции. Прописываем его также в расширении AppDelegate и вызываем сразу после смены флага в application(app, open, options):
+private func closeApp () {
+DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            self.isTappedOnWidget = false
+            UIControl().sendAction(#selector(URLSessionTask.suspend), to: UIApplication.shared, for: nil)
+        }
+}
+Самое главное, чтобы этот метод корректно отрабатывал каждый раз при закрытие приложения в виджет, нам нужно сменить флаг с true на false, чтобы вернуть все в изначальное положение:
+override func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey : Any] = [:]) -> Bool {
+    
+        isTappedOnWidget = true
+
+        if isTappedOnWidget == true {
+            openedFromWidget(url: url, isTapped: isTappedOnWidget)
+        }
+        closeApp()
+
+        return true
+    }
+Таким образом мы получаем связку HW на платформе iOS с Flutter приложением.
+Спасибо за прочтение статьи! А был ли у Вас опыт работы с Home Widget? Делитесь в комментариях! :) Всем привет! Меня зовут Константин, я Flutter-разработчик в компании Nord Clan.
+
+В данной статье мы с моей коллегой Анной хотели бы поделиться нашим опытом связки Flutter и home  виджетов на платформе iOS.   Каждый из нас, пользуясь смартфоном на любой из ОС на главных (или не очень) экранах, сталкивался с виджетами. Виджетами называются маленькие приложения которые выполняют не сложные действия, носят какой-либо информационный характер или же просто украшают ваш экран, учитывая что в данной статье идет речь про Flutter в котором «все это виджет», важно не запутаться, поэтому лучше всего сразу обозначить, что Widget мы будем относить к Flutter, а Home Widget (HW - для сокращения) относить как раз к вспомогательному приложению/виджету нативной системы. Так же важно понимать какую проблему решает HW, в нашем случае это сокращение пользовательских действий  (открытие магнитного замка двери через эндпоинт), но как уже писалось выше у Вас может быть иная задача. Важно пояснить, для написания HW нам в требуется нативный код, по умолчанию любой HW относится к системе с которой мы работаем, Flutter в данном случае может только получать или передавать определенные данные.  Вся бизнес логика была написана на Flutter, осталось разобраться исключительно с нативным кодом. Для этого мне пришлось задействовать мою коллегу, так как на текущий момент Swift я не знаю :) Далее я передаю слово Анне, нашему потрясающему iOS разработчику :)  Для начала хотелось бы пройтись по некоторым нюансам iOS. При добавлении WidgetKit (iOS 14, *) в приложение, существуют ограничения платформы, которые нужно было решить. Во-первых, HW пишутся исключительно на новом декларативном фреймворке SwiftUI. На UIKit написать его невозможно, что довольно ограничивающее условие, если необходимо добавить HW в приложение.   Во-вторых, HW имеют статус read-only, что означает, что они лишь отображают информацию из приложения, но не являются чем-то самостоятельным. Такое поведение HW лишает нас интерактива, с которым может взаимодействовать пользователь. По сути, HW в iOS - просто картинка с информацией, по тапе на которую откроется приложение. Единственная возможность как-то взаимодействовать с приложением через HW - это подцепить к нему WidgetURL() и передать туда ссылку на конкретный экран в приложении, но на этом всё.   Большая проблема: HW всегда будет открывать приложение. Это ограничение не дает нам возможности послать запрос в приложение по тапу на HW и при этом не открыть приложение во весь экран.  Большая проблема:   Отсюда мы понимаем, что HW разных размеров имеют разные tap area, что маленький виджет ведет себя как одна кнопка, а на среднего и большого размера HW уже можно навесить таргеты для открытия разных экранов в приложении, если такое необходимо реализовать. С этим уже можно работать. В итоге эти ограничения платформы дают нам следующее:  В итоге эти ограничения платформы дают нам следующее:   HW всегда будет открывать приложение.
+HW не интерактивный, в нем нельзя поменять что-то, что есть в приложении, можно лишь в приложении поменять данные и отобразить их на HW.
+Разная реализация обработки урлов под все размеры HW.
+Вишенка на торте: вся настройка HW возможна только на SwiftUI, никакого UIKit.  HW всегда будет открывать приложение.  HW всегда будет открывать приложение. HW не интерактивный, в нем нельзя поменять что-то, что есть в приложении, можно лишь в приложении поменять данные и отобразить их на HW. HW не интерактивный, в нем нельзя поменять что-то, что есть в приложении, можно лишь в приложении поменять данные и отобразить их на HW. Разная реализация обработки урлов под все размеры HW. Разная реализация обработки урлов под все размеры HW. Вишенка на торте: вся настройка HW возможна только на SwiftUI, никакого UIKit. Вишенка на торте: вся настройка HW возможна только на SwiftUI, никакого UIKit. Выводы которые были сделаны:  Выводы которые были сделаны:  Необходимо создать метод, который будет возвращать, открыто ли приложение с HW и с какого именно. Это необходимо, чтобы мы со стороны Flutter могли поставить условие, что если приложение открыто с HW, то идет запрос на открытие двери. Если приложение просто открыто по тапу на него, ничего не должно происходить. Далее переходим к реализации. Задача: по нажатию на HW запустить приложение, вызвать в нем метод по открытию двери, отобразить то, что запрос отработал показав баннер и плавно скрыть приложение. Задача: Проблема: Использование Home Widget на нативной платформе и бизнес логики написанной на Flutter.  Проблема: Как решали: со стороны Flutter создали канал связи (FlutterMethodChannel) имя которого должно совпадать с тем, которое мы создаем со стороны iOS, важно не ошибиться (как и всегда): Как решали:   static const platformChannel = MethodChannel('widgetChannel');   static const platformChannel = MethodChannel('widgetChannel'); static const 'widgetChannel' В AppDelegate настраиваем связь с созданным каналом, в методе didFinishLaunchingWithOptions:  override func application(
+  _
+   application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
+    ) -> Bool {
+        
+        let controller: FlutterViewController = window?.rootViewController as! FlutterViewController
+        let channelName = "widgetChannel"
+        let methodChannel = FlutterMethodChannel(name: channelName,
+                                                 binaryMessenger: controller.binaryMessenger)  override func application(
+  _
+   application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
+    ) -> Bool {
+        
+        let controller: FlutterViewController = window?.rootViewController as! FlutterViewController
+        let channelName = "widgetChannel"
+        let methodChannel = FlutterMethodChannel(name: channelName,
+                                                 binaryMessenger: controller.binaryMessenger) override func application(
+  _
+   application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
+    ) func application _ application UIApplication didFinishLaunchingWithOptions launchOptions UIApplication LaunchOptionsKey Any ? Bool let FlutterViewController = ? as! FlutterViewController let = "widgetChannel" let = FlutterMethodChannel Создаем контроллер, канал и настраиваем все это в methodChannel, таким образом у нас появляется связь с приложением, но нужно еще настроить то, посредством чего мы будем общаться. Здесь это происходит по средством передачи сообщений, в нашем случае мы передаем Bool: Future<void> resultFromIosWidget(BuildContext context) async {
+    try {
+      final bool result =
+          await platformChannel.invokeMethod('openedFromWidget');
+      
+      if (result == true) {
+        await MainRequests().openDoor(UrlConsts.doorUrlUl);} 
+    } on PlatformException catch (e) {
+      '${e.message}';
+    } 
+} Future<void> resultFromIosWidget(BuildContext context) async {
+    try {
+      final bool result =
+          await platformChannel.invokeMethod('openedFromWidget');
+      
+      if (result == true) {
+        await MainRequests().openDoor(UrlConsts.doorUrlUl);} 
+    } on PlatformException catch (e) {
+      '${e.message}';
+    } 
+} void async try final bool await 'openedFromWidget' if true await on catch '${e.message}' ${e.message} Нужно создать условие во Flutter, под критерии которого будет подходить метод открытия HW на iOS. Со стороны iOS создаем переменную: @UIApplicationMain
+@objc class AppDelegate: FlutterAppDelegate {
+    
+    var isTappedOnWidget: Bool = false @UIApplicationMain
+@objc class AppDelegate: FlutterAppDelegate {
+    
+    var isTappedOnWidget: Bool = false @UIApplicationMain @objc class AppDelegate: FlutterAppDelegate  class AppDelegate FlutterAppDelegate var Bool = false Изначально значение ставим на false, чтобы каждый раз при открытии приложение не срабатывало это условие. Нам нужно только, чтобы этот сценарий срабатывал по открытию приложения из HW. В расширении AppDelegate создаем метод, который будет ловить нажатие и понимать, что приложение открыто именно с HW: extension AppDelegate {
+   private func openedFromWidget(url: URL, isTapped: Bool) {
+        var tapped = isTappedOnWidget
+        if url.scheme == "widget", url.host == "widgetFamily", tapped == true {
+            let widgetFamily = url.lastPathComponent
+            tapped = isTapped
+        }
+    }
+} extension AppDelegate {
+   private func openedFromWidget(url: URL, isTapped: Bool) {
+        var tapped = isTappedOnWidget
+        if url.scheme == "widget", url.host == "widgetFamily", tapped == true {
+            let widgetFamily = url.lastPathComponent
+            tapped = isTapped
+        }
+    }
+} extension AppDelegate  extension AppDelegate private func openedFromWidget(url: URL, isTapped: Bool) func openedFromWidget url URL isTapped Bool var = if == "widget" == "widgetFamily" == true let = = Ссылку создаем и формируем при настройке HW: import WidgetKit
+import SwiftUI
+
+struct DoorOpenerWidgetEntryView: View {
+    @Environment(\.widgetFamily) var widgetFamily
+    var entry: Provider.Entry
+ 
+    @ViewBuilder
+    var body: some View {
+
+        switch widgetFamily {
+        case .systemSmall, .systemMedium:
+            SystemWidgetView()
+                .widgetURL(widgetLink)
+        case .accessoryRectangular, .accessoryCircular:
+          AccessoryWidgetView()
+                .widgetURL(widgetLink)
+        default:
+            Text(Constants.errorWidget)
+        }
+    }
+    private var widgetLink: URL {
+        URL(string: "widget://widgetFamily/\(widgetFamily)")!
+    }
+} import WidgetKit
+import SwiftUI
+
+struct DoorOpenerWidgetEntryView: View {
+    @Environment(\.widgetFamily) var widgetFamily
+    var entry: Provider.Entry
+ 
+    @ViewBuilder
+    var body: some View {
+
+        switch widgetFamily {
+        case .systemSmall, .systemMedium:
+            SystemWidgetView()
+                .widgetURL(widgetLink)
+        case .accessoryRectangular, .accessoryCircular:
+          AccessoryWidgetView()
+                .widgetURL(widgetLink)
+        default:
+            Text(Constants.errorWidget)
+        }
+    }
+    private var widgetLink: URL {
+        URL(string: "widget://widgetFamily/\(widgetFamily)")!
+    }
+} import import struct DoorOpenerWidgetEntryView: View  struct DoorOpenerWidgetEntryView View @Environment var var Provider Entry @ViewBuilder var some View switch case SystemWidgetView case AccessoryWidgetView default Text Constants private var URL URL "widget://widgetFamily/\(widgetFamily)" \(widgetFamily) ! Таким образом мы будем знать, что приложение раскрыто именно с HW, и даже узнаем с какого именно. Возвращаемся в AppDelegate, создаем обработчик для канала, который будет принимать наше условие и сравнивать его с тем, какое условие необходимо со стороны Flutter, чтобы запустить запрос openDoor(). В recieveResult() получаем актуальное значение isTappedOnWidget и передаем его в prepareMethodHandler(), далее этот метод вызываем в didFinishLaunchingWithOptions перед return true: private func prepareMethodHandler(channel: FlutterMethodChannel) {
+        channel.setMethodCallHandler({
+            (call: FlutterMethodCall, result: @escaping FlutterResult) -> Void in
+            if call.method == "openedFromWidget" {
+                self.recieveResult(result)
+            } else {
+                result(FlutterMethodNotImplemented)
+                return
+            }
+        })
+    }
+
+ private func recieveResult(_ result: FlutterResult) {
+        let answer = isTappedOnWidget
+        result(answer)
+    } private func prepareMethodHandler(channel: FlutterMethodChannel) {
+        channel.setMethodCallHandler({
+            (call: FlutterMethodCall, result: @escaping FlutterResult) -> Void in
+            if call.method == "openedFromWidget" {
+                self.recieveResult(result)
+            } else {
+                result(FlutterMethodNotImplemented)
+                return
+            }
+        })
+    }
+
+ private func recieveResult(_ result: FlutterResult) {
+        let answer = isTappedOnWidget
+        result(answer)
+    } private func prepareMethodHandler(channel: FlutterMethodChannel) func prepareMethodHandler channel FlutterMethodChannel FlutterMethodCall @escaping FlutterResult Void in if == "openedFromWidget" self else FlutterMethodNotImplemented return private func recieveResult(_ result: FlutterResult) func recieveResult _ result FlutterResult let = Но если сейчас все собрать - ничего не сработает, потому что мы нигде не меняем наше Bool условие с false на true, и не вызываем метод openFromWidget с нужным нам булем.  Поэтому переопределяем метод application(app, open, options) в AppDelegate, в котором будем менять условие. Этот метод будет отрабатывать только при открытии приложения из HW, т.к. он отслеживает ранее созданные нами урлы. И если мы зашли в приложение по одному из урлов виджета и наш флаг isTappedOnWidget = true, то мы наконец-то попадаем под все условия, которые обозначили для себя со стороны Flutter: override func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey : Any] = [:]) -> Bool {
+    
+        isTappedOnWidget = true
+
+        if isTappedOnWidget == true {
+            openedFromWidget(url: url, isTapped: isTappedOnWidget)
+        }
+
+        return true
+    } override func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey : Any] = [:]) -> Bool {
+    
+        isTappedOnWidget = true
+
+        if isTappedOnWidget == true {
+            openedFromWidget(url: url, isTapped: isTappedOnWidget)
+        }
+
+        return true
+    } override func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey : Any] = [:]) func application _ app UIApplication open url URL options UIApplication OpenURLOptionsKey Any = Bool = true if == true return true Что уже сделано: У нас открывается приложение с HW и идет запрос, мы получаем ответ и открываем дверь. Но приложение еще на экране, нужно его плавно скрыть. Это делаем через DispatchQueue.main.asyncAfter() в отдельной функции. Прописываем его также в расширении AppDelegate и вызываем сразу после смены флага в application(app, open, options): Что уже сделано: private func closeApp () {
+DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            self.isTappedOnWidget = false
+            UIControl().sendAction(#selector(URLSessionTask.suspend), to: UIApplication.shared, for: nil)
+        }
+} private func closeApp () {
+DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            self.isTappedOnWidget = false
+            UIControl().sendAction(#selector(URLSessionTask.suspend), to: UIApplication.shared, for: nil)
+        }
+} private func closeApp () func closeApp DispatchQueue + 2 self = false UIControl URLSessionTask UIApplication nil Самое главное, чтобы этот метод корректно отрабатывал каждый раз при закрытие приложения в виджет, нам нужно сменить флаг с true на false, чтобы вернуть все в изначальное положение: override func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey : Any] = [:]) -> Bool {
+    
+        isTappedOnWidget = true
+
+        if isTappedOnWidget == true {
+            openedFromWidget(url: url, isTapped: isTappedOnWidget)
+        }
+        closeApp()
+
+        return true
+    } override func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey : Any] = [:]) -> Bool {
+    
+        isTappedOnWidget = true
+
+        if isTappedOnWidget == true {
+            openedFromWidget(url: url, isTapped: isTappedOnWidget)
+        }
+        closeApp()
+
+        return true
+    } override func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey : Any] = [:]) func application _ app UIApplication open url URL options UIApplication OpenURLOptionsKey Any = Bool = true if == true return true Таким образом мы получаем связку HW на платформе iOS с Flutter приложением.  Спасибо за прочтение статьи! А был ли у Вас опыт работы с Home Widget? Делитесь в комментариях! :) ]]></text>
+</doc>

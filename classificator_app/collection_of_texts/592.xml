@@ -1,0 +1,214 @@
+<?xml version="1.0" ?>
+<doc>
+	<original_author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Liwei Yin]]></item>
+	</original_author>
+	<label auto="true" type="str" verify="true"><![CDATA[Develop]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[mssqlhelp]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-11-29, 18:47]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/post/702366/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Статистики по нескольким столбцам]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Microsoft SQL Server]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[sql server]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[Автор Liwei Yin
+Опубликовано 01.11.2022
+В статье SQL Server Cardinality Estimation: несколько статистик по одному столбцу рассказывалось о том, как SQL Server вычисляет статистику по одному столбцу. Сегодня поговорим о статистике по нескольким столбцам.
+Ниже следует пример, и в этом примере используется OLTP база данных AdventureWorks2019.
+------- Подготовка данных -------------------------------------------
+alter database [AdventureWorks2019] set compatibility_level=150
+go
+use [AdventureWorks2019]
+go
+if exists(select 1 from sys.tables where name='SalesOrderDetail')
+drop table SalesOrderDetail
+go
+select * into SalesOrderDetail from Sales.SalesOrderDetail-- импорт данных в новую таблицу
+Go
+-- Создаём две статистики вручную. Первая статистика по двум столбцам
+create statistics I_ProductID_UnitPrice on SalesOrderDetail(ProductID,UnitPrice) with fullscan
+create statistics I_UnitPrice  on SalesOrderDetail(UnitPrice) with fullscan
+------- Подготовка данных -------------------------------------------
+В разных версиях SQL Server Cardinality Estimation (далее СЕ) для разных уровней совместимости баз данных возможны не одинаковые оценки, т.е. оптимизатор может повести себя по-разному, и это будет продемонстрировано ниже для разных уровней совместимости. 
+Новая версия CE-2017/2019-db_compatibility_level >= 140
+a) Избирательность (селективность) комбинированной статистики по нескольким столбцам вычисляется по формуле: MAX(min('All Density',p0,p1,p2,p3),p0*p1*p2*p3)
+b) All Density (Общая плотность) комбинации столбцов для статистики по нескольким столбцам. p0,p1,p2,p3 — селективность значений каждого столбца в предложении WHERE, и при этом p0<p1<p2<p3.
+c) Если у статистики больше 4 столбцов, учитываются только первые 4, остальные игнорируются.
+CE для уровня совместимости 150
+alter database [AdventureWorks2019] set compatibility_level=150
+select * from SalesOrderDetail where ProductID=870 and UnitPrice=4.99 option(recompile)
+1)     Расчетное число строк 341.
+2)     Формула расчета числа строк: max(min('Общая плотность по двум столбцам',P1,P2),P1*P2)  * cardinality
+a) Общая плотность по двум столбцам: 0,001321004
+b) p0 — селективность статистики одного столбца (ProductID) в предложении where, которая равна 4688/121317=0,03864256.
+c) p1 — селективность статистики другого столбца (UnitPrice), которая составляет 8827/121317=0,07275979.
+d) Количество элементов (мощность, кардинальность) 121317
+dbcc show_statistics(SalesOrderDetail,I_ProductID_UnitPrice)
+dbcc show_statistics(SalesOrderDetail,I_UnitPrice)
+3) Подставим значения и отследим решение по формуле: max(min('Общая плотность по двум столбцам',p0,p1),p0*p1) *cardinality
+max(  min(0.001321004,0.03864256,0.07275979),0.03864256*0.07275979)*121317
+=max(0.001321004,0.03864256*0.07275979)*121317
+=max(0.001321004,0.0028116245506624)*121317
+=0.0028116245506624*121317=341.09785561, округляем до 341.
+4) Для получения более подробной информации, включим флаг трассировки 2363.
+Dbcc traceon(3604,2363)
+------------trace flag 2363 output-----------------
+Loaded histogram for column QCOL: [AdventureWorks2019].[dbo].[SalesOrderDetail].ProductID from stats with id 2
+Loaded histogram for column QCOL: [AdventureWorks2019].[dbo].[SalesOrderDetail].UnitPrice from stats with id 3
+Cardinality using multi-column statistics 0.001321 and with independence assumption 0.00281163. Picking cardinality 0.00281163
+Selectivity: 0.00281163
+Stats collection generated:
+  CStCollFilter(ID=3, CARD=341.098)
+      CStCollBaseTable(ID=1, CARD=121317 TBL: SalesOrderDetail)
+End selectivity computation
+------------trace flag 2363 output-----------------
+Версия CE-2016-db_compatibility_level=130
+      а) Формула расчёта селективности статистики по нескольким столбцам: min('Общая плотность,p0,p1,p2,p3)
+     b) «Общая плотность» — это плотность для всех столбцов в статистике по нескольким колонкам.
+     c) p0,p1,p2,p3 — селективность значений каждого из столбцов в предложении WHERE, и при этом p0<p1<p2<p3.
+     d) Если в статистике больше 4 столбцов, учитываются только первые 4, остальные игнорируются.
+Обратите внимание: если включен флаг трассировки 4199, то формула становится точно такой же, как для DB_compatibility_level 140/150.
+Для версии CE с уровнем совместимости базы 130 сделаем:
+alter database [AdventureWorks2019] set compatibility_level=130
+select * from SalesOrderDetail where ProductID=870 and UnitPrice=4.99 option(recompile)
+1)     Предполагаемое число строк 160.
+2)     Вот формула оценки предполагаемого числа строк: min('Общая плотность’,p0,p1)*cardinality
+a) Общая плотность двух столбцов: 0,001321004
+b) p0 — селективность статистики одного столбца (ProductID) в предложении where, которая равна 4688/121317=0,03864256.
+c) p1 — селективность статистики второго столбца (UnitPrice), которая составляет 8827/121317=0,07275979.
+d) кардинальность 121317
+dbcc show_statistics(SalesOrderDetail,I_ProductID_UnitPrice)
+dbcc show_statistics(SalesOrderDetail,I_UnitPrice)
+3) Давайте теперь подставим значения в формулу: min('Общая плотность двух столбцов',p0,p1) * количество элементов
+4) MIN(0,001321004,0,03864256,0,07275979)*121317=0,001321004*121317=160,260242268, округляется до 160.
+Чтобы получить более подробную информацию, нужно включить флаг трассировки 2363.
+Dbcc traceon(3604,2363,)
+------------trace flag 2363 output-----------------
+Loaded histogram for column QCOL: [AdventureWorks2019].[dbo].[SalesOrderDetail].ProductID from stats with id 2
+Loaded histogram for column QCOL: [AdventureWorks2019].[dbo].[SalesOrderDetail].UnitPrice from stats with id 3
+Selectivity: 0.001321
+Stats collection generated:
+  CStCollFilter(ID=3, CARD=160.26)
+      CStCollBaseTable(ID=1, CARD=121317 TBL: SalesOrderDetail)
+End selectivity computation
+------------trace flag 2363 output-----------------
+Версия CE-2014-db_compatibility_level=120
+ SQL 2014 не поддерживает статистики по нескольким столбцам, алгоритм такой же, как был описан в статье: SQL Server Cardinality Estimation: несколько статистик по одному столбцу. Формула такая: p0 * p1^(1/2) * p2^(1/4)* p3^(1/8)
+Обратите внимание: если включен флаг трассировки 4199, то формула становится точно такой же, как для DB_compatibility_level 140/150.
+Для получения версии CE с уровнем совместимости базы данных 120 сделаем:
+alter database [AdventureWorks2019] set compatibility_level=120
+select * from SalesOrderDetail where ProductID=870 and UnitPrice=4.99 option(recompile)
+1) Предполагаемое число строк 12650.
+2) Формула расчёта предполагаемого числа строк: p0 * p1^(1/2) *cardinality.
+a) Общая плотность двух столбцов: 0,001321004
+b) p0 — селективность статистики одного столбца (ProductID) в предложении where, которая равна 4688/121317=0,03864256.
+c) p1 — селективность статистики другого столбца (UnitPrice), которая составляет 8827/121317=0,07275979.
+d)  кардинальность 121317
+dbcc show_statistics(SalesOrderDetail,I_UnitPrice)
+3)     Давайте подставим значения в формулу: p0 * p1^(1/2)  * cardinality
+0,03864256*0,07275979^(1/2)*121317=0,0104235*121317=1264,547750, округляется до 1265.
+Чтобы получить более подробную информацию, нужно включить флаг трассировки 2363.
+Dbcc traceon(3604,2363,)
+------------trace flag 2363 output-----------------
+Loaded histogram for column QCOL: [AdventureWorks2019].[dbo].[SalesOrderDetail].ProductID from stats with id 2
+Loaded histogram for column QCOL: [AdventureWorks2019].[dbo].[SalesOrderDetail].UnitPrice from stats with id 3
+Selectivity: 0.0104235
+Stats collection generated:
+  CStCollFilter(ID=2, CARD=1264.54)
+      CStCollBaseTable(ID=1, CARD=121317 TBL: SalesOrderDetail)
+End selectivity computation
+------------trace flag 2363 output----------------- Автор Liwei Yin Liwei Yin Опубликовано 01.11.2022 В статье SQL Server Cardinality Estimation: несколько статистик по одному столбцу рассказывалось о том, как SQL Server вычисляет статистику по одному столбцу. Сегодня поговорим о статистике по нескольким столбцам. SQL Server Cardinality Estimation: несколько статистик по одному столбцу Ниже следует пример, и в этом примере используется OLTP база данных AdventureWorks2019. AdventureWorks2019 ------- Подготовка данных -------------------------------------------
+alter database [AdventureWorks2019] set compatibility_level=150
+go
+use [AdventureWorks2019]
+go
+if exists(select 1 from sys.tables where name='SalesOrderDetail')
+drop table SalesOrderDetail
+go
+select * into SalesOrderDetail from Sales.SalesOrderDetail-- импорт данных в новую таблицу
+Go
+-- Создаём две статистики вручную. Первая статистика по двум столбцам
+create statistics I_ProductID_UnitPrice on SalesOrderDetail(ProductID,UnitPrice) with fullscan
+create statistics I_UnitPrice  on SalesOrderDetail(UnitPrice) with fullscan
+------- Подготовка данных ------------------------------------------- ------- Подготовка данных -------------------------------------------
+alter database [AdventureWorks2019] set compatibility_level=150
+go
+use [AdventureWorks2019]
+go
+if exists(select 1 from sys.tables where name='SalesOrderDetail')
+drop table SalesOrderDetail
+go
+select * into SalesOrderDetail from Sales.SalesOrderDetail-- импорт данных в новую таблицу
+Go
+-- Создаём две статистики вручную. Первая статистика по двум столбцам
+create statistics I_ProductID_UnitPrice on SalesOrderDetail(ProductID,UnitPrice) with fullscan
+create statistics I_UnitPrice  on SalesOrderDetail(UnitPrice) with fullscan
+------- Подготовка данных ------------------------------------------- В разных версиях SQL Server Cardinality Estimation (далее СЕ) для разных уровней совместимости баз данных возможны не одинаковые оценки, т.е. оптимизатор может повести себя по-разному, и это будет продемонстрировано ниже для разных уровней совместимости.  Новая версия CE-2017/2019-db_compatibility_level >= 140 a) Избирательность (селективность) комбинированной статистики по нескольким столбцам вычисляется по формуле: MAX(min('All Density',p0,p1,p2,p3),p0*p1*p2*p3) формуле MAX(min(' All Density ',p0,p1,p2,p3),p0*p1*p2*p3) b) All Density (Общая плотность) комбинации столбцов для статистики по нескольким столбцам. p0,p1,p2,p3 — селективность значений каждого столбца в предложении WHERE, и при этом p0<p1<p2<p3. Общая плотность c) Если у статистики больше 4 столбцов, учитываются только первые 4, остальные игнорируются. CE для уровня совместимости 150 alter database [AdventureWorks2019] set compatibility_level=150
+select * from SalesOrderDetail where ProductID=870 and UnitPrice=4.99 option(recompile) alter database [AdventureWorks2019] set compatibility_level=150
+select * from SalesOrderDetail where ProductID=870 and UnitPrice=4.99 option(recompile)   1)     Расчетное число строк 341. 2)     Формула расчета числа строк: max(min('Общая плотность по двум столбцам',P1,P2),P1*P2)  * cardinality max(min('Общая плотность по двум столбцам',P1,P2),P1*P2) * cardinality a) Общая плотность по двум столбцам: 0,001321004 b) p0 — селективность статистики одного столбца (ProductID) в предложении where, которая равна 4688/121317=0,03864256. c) p1 — селективность статистики другого столбца (UnitPrice), которая составляет 8827/121317=0,07275979. d) Количество элементов (мощность, кардинальность) 121317 dbcc show_statistics(SalesOrderDetail,I_ProductID_UnitPrice) dbcc show_statistics(SalesOrderDetail,I_ProductID_UnitPrice)   dbcc show_statistics(SalesOrderDetail,I_UnitPrice) dbcc show_statistics(SalesOrderDetail,I_UnitPrice)   3) Подставим значения и отследим решение по формуле: max(min('Общая плотность по двум столбцам',p0,p1),p0*p1) *cardinality max(  min(0.001321004,0.03864256,0.07275979),0.03864256*0.07275979)*121317 =max(0.001321004,0.03864256*0.07275979)*121317 =max(0.001321004,0.0028116245506624)*121317 =0.0028116245506624*121317=341.09785561, округляем до 341. 4) Для получения более подробной информации, включим флаг трассировки 2363. Dbcc traceon(3604,2363)
+------------trace flag 2363 output-----------------
+Loaded histogram for column QCOL: [AdventureWorks2019].[dbo].[SalesOrderDetail].ProductID from stats with id 2
+Loaded histogram for column QCOL: [AdventureWorks2019].[dbo].[SalesOrderDetail].UnitPrice from stats with id 3
+Cardinality using multi-column statistics 0.001321 and with independence assumption 0.00281163. Picking cardinality 0.00281163
+Selectivity: 0.00281163
+Stats collection generated:
+  CStCollFilter(ID=3, CARD=341.098)
+      CStCollBaseTable(ID=1, CARD=121317 TBL: SalesOrderDetail)
+End selectivity computation
+------------trace flag 2363 output----------------- Dbcc traceon(3604,2363)
+------------trace flag 2363 output-----------------
+Loaded histogram for column QCOL: [AdventureWorks2019].[dbo].[SalesOrderDetail].ProductID from stats with id 2
+Loaded histogram for column QCOL: [AdventureWorks2019].[dbo].[SalesOrderDetail].UnitPrice from stats with id 3
+Cardinality using multi-column statistics 0.001321 and with independence assumption 0.00281163. Picking cardinality 0.00281163
+Selectivity: 0.00281163
+Stats collection generated:
+  CStCollFilter(ID=3, CARD=341.098)
+      CStCollBaseTable(ID=1, CARD=121317 TBL: SalesOrderDetail)
+End selectivity computation
+------------trace flag 2363 output----------------- Версия CE-2016-db_compatibility_level=130        а) Формула расчёта селективности статистики по нескольким столбцам: min('Общая плотность,p0,p1,p2,p3) : min('Общая плотность,p0,p1,p2,p3)      b) «Общая плотность» — это плотность для всех столбцов в статистике по нескольким колонкам.      c) p0,p1,p2,p3 — селективность значений каждого из столбцов в предложении WHERE, и при этом p0<p1<p2<p3.      d) Если в статистике больше 4 столбцов, учитываются только первые 4, остальные игнорируются. Обратите внимание: если включен флаг трассировки 4199, то формула становится точно такой же, как для DB_compatibility_level 140/150. Для версии CE с уровнем совместимости базы 130 сделаем: alter database [AdventureWorks2019] set compatibility_level=130
+select * from SalesOrderDetail where ProductID=870 and UnitPrice=4.99 option(recompile) alter database [AdventureWorks2019] set compatibility_level=130
+select * from SalesOrderDetail where ProductID=870 and UnitPrice=4.99 option(recompile)   1)     Предполагаемое число строк 160. 2)     Вот формула оценки предполагаемого числа строк: min('Общая плотность’,p0,p1)*cardinality min('Общая плотность’,p0,p1)*cardinality a) Общая плотность двух столбцов: 0,001321004 b) p0 — селективность статистики одного столбца (ProductID) в предложении where, которая равна 4688/121317=0,03864256. c) p1 — селективность статистики второго столбца (UnitPrice), которая составляет 8827/121317=0,07275979. d) кардинальность 121317 dbcc show_statistics(SalesOrderDetail,I_ProductID_UnitPrice) dbcc show_statistics(SalesOrderDetail,I_ProductID_UnitPrice)   dbcc show_statistics(SalesOrderDetail,I_UnitPrice) dbcc show_statistics(SalesOrderDetail,I_UnitPrice)   3) Давайте теперь подставим значения в формулу: min('Общая плотность двух столбцов',p0,p1) * количество элементов 4) MIN(0,001321004,0,03864256,0,07275979)*121317=0,001321004*121317=160,260242268, округляется до 160. Чтобы получить более подробную информацию, нужно включить флаг трассировки 2363. Dbcc traceon(3604,2363,)
+------------trace flag 2363 output-----------------
+Loaded histogram for column QCOL: [AdventureWorks2019].[dbo].[SalesOrderDetail].ProductID from stats with id 2
+Loaded histogram for column QCOL: [AdventureWorks2019].[dbo].[SalesOrderDetail].UnitPrice from stats with id 3
+Selectivity: 0.001321
+Stats collection generated:
+  CStCollFilter(ID=3, CARD=160.26)
+      CStCollBaseTable(ID=1, CARD=121317 TBL: SalesOrderDetail)
+End selectivity computation
+------------trace flag 2363 output----------------- Dbcc traceon(3604,2363,)
+------------trace flag 2363 output-----------------
+Loaded histogram for column QCOL: [AdventureWorks2019].[dbo].[SalesOrderDetail].ProductID from stats with id 2
+Loaded histogram for column QCOL: [AdventureWorks2019].[dbo].[SalesOrderDetail].UnitPrice from stats with id 3
+Selectivity: 0.001321
+Stats collection generated:
+  CStCollFilter(ID=3, CARD=160.26)
+      CStCollBaseTable(ID=1, CARD=121317 TBL: SalesOrderDetail)
+End selectivity computation
+------------trace flag 2363 output----------------- Версия CE-2014-db_compatibility_level=120   SQL 2014 не поддерживает статистики по нескольким столбцам, алгоритм такой же, как был описан в статье: SQL Server Cardinality Estimation: несколько статистик по одному столбцу. Формула такая: p0 * p1^(1/2) * p2^(1/4)* p3^(1/8) SQL Server Cardinality Estimation: несколько статистик по одному столбцу p0 * p1^(1/2) * p2^(1/4)* p3^(1/8) Обратите внимание: если включен флаг трассировки 4199, то формула становится точно такой же, как для DB_compatibility_level 140/150. Для получения версии CE с уровнем совместимости базы данных 120 сделаем: alter database [AdventureWorks2019] set compatibility_level=120
+select * from SalesOrderDetail where ProductID=870 and UnitPrice=4.99 option(recompile) alter database [AdventureWorks2019] set compatibility_level=120
+select * from SalesOrderDetail where ProductID=870 and UnitPrice=4.99 option(recompile)   1) Предполагаемое число строк 12650. 2) Формула расчёта предполагаемого числа строк: p0 * p1^(1/2) *cardinality. p0 * p1^(1/2  *cardinality. a) Общая плотность двух столбцов: 0,001321004 b) p0 — селективность статистики одного столбца (ProductID) в предложении where, которая равна 4688/121317=0,03864256. c) p1 — селективность статистики другого столбца (UnitPrice), которая составляет 8827/121317=0,07275979. d)  кардинальность 121317   dbcc show_statistics(SalesOrderDetail,I_UnitPrice) dbcc show_statistics(SalesOrderDetail,I_UnitPrice)   3)     Давайте подставим значения в формулу: p0 * p1^(1/2)  * cardinality p0 * p1^(1/2) * cardinality 0,03864256*0,07275979^(1/2)*121317=0,0104235*121317=1264,547750, округляется до 1265. Чтобы получить более подробную информацию, нужно включить флаг трассировки 2363. Dbcc traceon(3604,2363,)
+------------trace flag 2363 output-----------------
+Loaded histogram for column QCOL: [AdventureWorks2019].[dbo].[SalesOrderDetail].ProductID from stats with id 2
+Loaded histogram for column QCOL: [AdventureWorks2019].[dbo].[SalesOrderDetail].UnitPrice from stats with id 3
+Selectivity: 0.0104235
+Stats collection generated:
+  CStCollFilter(ID=2, CARD=1264.54)
+      CStCollBaseTable(ID=1, CARD=121317 TBL: SalesOrderDetail)
+End selectivity computation
+------------trace flag 2363 output----------------- Dbcc traceon(3604,2363,)
+------------trace flag 2363 output-----------------
+Loaded histogram for column QCOL: [AdventureWorks2019].[dbo].[SalesOrderDetail].ProductID from stats with id 2
+Loaded histogram for column QCOL: [AdventureWorks2019].[dbo].[SalesOrderDetail].UnitPrice from stats with id 3
+Selectivity: 0.0104235
+Stats collection generated:
+  CStCollFilter(ID=2, CARD=1264.54)
+      CStCollBaseTable(ID=1, CARD=121317 TBL: SalesOrderDetail)
+End selectivity computation
+------------trace flag 2363 output-----------------   ]]></text>
+</doc>

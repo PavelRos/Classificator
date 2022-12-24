@@ -1,0 +1,459 @@
+<?xml version="1.0" ?>
+<doc>
+	<label auto="true" type="str" verify="true"><![CDATA[Other]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Devchik]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-09-15, 18:25]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/company/kts/blog/687310/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Готовим Window Inset под соусом Jetpack Compose и щепоткой View]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Блог компании KTS]]></item>
+		<item type="str"><![CDATA[Разработка мобильных приложений]]></item>
+		<item type="str"><![CDATA[Разработка под Android]]></item>
+		<item type="str"><![CDATA[Kotlin]]></item>
+		<item type="str"><![CDATA[Дизайн мобильных приложений]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[kotlin]]></item>
+		<item type="str"><![CDATA[мобильные приложения]]></item>
+		<item type="str"><![CDATA[мобильная разработка]]></item>
+		<item type="str"><![CDATA[compose]]></item>
+		<item type="str"><![CDATA[jetpack compose]]></item>
+		<item type="str"><![CDATA[windowinsets]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[Привет! Меня зовут Тимур, я занимаюсь Android-разработкой в KTS.
+К сожалению, сейчас все еще встречаются Android-приложения, которые не поддерживают edge-to-edge. Складывается ощущение, что разработчики либо не знают о такой возможности, либо боятся работать с WindowInsets. На самом деле реализовать edge-to-edge не сложно, а благодаря этой статье вы сможете разобраться в этой теме в разы быстрее. 
+Сегодня я расскажу, что такое режим edge-to-edge в мобильных приложениях и как работать с WindowInsets в Android. Еще мы разберем примеры обработки insets не только во View, но и в Jectpack Compose.  Если статьи о том, как работать с insets в View, еще можно найти на просторах интернета, то информация о работе с ними в Jetpack Compose есть только в официальной документации. 
+Все примеры из статьи можно посмотреть в этом репозитории.
+Содержание:
+Что такое edge-to-edge?
+Этапы настройки edge-to-edge:
+Изменение цвета системного UI
+Отрисовка приложения под системным UI
+Устранение визуальных конфликтов 
+WindowInsets vs fitSystemWindow?
+Примеры обработки insets
+System Window Insets
+Ime Insets (Обработка клавиатуры)
+Stable Insets
+Immersive mode (Полноэкранный режим без элементов UI)
+Display Cutouts (Поддержка вырезов дисплея)
+System Gesture Insets
+Mandatory system gesture insets
+Tappable element insets
+Заключение
+Что такое edge-to-edge?
+
+В современном мире мобильные приложения все чаще отображаются на всей видимой поверхности дисплея, не ограничиваясь пользовательским интерфейсом системы. В таких приложениях используется подход edge-to-edge, который предполагает отрисовку приложения под системным UI, т.е. под Status Bar и Navigation Bar. 
+
+Спросите, зачем это нужно? Для того чтобы создать более привлекательный и современный пользовательский интерфейс. Согласитесь, всем будет приятнее пользоваться красивым приложением.
+
+Переходим к реализации edge-to-edge.
+Этапы настройки edge-to-edge
+Для реализации режима edge-to-edge в вашем приложении необходимо:
+изменить цвет системного UI;
+запросить отрисовку приложения под системным UI;
+устранить визуальные конфликты.
+Изменение цвета системного UI
+Начиная с Android 5 (API 21) появилась возможность задать цвет для Status Bar и Navigation Bar. Для этого нужно использовать следующие атрибуты темы:
+<item name="android:statusBarColor">@color/colorAccent</item>
+<item name="android:navigationBarColor">@color/colorAccent</item>
+Еще мы можем сделать цвет системного UI прозрачным или полупрозрачным. Чтобы добиться полупрозрачности, достаточно установить android:windowTranslucentStatus и android:windowTranslucentNavigation:
+<item name="android:windowTranslucentStatus">true</item>
+<item name="android:windowTranslucentNavigation">true</item>
+Чтобы добиться полностью прозрачного системного интерфейса, необходимо установить android:navigationBarColor и android:statusBarColor с прозрачным цветом и отключить контрастность с помощью следующих атрибутов android:enforceNavigationBarContrast, android:enforceStatusBarContrast. Отключение контрастности необходимо, потому что с 10 версии Android обеспечивает достаточную контрастность Navigation Bar.
+<item name="android:statusBarColor">@android:color/transparent</item>
+<item name="android:navigationBarColor">@android:color/transparent</item>
+<item name="android:enforceNavigationBarContrast">false</item>
+<item name="android:enforceStatusBarContrast">false</item>
+Вы можете заметить, что на скриншоте выше плохо видны кнопки на Navigation Bar. В Status Bar была бы та же проблема, если бы не пурпурный цвет. Чтобы исправить это, используйте атрибуты android:windowLightStatusBar, android:windowLightNavigationBar. Обратите внимание, что windowLightStatusBar доступен с 23 api, а windowLightNavigationBar с 27 api.
+В Jetpack Compose для изменения цвета вы можете использовать библиотеку System UI Controller, которая  предоставляет простые утилиты для изменения цвета системного UI. Изменить цвет системного интерфейса с помощью этой библиотеки можно так:
+private val BlackScrim = Color(0f, 0f, 0f, 0.3f) // 30% opaque black
+
+@Composable
+fun TransparentSystemBars() {
+   val systemUiController = rememberSystemUiController()
+   val useDarkIcons = MaterialTheme.colors.isLight
+   SideEffect {
+       systemUiController.setSystemBarsColor(
+           color = Color.Transparent,
+           darkIcons = useDarkIcons,
+           isNavigationBarContrastEnforced = false,
+           transformColorForLightContent = { original ->
+               BlackScrim.compositeOver(original)
+           }
+       )
+   }
+}
+Пример использования функции TransparentSystemBars:
+override fun onCreate(savedInstanceState: Bundle?) { 
+   super.onCreate(savedInstanceState)
+   WindowCompat.setDecorFitsSystemWindows(window, false)
+   setContent {
+       TransparentSystemBars()
+       Sample()
+   }
+}
+Метод setSystemBarsColor позволяет:
+установить цвет для системного UI;
+указать, когда использовать светлые или темные иконки;
+можно отключить контрастность с помощью isNavigationBarContrastEnforced;
+можно использовать лямбду transformColorForLightContent, которая будет вызвана для преобразования цвета, если запрошены темные значки, но они недоступны. По умолчанию применяется черная накладка (в примере выше в transformColorForLightContent приведено поведение по умолчанию, поэтому писать этого не нужно).
+Запросить отрисовку приложения  под системным UI
+Кроме изменения цвета системного интерфейса, нужно сказать системе, что приложение нужно отрисовывать на весь экран. Для этого в Android есть специальные флаги View SYSTEM_UI_FLAGS (далее UI_FLAGS). Они deprecated начиная с API 30, и теперь следует использовать новый класс WindowCompat, который проставляет требуемые флаги на более ранних версиях API.
+Запрос полноэкранного режима через WindowCompat выглядит так:
+WindowCompat.setDecorFitsSystemWindows(window, false)
+Если применить это в activity, фреймворк не будет подставлять insets для содержимого вашего приложения, и нам нужно будет сделать это вручную.
+Запрашивать режим отрисовки целесообразно для всего приложения (в onCreate() вашей activity, если вы используете подход single-activity). 
+В Jetpack Compose этот этап ничем не отличается.
+Устранить визуальные конфликты
+Если выполнить прошлые шаги и запустить приложение, можно увидеть, что система больше не учитывает место под системный UI. Теперь нам нужно сделать это самим:
+В приложениях под Android для обработки системного UI используются WindowInsets. Insets — это объект, представляющий из себя область окна, которая конфликтует с приложением. Конфликты могут быть разные, и для этого существуют разные типы insets (области обработки жестов, системные панели, челки и т.д.). 
+Для обработки insets используется класс WindowInsetsCompat с обратной совместимостью и удобным разделением на типы insets.
+Сама обработка заключается в прикреплении слушателя на View, в которой система передает объект insets. После получения объекта можно применить требуемые padding или margin на View:
+ViewCompat.setOnApplyWindowInsetsListener(navBar) { view, insets ->
+    val systemBarInsets = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+    view.updatePadding(
+        bottom = systemBarInsets.bottom,
+        left = systemBarInsets.left,
+        right = systemBarInsets.right
+    )
+    insets
+}
+В KTS мы используем библиотеку insetter, которая работает на базе этого подхода. В библиотеке реализован удобный Kotlin DSL applyInsetter для обработки insets.
+toolbar.applyInsetter {
+    type(navigationBars = true, statusBars = true) {
+        padding(horizontal = true, top = true)
+    }
+}
+В Jetpack Compose для установки instes ранее использовалась библиотека из репозитория accompanist, но она устарела, так как в Compose 1.2.0 теперь доступна официальная поддержка insets. Если вы уже использовали accompanist, то на сайте есть подробное руководство по миграции.
+TopAppBar(
+    contentPadding = WindowInsets.systemBars
+        .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top)
+        .asPaddingValues(),
+    backgroundColor = MaterialTheme.colors.primary
+) {
+    // content...
+}
+WindowInsets vs fitSystemWindow?
+В Android есть флаг fitSystemWindow. Если установить его в «true», то этот флаг добавляет padding для контейнера, у которого вы указали флаг. 
+FitsSystemWindows сбивает с толку многих разработчиков. Например, этот флаг работает с CoordinatorLayout и не работает для FrameLayout. FitsSystemWindows = true не перемещает ваш контент под строку состояния, но это работает для таких макетов, как CoordinatorLayout и DrawerLayout, потому что они переопределяют поведение по умолчанию. Под капотом они устанавливают флаги setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE  | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN) если fitsSystemWindows равен true. 
+SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN перемещает содержимое под строку состояния.
+SYSTEM_UI_FLAG_LAYOUT_STABLE обеспечивает применение максимально возможных системных insets, даже если текущие меньше этого.
+Если мы установим эти флаги к нашему rootLayout, то все должно заработать даже на FrameLayout.
+Также при использовании fitSystemWindow важна иерархия: если кто-то из родителей выставил этот флаг в «true», дальше его распространение учитываться не будет, потому что контейнер уже применил отступы.
+На самом деле это не все нюансы из-за которых использование флага fitSystemWindow не рекомендуется (о других проблемах можно почитать в этой статье), поэтому чтобы избежать различных проблем и не очевидного поведения, рекомендуется использовать WindowInsets.
+Примеры обработки insets
+System Window Insets
+Этот тип insets является основным. Они нужны, чтобы обрабатывать такие элементы как Status Bar и Navigation Bar. Например, если запросить отрисовку на весь экран, toolbar будет находиться под Status Bar.
+ В данном случае нам нужно установить insets для toolbar, который находится в AppBarLayout с пурпурным background. Это даст нам эффект продолжения AppBar за Status Bar. В примере ниже используется библиотека insetter.
+toolbar.applyInsetter {
+   type(navigationBars = true, statusBars = true) {
+       padding(horizontal = true)
+       margin(top = true)
+   }
+}
+В Jetpack Compose такого же эффекта можно добиться, установив insets в contentPadding compose функции TopAppBar. В данном примере мы используем WindowInsets.systemBars для горизонтали и верха, чтобы во время поворота экрана Navigation Bar не перекрывала начало заголовка или кнопку выхода.
+TopAppBar(
+    contentPadding = WindowInsets.systemBars
+        .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top)
+        .asPaddingValues(),
+    backgroundColor = MaterialTheme.colors.primary
+) {
+    // content...
+}
+Также в Jetpack Compose есть множество extensions для Modifier, такие как systemBarsPadding(), navigationBarsPadding(), statusBarsPadding() и другие. 
+После установки insets toolbar будет выглядеть так:
+Ime Insets (Обработка клавиатуры)
+Обработка клавиатуры осуществляется с помощью WindowInsetsCompat.Type.ime(). Также для ime insets можно дополнительно обработать анимацию появления/скрытия клавиатуры с помощью нового API ViewCompat.setWindowInsetsAnimationCallback. Подробнее про возможности анимации ime insets тут.
+Вызов setWindowInsetsAnimationCallback реализован в библиотеке insetter (активация происходит через флаг animated на padding/margin) и позволяет дополнительно связать анимацию не только с View, на которой вызывается DSL, но и с другими View для того, чтобы синхронизировать анимацию на нескольких элементах UI (метод syncTranslationTo).
+Пример обработки клавиатуры с анимацией с помощью insetter.
+private fun setupInsets() = with(binding) {
+   messageWrapper.applySystemBarsImeInsetter(syncTranslationView = list) {
+       margin(horizontal = true, bottom = true, animated = true)
+   }
+}
+
+inline fun View.applySystemBarsImeInsetter(
+   syncTranslationView: View? = null,
+   crossinline insetterApply: InsetterApplyTypeDsl.() -> Unit
+) {
+   applyInsetter {
+       type(ime = true, navigationBars = true, statusBars = true) {
+           insetterApply()
+       }
+       syncTranslationView?.let {
+           syncTranslationTo(it)
+       }
+   }
+}
+Чтобы добиться такого эффекта в Jetpack Compose, вам нужно использовать  функцию расширения imePadding() для Modifier (не забудьте сделать inset для Navigation Bar с помощью navigationBarsPadding()):
+@Composable
+fun BottomEditText(
+    placeholderText: String = "Type text here..."
+) {
+    val text = rememberSaveable(stateSaver = TextFieldValue.Saver) {
+        mutableStateOf(TextFieldValue(""))
+    }
+    Surface(elevation = 1.dp) {
+        OutlinedTextField(
+            value = text.value,
+            onValueChange = { text.value = it },
+            placeholder = { Text(text = placeholderText) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+                .navigationBarsPadding()
+                .imePadding()
+        )
+    }
+}
+Jetpack Compose также позволяет открыть клавиатуру скроллом с помощью imeNestedScroll():
+LazyColumn(
+    contentPadding = contentPadding,
+    reverseLayout = true,
+    modifier = Modifier
+        .weight(1f)
+        .imeNestedScroll()
+) {
+    items(listItems) { SampleListItem(it) }
+}
+Stable Insets
+Stable Insets полезны только в полноэкранных приложениях, таких как видеоплееры, галереи и игры. Например, в режиме проигрывания плеера вы могли заметить, что у вас прячется весь системный UI, в том числе Status Bar, который перемещается за край экрана. Но стоит коснуться экрана, как Status Bar появится сверху. Особенность insets в галерее или плеере в том, что при показе/скрытии системного UI к View приходят пустые insets (когда системный UI скрыт). Из-за этого элементы Ui приложения, которые обрабатывают insets, могут подпрыгивать как на гифке ниже.
+Поэтому существует специальный тип Stable Insets, который система всегда выдает со значениями, как будто системный UI показывается. В insetter предусмотрен метод ignoreVisibility, который говорит системе отдавать Stable Insets для этого View.
+toolbar.applyInsetter {
+    type(navigationBars = true, statusBars = true) {
+        padding(horizontal = true)
+            margin(top = true)
+    }
+    ignoreVisibility(true)
+}
+На удивление, в Jetpack Compose нет никакого готового решения для Stable Insets, но мы можем реализовать его следующим образом:
+class StableStatusBarsInsetsHolder {
+   private var stableStatusBarsInsets: WindowInsets = WindowInsets(0.dp)
+
+   val stableStatusBars: WindowInsets
+       @Composable
+       get() {
+           val density = LocalDensity.current
+           val layoutDirection = LocalLayoutDirection.current
+           val statusBars = WindowInsets.statusBars
+           return remember {
+               derivedStateOf {
+                   if (statusBars.exclude(stableStatusBarsInsets).getTop(density) > 0) {
+                       stableStatusBarsInsets 
+                                   = statusBars.deepCopy(density, layoutDirection)
+                   }
+                   stableStatusBarsInsets
+               }
+           }.value
+       }
+ 
+}
+
+private fun WindowInsets.deepCopy(density: Density, layoutDirection: LayoutDirection): WindowInsets {
+   return WindowInsets(
+       left = getLeft(density, layoutDirection),
+       top = getTop(density),
+       right = getRight(density, layoutDirection),
+       bottom = getBottom(density)
+   )
+}
+Пример использования:
+val stableInsetsHolder = remember { StableStatusBarsInsetsHolder()}
+SampleTopBar(
+   titleRes = R.string.insets_sample_fullscreen_stable,
+   contentPadding = stableInsetsHolder.stableStatusBars
+       .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top)
+       .asPaddingValues(),
+)
+Теперь, когда мы используем Stable Insets, обрабатывающие insets элементы не подпрыгивают.
+Immersive mode (Полноэкранный режим без элементов UI)
+Чтобы показать или скрыть Ui вместо проставления определённых комбинаций UI_FLAGS, начиная с API 30 используется новый класс WindowInsetsController (его compat-версия WindowInsetsControllerCompat), который имеет удобное API на базе новых классов API 30.
+Каким образом можно вернуть системный Ui на экран, задается с помощью флагов WindowInsetsController (установка через метод setSystemBarsBehavior):
+BEHAVIOR_SHOW_BARS_BY_SWIPE — Для возврата SystemUi требуется свайп, убирать самостоятельно;
+BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE — Для возврата системного Ui требуется свайп, скрытие автоматически через некоторое время.
+Есть следующие extension-функции с возможностью добавления вызовов на WindowInsetsController через extraAction.
+Для скрытия UI
+fun Window.hideSystemUi(extraAction:(WindowInsetsControllerCompat.() -> Unit)? = null) {
+    WindowInsetsControllerCompat(this, this.decorView).let { controller ->
+        controller.hide(WindowInsetsCompat.Type.systemBars())
+        extraAction?.invoke(controller)
+    }
+}
+
+// Usage
+hideSystemUi{
+    systemBarsBehavior =
+    WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+}
+Для показа UI
+fun Window.showSystemUi(extraAction: (WindowInsetsControllerCompat.() -> Unit)? = null) {
+    WindowInsetsControllerCompat(this, this.decorView).let { controller ->
+        controller.show(WindowInsetsCompat.Type.systemBars())
+        extraAction?.invoke(controller)
+    }
+}
+
+// Usage
+showSystemUi()
+В Jetpack Compose, чтобы скрыть или показать пользовательский интерфейс системы, вы можете использовать rememberSystemUiController() из библиотеки accompanist systemui controller.
+val systemUiController = rememberSystemUiController()
+
+InsetsExamplesTheme {
+   FullscreenCutoutSample(
+       systemUiController.toggleUi
+   )
+}
+
+val SystemUiController.toggleUi: () -> Unit
+   get() = {
+       isSystemBarsVisible = !isSystemBarsVisible
+   }
+Но эта библиотека не позволяет изменять флаги WindowInsetsControllerCompat. Поэтому был написан класс на основе rememberSystemUiController() из accompanist systemui controller. В этой имплементации для WindowInsetsControllerCompat устанавливается BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE.
+Пример
+Пример использования:
+val systemUiVisibilityController = rememberSystemUiVisibilityController()
+InsetsExamplesTheme {
+   FullscreenCutoutSample(
+       systemUiVisibilityController.toggleUi
+   )
+}
+Display Cutouts (Поддержка вырезов дисплея)
+Все чаще на телефонах стали появляться челки и вырезы, которые могут находиться в разных местах экрана, могут быть разных размеров и форм.
+В android 9 (api 28) появился класс DisplayCutout, который позволяет обработку области вырезов. Помимо этого, есть набор флагов у WindowManager.LayoutParams, которые позволяют включать разное поведение вокруг вырезов.
+Для установки флагов используется layoutInDisplayCutoutMode, определяющий, как ваш контент отображается в области вырезов. Существуют следующие значения:
+LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT — в портретном режиме содержимое отображается  под областью выреза в портретном режиме, а в альбомном режиме будет черная полоса.
+LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES — Содержимое отображается в области выреза как в портретном, так и в альбомном режимах.
+LAYOUT_IN_DISPLAY_CUTOUT_MODE_NEVER — Содержимое никогда не отображается в области выреза.
+LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS — В этом режиме окно расширяется под вырезами по всем краям дисплея как в портретной, так и в альбомной ориентации, независимо от того, скрывает ли окно системные панели ( LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES полный аналог, но доступен с 28 api, когда LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS появился только в 30 api).
+Подробнее об этих флагах можно прочитать в официальном гайде здесь.
+Пример использования:
+if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+    window.attributes.layoutInDisplayCutoutMode =  WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+}
+В библиотеке insetter есть флаг для displayCutout, поэтому вы можете обработать padding и margin от области выреза. 
+applyInsetter {
+   type(displayCutout = true) {
+       // укажите нужные вам стороны 
+       // например padding(top = true)
+       padding() 
+   } 
+}
+В Jetpack Compose вам также нужно использовать layoutInDisplayCutoutMode чтобы установить режим для DisplayCotout. В compose для обработки padding можно использовать WindowInsets.displayCutout или Modifier.displayCutoutPadding().
+Если вам вдруг понадобится получить зону выреза, то для этого вы можете использовать DisplayCutoutCompat.getBoundingRects(). Этот метод возвращает список прямоугольников каждый из которых является ограничивающим прямоугольником для нефункциональной области на дисплее. 
+ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
+   val boundingRects = insets.displayCutout?.boundingRects
+   insets
+}
+В Jetpack Compose с помощью WindowInsets.displayCutout получить  boundingRects нельзя.
+Я считаю, что располагать элементы относительно выреза не имеет смысла по следующим причинам:
+там где нет выреза находится информация из Status Bar (время, иконки);
+api возвращает список, а значит вырезов может быть несколько;
+вырезы бываю разных форм и размеров.
+В общем все говорит о том, что так лучше не делать, но если очень надо, то сделать можно. 
+System Gesture Insets
+Этот вид insets появился в Android 10  и возвращает области жестов домой снизу и назад справа и слева от экрана. 
+Если у вас есть элементы прокрутки в этих зонах, то пользователи могут случайно вызвать, например, жест назад. Поэтому если вы не можете отодвинуть элемент интерфейса от края, но вам нужно устранить проблему с жестами, используйте данный вид insets. 
+Например: на гифке ниже пользователь хочет сделать скролл и без исключения жестов будет вызывать выход. Также всегда стоит помнить, что большие зоны с исключением жестов могут привести к непонятному поведению для пользователя, поэтому стоит исключать жесты только в тех местах, где это необходимо. Если рассматривать пример ниже, то исключение жестов должно выполняется только для элемента с горизонтальным скроллом.
+К сожалению, я не нашел способа исключить жесты с помощью библиотеки insetter, поэтому пришлось использовать стандартные инструменты. В примере ниже мы исключаем жесты для BottomSheetBehavior, когда он находится в развернутом состоянии и включаем, когда BottomSheetBehavior свернут. 
+
+Во время реализации примера для View я столкнулся с проблемой, что windowInsets.getInsets(WindowInsetsCompat.Type.systemGestures())возвращает пустое значение. Я долго мучился с этим, пока не решил запустить пример на эмуляторе и не увидел, что все работает. Чтобы уж точно удостовериться, я скинул apk своим коллегам и получил в ответ - все работает. Проблема была в том, что я тестировал пример на своем устройстве (Realme c21). Вендоры как обычно шалят.
+Код
+Чтобы исключить жесты в Jetpack Compose, вы можете использовать Modifier.systemGestureExclusion().
+LazyRow(
+   modifier = Modifier
+       .padding(vertical = 16.dp)
+       .systemGestureExclusion(),
+   contentPadding = PaddingValues(horizontal = 16.dp),
+   horizontalArrangement = Arrangement.spacedBy(16.dp)
+) {
+    //...
+}
+Mandatory System Gesture Insets
+Данный тип insets появился в Android 10 и является подтипом System Gesture Insets. Они указывают области экрана, где поведение системного жеста будет всегда в приоритете над жестами в приложении. Обязательные зоны жестов никогда не могут быть исключены приложениями (с android 10 обязательной зоной жестов является зона с жестом домой). Обязательные insets отодвигают контент от обязательных вставок жестов. Например, если у вас есть seekbar снизу экрана, вам необходимо использовать Mandatory System Gesture Insets, чтобы избежать вызова жестов.
+В View обязательные insets можно обработать с помощью библиотеки insetter: 
+seekBar.applyInsetter {
+   type(mandatorySystemGestures = true) {
+       padding(bottom = true)
+   }
+}
+В Jetpack Compose обязательные жесты можно получить с помощью  WindowInsets.mandatorySystemGestures:
+Surface(
+   modifier = Modifier
+       .fillMaxWidth()
+       .windowInsetsPadding(
+           WindowInsets.mandatorySystemGestures
+               .only(WindowInsetsSides.Bottom)
+               .union(
+                   WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal)
+               )
+       ),
+   color = Color.LightGray.copy(alpha = 0.3f)
+) {
+   // content
+}
+Tappable element insets
+Данный тип вставки появился в android 10 и нужен для обработки разных режимов Navigation Bar. Данный вид insets редко кто использует, потому что отличия от system window insets минимальны. Но согласитесь, приятно осознавать, что ваше приложение написано максимально круто. 
+На картинке ниже вы можете видеть, что tappable element insets и system window insets действуют одинаково, когда устройство настроено на навигацию с помощью кнопок. Отличие можно заметить только в режиме навигации с помощью жестов.
+Дело в том, что при навигации жестами мы не нажимаем, а делаем свайп снизу вверх. Это говорит о том, что мы можем использовать в этой зоне интерактивные элементы (например FloatingActionButton), а это значит, что отступ делать не нужно и tappable element insets вернет 0.
+Пример использования c view (все также используем библиотеку insetter):
+fab.applyInsetter {
+   type(tappableElement = true) {
+       margin(bottom = true)
+   }
+}
+В Jetpack Compose используем WindowInsets.tappableElement:
+Scaffold(
+   floatingActionButton = {
+      FloatingActionButton(
+          modifier = Modifier.padding(
+              bottom = WindowInsets.tappableElement
+                  .only(WindowInsetsSides.Bottom)
+                  .asPaddingValues()
+                  .calculateBottomPadding()
+          ),
+          backgroundColor = backgroundColor,
+          onClick = onClick
+      ) {
+          Icon(
+              imageVector = Icons.Filled.Add,
+              contentDescription = null
+          )
+      }
+){ // content... }
+Заключение
+Весь код из статьи можно посмотреть в этом репозитории. 
+Мы рассмотрели нюансы реализации e2e в мобильных приложениях на Android и пример реализации с помощью библиотеки insetter для View, а также использовали встроенные insets в Jetpack Compose. В этой статье я хотел донести до всех android разработчиков, что e2e на самом деле очень прост в реализации, а результат стоит затраченного времени. Я надеюсь, что эта статья была вам полезна, и все больше и больше разработчиков будут внедрять e2e в свои приложения.
+Реализуете ли вы edge-to-edge в своих приложениях? Используете ли вы библиотеки для работы с insets? С какими проблемами сталкивались при реализации edge-to-edge?
+Выражаем благодарность Вадиму (@vad99lord) за помощь в подготовке статьи.   Привет! Меня зовут Тимур, я занимаюсь Android-разработкой в KTS. KTS KTS К сожалению, сейчас все еще встречаются Android-приложения, которые не поддерживают edge-to-edge. Складывается ощущение, что разработчики либо не знают о такой возможности, либо боятся работать с WindowInsets. На самом деле реализовать edge-to-edge не сложно, а благодаря этой статье вы сможете разобраться в этой теме в разы быстрее.  edge-to-edge WindowInsets edge-to-edge   Сегодня я расскажу, что такое режим edge-to-edge в мобильных приложениях и как работать с WindowInsets в Android. Еще мы разберем примеры обработки insets не только во View, но и в Jectpack Compose.  Если статьи о том, как работать с insets в View, еще можно найти на просторах интернета, то информация о работе с ними в Jetpack Compose есть только в официальной документации.  edge-to-edge WindowInsets View , Jectpack Compose . insets View Jetpack Compose Все примеры из статьи можно посмотреть в этом репозитории. этом Содержание: Что такое edge-to-edge?
+Этапы настройки edge-to-edge:
+Изменение цвета системного UI
+Отрисовка приложения под системным UI
+Устранение визуальных конфликтов 
+WindowInsets vs fitSystemWindow?
+Примеры обработки insets
+System Window Insets
+Ime Insets (Обработка клавиатуры)
+Stable Insets
+Immersive mode (Полноэкранный режим без элементов UI)
+Display Cutouts (Поддержка вырезов дисплея)
+System Gesture Insets
+Mandatory system gesture insets
+Tappable element insets
+Заключение Что такое edge-to-edge? Что такое edge-to-edge? Что такое edge-to-edge? Этапы настройки edge-to-edge:
+Изменение цвета системного UI
+Отрисовка приложения под системным UI
+Устранение визуальных конфликтов  Этапы настройки edge-to-edge: Этапы настройки edge-to-edge: Изменение цвета системного UI
+Отрисовка приложения под системным UI
+Устранение визуальных конфликтов  Изменение цвета системного UI Изменение цвета системного UI Изменение цвета системного UI Отрисовка приложения под системным UI Отрисовка приложения под системным UI Отрисовка приложения под системным UI Устранение визуальных конфликтов  Устранение визуальных конфликтов  Устранение визуальных конфликтов  WindowInsets vs fitSystemWindow? WindowInsets vs fitSystemWindow? WindowInsets vs fitSystemWindow? Примеры обработки insets
+System Window Insets
+Ime Insets (Обработка клавиатуры)
+Stable Insets
+Immersive mode (Полноэкранный режим без элементов UI)
+Display Cutouts (Поддержка вырезов дисплея)
+System Gesture Insets
+Mandatory system gesture insets
+Tappable element insets Примеры обработки insets Примеры обработки insets]]></text>
+</doc>

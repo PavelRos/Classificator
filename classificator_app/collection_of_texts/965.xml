@@ -1,0 +1,433 @@
+<?xml version="1.0" ?>
+<doc>
+	<original_author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Oscar Jite-Orimiono]]></item>
+	</original_author>
+	<label auto="true" type="str" verify="true"><![CDATA[Other]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Anastasia_rova]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-09-25, 20:31]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/company/netologyru/blog/690042/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Стили заголовков в CSS: картинки, тени, анимации]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Блог компании Нетология]]></item>
+		<item type="str"><![CDATA[Веб-дизайн]]></item>
+		<item type="str"><![CDATA[Разработка веб-сайтов]]></item>
+		<item type="str"><![CDATA[CSS]]></item>
+		<item type="str"><![CDATA[HTML]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[css]]></item>
+		<item type="str"><![CDATA[верстка]]></item>
+		<item type="str"><![CDATA[вёрстка]]></item>
+		<item type="str"><![CDATA[верстка сайтов]]></item>
+		<item type="str"><![CDATA[разработка сайтов]]></item>
+		<item type="str"><![CDATA[разработка сайта]]></item>
+		<item type="str"><![CDATA[веб-дизайн]]></item>
+		<item type="str"><![CDATA[web-разработка]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[Задача заголовка — привлекать внимание, и для этого многие эффекты хороши. В прошлый раз мы перевели статью о градиентах, теперь предлагаем рассмотреть ещё несколько фишек. 
+Как добавить изображение за текстом в CSS
+Простая возможность: вместо того чтобы рисовать изображение или создавать градиенты, можно поместить на фон текста заголовка готовую картинку с помощью функции  url().
+Для начала выбираем картинку:
+Используем свойство background-image и url() , чтобы добавить изображение в заголовок.  Для настройки расположения также есть свойства background-size и background-repeat.
+header h1 {
+  font-size: 70px;
+  font-weight: 600;
+  background-image: url(/rockets.png);
+  background-size: 250px;
+  background-repeat: repeat;
+  color: transparent;
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+Вот что выйдет:
+Как добавить тени к тексту в CSS
+Тень вокруг текста появляется благодаря свойству text-shadow:
+text-shadow: 0px 4px 10px rgba(179, 147, 211, 0.8)
+В свойстве четыре значения:
+x-offset, расположение тени по горизонтали.
+y-offset, расположение тени по вертикали.
+Радиус размытия, который определяет, насколько тёмной будет тень.
+Цвет.
+Text-shadow можно стилизовать так же, как свойство box-shadow. Но при работе с box-shadow меняется весь блок, а text-shadow подходит для точечной настройки каждой буквы.
+Один из лучших способов добавить тени — наслоение. Вот как придать заголовку эффект многослойной тени:
+ text-shadow: 2px 2px 4px rgba(179, 147, 211, 0.1),
+               3px 4px 4px rgba(179, 147, 211, 0.15),
+               4px 6px 4px rgba(179, 147, 211, 0.2),
+               5px 8px 4px rgba(179, 147, 211, 0.25);
+Вот что получится:
+Используя многослойные тени, можно сделать текст заголовка светящимся. Начнём с добавления темного на background-color. Установим значение смещения для text-shadow на 0 и радиус размытия — от этого свечение будет распространяться равномерно вокруг каждой буквы. Наконец, выбираем яркий цвет для text-shadow и добавляем несколько слоёв.
+body {
+  background-color: #301934;
+}
+header h1 {
+  font-size: 70px;
+  font-weight: 600;
+  color: #fdfdfe;
+  text-shadow: 0px 0px 5px #b393d3, 0px 0px 10px #b393d3, 0px 0px 10px #b393d3,
+    0px 0px 20px #b393d3;
+}
+Результат:
+Тест заголовка 3D
+Лучше выбирать жирный или полужирный шрифт, как Roboto Из Google Fonts. Вот что можно сделать:
+Для создания этого эффекта нужно две группы многослойных теней.
+Во-первых, группа однотонных слоёв text-shadow с небольшим размытием и непрозрачностью — они создадут края текста.
+Во-вторых, тени с более широкими смещениями и радиусами размытия в цветах rgba():
+text-shadow: 1px 1px 1px #957dad,
+             1px 2px 1px #957dad,
+             1px 3px 1px #957dad,
+             1px 4px 1px #957dad,
+             1px 5px 1px #957dad,
+             1px 6px 1px #957dad,
+             1px 10px 5px rgba(16, 16, 16, 0.5),
+             1px 15px 10px rgba(16, 16, 16, 0.4),
+             1px 20px 30px rgba(16, 16, 16, 0.3),
+             1px 25px 50px rgba(16, 16, 16, 0.2);
+Текст прописными буквами будет выделяться сильнее. Полный синтаксис:
+@import url('https://fonts.googleapis.com/css2?family=Roboto&display=swap');
+
+header h1 {
+  font-size: 70px;
+  font-weight: 600;
+  font-family: 'Roboto', sans-serif;
+  color: #b393d3;
+  text-transform: uppercase;
+  text-shadow: 1px 1px 0px #957dad,
+               1px 2px 0px #957dad,
+               1px 3px 0px #957dad,
+               1px 4px 0px #957dad,
+               1px 5px 0px #957dad,
+               1px 6px 0px #957dad,
+               1px 10px 5px rgba(16, 16, 16, 0.5),
+               1px 15px 10px rgba(16, 16, 16, 0.4),
+               1px 20px 30px rgba(16, 16, 16, 0.3),
+               1px 25px 50px rgba(16, 16, 16, 0.2);
+}
+Добавляем многоцветный слой text-shadow 
+Для забавных эффектов подходят забавные шрифты, поэтому в примере Niconne.
+Берём предыдущий пример и удаляем вторую групп теней, сохранив однотонные, а потом смешиваем цвета.
+@import url('https://fonts.googleapis.com/css2?family=Niconne&display=swap');
+
+header h1 {
+  font-size: 90px;
+  font-weight: 600;
+  font-family: 'Niconne', cursive;
+  color: #e0d6e9;
+  text-shadow: 2px 2px 0px  #957dad,
+               4px 4px 0px #ee4b2b,
+               6px 6px 0px #00c2cb,
+               8px 8px 0px #ff7f50,
+               10px 10px 0px #553c9a;
+}
+Результат:
+Проверяем, что смещения text-shadow расположены равномерно, а текст не перекосило. Можно «поиграть со шрифтами»: настроить font-size и font-weight и поменять цвета.
+Эффект пишущей машинки в HTML и CSS
+Анимация, при которой каждая буква появляется по очереди.
+Для красоты нужен короткий заголовок в одну строчку и шрифт с фиксированным межбуквенным расстоянием: Courier, Inconsolata, Anonymous Pro, Source Code Pro.
+Задаём заголовок в HTML:
+ <body>
+    <header>
+        <h1>This is a Header</h1>
+    </header>
+  </body>
+Теперь стилизуем. Добавляем мигающий курсор в конце текста с помощью свойства border-right:
+header h1 {
+  font-size: 70px;
+  font-weight: 500;
+  color: #553c9a;
+  border-right: 4px solid #000; /*This will be the blinking cursor*/
+}
+Вот что выйдет:
+Определяем два свойства animation для текста заголовка и курсора. Называем мигающую анимацию cursor.
+animation: cursor 1s infinite step-end;
+Для определения анимации используем @keyframes. Мигать — переходить из видимого в скрытое, так что используем свойство border-color и определяем пойнты, когда оно скрыто, прозрачно, видимо.
+@keyframes cursor{
+  0%, 100%{border-color: transparent;}
+  50%{border-color: #000;}
+}
+Анимация будет длиться 1 секунду. В начале свойство border-color прозрачное, как определено @keyframes. В середине — на 50% от 1 секунды — оно чёрное, а затем снова прозрачное. Это анимация в бесконечном цикле.
+По умолчанию курсор будет появляться и исчезать плавно — это не тот эффект, который нам нужен. Поэтому время animation устанавливаем на step-end. То есть animation будет резко переходить к каждому пойнту , установленному @keyframes.
+Добавляем анимацию пишущей машинки CSS
+Используйте свойство width с единицей измерения ch — количеством символов в заголовке.
+Используем функцию step, устанавливаем количество пойнтов, равное количеству символов.
+animation: cursor 1s infinite step-end, typing 15s infinite steps(16);
+white-space: nowrap;
+overflow: hidden;
+Свойство white-space предотвратит наложение слов и букв друг на друга, свойство overflow: hidden сохранит буквы невидимыми, пока они не будут «набраны» на странице.
+Теперь определим каждый шаг в анимации.
+@keyframes typing{
+  0%{ width: 0ch} /*Text is hidden*/
+  30%{ width: 16ch;} /*The enitre header will be typed out 1 character at a time*/
+  80%{ width: 16ch;} /*Text stays visible*/
+  90%{ width: 0ch;} /*Text is deleted*/
+  100%{ width: 0ch;} /*Text stays hidden*/
+}
+Итог:
+Множественная анимация набора текста
+Другой вариант метода — заменить слова в заголовке с помощью неупорядоченного списка ul. Набранные слова попадут в список.
+Создаём HTML и решаем, какая часть заголовка будет fixed, а какая — typed:
+<body>
+      <div class="header">
+        <div class="fixed">This is a</div>
+        <ul class="typed">
+          <li><span>Caption</span></li>
+          <li><span>Title</span></li>
+          <li><span>Header</span></li>
+        </ul>
+      </div>
+</body>
+Задаём значение inline-flex для display, чтобы выровнять фиксированный текст и список. Стилизуем.
+.header{
+  display: inline-flex;
+}
+.header .fixed {
+  font-size: 70px;
+  font-weight: 500;
+  color: #b393d3;
+}
+.header .typed{
+  margin-left: 20px;
+  line-height: 90px;
+  height: 90px;
+}
+.header .typed li{
+  color: #553c9a;
+  font-size: 70px;
+  font-weight: 600;
+  list-style: none;
+  position: relative;
+  top: 0;
+}
+Теперь создаём псевдоэлемент ::before для слов, заключённых в тег span.
+.header .typed li span{
+  position: relative;
+}
+.header .typed li span::before{
+  content: '';
+  position: absolute;
+  height: 100%;
+  width: 100%;
+  left: 0;
+  border-left: 2px solid #553c9a;/*Blinking cursor*/
+}
+Получаем:
+Теперь animation. Курсор, как в прошлом примере, свяжем со span.  Спрячем слова, которые будем «печатать», добавив background того же цвета, что и фон страницы.
+.header .typed li span::before{
+  content: '';
+  position: absolute;
+  height: 100%;
+  width: 100%;
+  left: 0;
+  border-left: 2px solid #553c9a;
+  background: #fdfdfe;
+  animation: cursor 1s infinite step-end, typing 1.5s steps(8) infinite;
+}
+Переходим к @keyframes:
+@keyframes cursor{
+  0%, 100%{border-color: transparent;}
+  50%{border-color: #553c9a;}
+}
+@keyframes typing{
+  100%{ left: 8ch;} /*Use the number of characters in the longest word*/
+}
+Буквы в заголовке будут открываться по одной по мере перемещения курсора по горизонтали.
+Добавляем ещё одну анимацию для списка typed:
+animation: slide 4.5s steps(3) infinite;
+Опять @keyframes. Используем slide, чтобы открывать слова пошагово:
+@keyframes slide{
+  100%{
+    top: -270px;/*Height of the words times 3*/
+  }
+}
+>
+Обратите внимание на продолжительность анимации, чтобы эффекты не вступали в противоречие друг с другом. 
+Градиентная текстовая анимация в CSS
+Градиенты можно поднять на новый уровень, просто добавим анимацию. Создадим бесконечную анимацию для linear-gradient(). Создаём заголовок с как минимум тремя значениями цвета в градиенте. В примере — пять:
+background-image: linear-gradient(to right ,#553c9a, #ee4b2b, #00c2cb, #ff7f50, #553c9a);
+По крайней мере два цвета должны быть видны в тексте заголовка в начале анимации. Настраиваем background-size и background-position, ищем подходящие значения:
+background-size: 200%;
+background-position: -200%;
+Добавляем свойство animation и @keyframes, ориентируемся на background-position.
+animation: animated-gradient 2s infinite alternate-reverse;
+
+
+@keyframes animated-gradient{
+  to{
+    background-position: 200%;
+  }
+}
+По сути, перемещаем фон с изначальной позиции на противоположную и обратно. Вот что выходит:
+Устанавливаем анимацию градиента на :hover. Заменяем animation свойством transition.
+transition: all ease-in-out 2s;
+Потом добавляем псевдоэлемент :hover:
+header h1:hover{
+  background-position: 200%;
+}
+Наводим курсор на текст, проверяем.
+И идём делать яркие заголовки, которые привлекают внимание. Задача заголовка — привлекать внимание, и для этого многие эффекты хороши. В прошлый раз мы перевели статью о градиентах, теперь предлагаем рассмотреть ещё несколько фишек.  перевели статью о градиентах Как добавить изображение за текстом в CSS Простая возможность: вместо того чтобы рисовать изображение или создавать градиенты, можно поместить на фон текста заголовка готовую картинку с помощью функции  url(). Для начала выбираем картинку:   Используем свойство background-image и url() , чтобы добавить изображение в заголовок.  Для настройки расположения также есть свойства background-size и background-repeat. background-image url() background-size background-repeat header h1 {
+  font-size: 70px;
+  font-weight: 600;
+  background-image: url(/rockets.png);
+  background-size: 250px;
+  background-repeat: repeat;
+  color: transparent;
+  -webkit-background-clip: text;
+  background-clip: text;
+} header h1 {
+  font-size: 70px;
+  font-weight: 600;
+  background-image: url(/rockets.png);
+  background-size: 250px;
+  background-repeat: repeat;
+  color: transparent;
+  -webkit-background-clip: text;
+  background-clip: text;
+} Вот что выйдет:   Как добавить тени к тексту в CSS Тень вокруг текста появляется благодаря свойству text-shadow: text-shadow text-shadow: 0px 4px 10px rgba(179, 147, 211, 0.8) text-shadow: 0px 4px 10px rgba(179, 147, 211, 0.8) В свойстве четыре значения: x-offset, расположение тени по горизонтали.
+y-offset, расположение тени по вертикали.
+Радиус размытия, который определяет, насколько тёмной будет тень.
+Цвет. x-offset, расположение тени по горизонтали. x-offset, расположение тени по горизонтали. x-offset y-offset, расположение тени по вертикали. y-offset, расположение тени по вертикали. y-offset Радиус размытия, который определяет, насколько тёмной будет тень. Радиус размытия, который определяет, насколько тёмной будет тень. Цвет. Цвет. Text-shadow можно стилизовать так же, как свойство box-shadow. Но при работе с box-shadow меняется весь блок, а text-shadow подходит для точечной настройки каждой буквы. Text-shadow стилизовать так же, как свойство box-shadow box-shadow text-shadow Один из лучших способов добавить тени — наслоение. Вот как придать заголовку эффект многослойной тени:  text-shadow: 2px 2px 4px rgba(179, 147, 211, 0.1),
+               3px 4px 4px rgba(179, 147, 211, 0.15),
+               4px 6px 4px rgba(179, 147, 211, 0.2),
+               5px 8px 4px rgba(179, 147, 211, 0.25);  text-shadow: 2px 2px 4px rgba(179, 147, 211, 0.1),
+               3px 4px 4px rgba(179, 147, 211, 0.15),
+               4px 6px 4px rgba(179, 147, 211, 0.2),
+               5px 8px 4px rgba(179, 147, 211, 0.25); Вот что получится:   Используя многослойные тени, можно сделать текст заголовка светящимся. Начнём с добавления темного на background-color. Установим значение смещения для text-shadow на 0 и радиус размытия — от этого свечение будет распространяться равномерно вокруг каждой буквы. Наконец, выбираем яркий цвет для text-shadow и добавляем несколько слоёв. background-color text-shadow 0 text-shadow body {
+  background-color: #301934;
+}
+header h1 {
+  font-size: 70px;
+  font-weight: 600;
+  color: #fdfdfe;
+  text-shadow: 0px 0px 5px #b393d3, 0px 0px 10px #b393d3, 0px 0px 10px #b393d3,
+    0px 0px 20px #b393d3;
+} body {
+  background-color: #301934;
+}
+header h1 {
+  font-size: 70px;
+  font-weight: 600;
+  color: #fdfdfe;
+  text-shadow: 0px 0px 5px #b393d3, 0px 0px 10px #b393d3, 0px 0px 10px #b393d3,
+    0px 0px 20px #b393d3;
+} Результат:   Тест заголовка 3D Лучше выбирать жирный или полужирный шрифт, как Roboto Из Google Fonts. Вот что можно сделать:   Для создания этого эффекта нужно две группы многослойных теней. Во-первых, группа однотонных слоёв text-shadow с небольшим размытием и непрозрачностью — они создадут края текста. text-shadow Во-вторых, тени с более широкими смещениями и радиусами размытия в цветах rgba(): rgba() text-shadow: 1px 1px 1px #957dad,
+             1px 2px 1px #957dad,
+             1px 3px 1px #957dad,
+             1px 4px 1px #957dad,
+             1px 5px 1px #957dad,
+             1px 6px 1px #957dad,
+             1px 10px 5px rgba(16, 16, 16, 0.5),
+             1px 15px 10px rgba(16, 16, 16, 0.4),
+             1px 20px 30px rgba(16, 16, 16, 0.3),
+             1px 25px 50px rgba(16, 16, 16, 0.2); text-shadow: 1px 1px 1px #957dad,
+             1px 2px 1px #957dad,
+             1px 3px 1px #957dad,
+             1px 4px 1px #957dad,
+             1px 5px 1px #957dad,
+             1px 6px 1px #957dad,
+             1px 10px 5px rgba(16, 16, 16, 0.5),
+             1px 15px 10px rgba(16, 16, 16, 0.4),
+             1px 20px 30px rgba(16, 16, 16, 0.3),
+             1px 25px 50px rgba(16, 16, 16, 0.2); Текст прописными буквами будет выделяться сильнее. Полный синтаксис: @import url('https://fonts.googleapis.com/css2?family=Roboto&display=swap');
+
+header h1 {
+  font-size: 70px;
+  font-weight: 600;
+  font-family: 'Roboto', sans-serif;
+  color: #b393d3;
+  text-transform: uppercase;
+  text-shadow: 1px 1px 0px #957dad,
+               1px 2px 0px #957dad,
+               1px 3px 0px #957dad,
+               1px 4px 0px #957dad,
+               1px 5px 0px #957dad,
+               1px 6px 0px #957dad,
+               1px 10px 5px rgba(16, 16, 16, 0.5),
+               1px 15px 10px rgba(16, 16, 16, 0.4),
+               1px 20px 30px rgba(16, 16, 16, 0.3),
+               1px 25px 50px rgba(16, 16, 16, 0.2);
+} @import url('https://fonts.googleapis.com/css2?family=Roboto&display=swap');
+
+header h1 {
+  font-size: 70px;
+  font-weight: 600;
+  font-family: 'Roboto', sans-serif;
+  color: #b393d3;
+  text-transform: uppercase;
+  text-shadow: 1px 1px 0px #957dad,
+               1px 2px 0px #957dad,
+               1px 3px 0px #957dad,
+               1px 4px 0px #957dad,
+               1px 5px 0px #957dad,
+               1px 6px 0px #957dad,
+               1px 10px 5px rgba(16, 16, 16, 0.5),
+               1px 15px 10px rgba(16, 16, 16, 0.4),
+               1px 20px 30px rgba(16, 16, 16, 0.3),
+               1px 25px 50px rgba(16, 16, 16, 0.2);
+}   Добавляем многоцветный слой text-shadow  Для забавных эффектов подходят забавные шрифты, поэтому в примере Niconne. Берём предыдущий пример и удаляем вторую групп теней, сохранив однотонные, а потом смешиваем цвета. @import url('https://fonts.googleapis.com/css2?family=Niconne&display=swap');
+
+header h1 {
+  font-size: 90px;
+  font-weight: 600;
+  font-family: 'Niconne', cursive;
+  color: #e0d6e9;
+  text-shadow: 2px 2px 0px  #957dad,
+               4px 4px 0px #ee4b2b,
+               6px 6px 0px #00c2cb,
+               8px 8px 0px #ff7f50,
+               10px 10px 0px #553c9a;
+} @import url('https://fonts.googleapis.com/css2?family=Niconne&display=swap');
+
+header h1 {
+  font-size: 90px;
+  font-weight: 600;
+  font-family: 'Niconne', cursive;
+  color: #e0d6e9;
+  text-shadow: 2px 2px 0px  #957dad,
+               4px 4px 0px #ee4b2b,
+               6px 6px 0px #00c2cb,
+               8px 8px 0px #ff7f50,
+               10px 10px 0px #553c9a;
+} Результат:   Проверяем, что смещения text-shadow расположены равномерно, а текст не перекосило. Можно «поиграть со шрифтами»: настроить font-size и font-weight и поменять цвета. text-shadow font-size font-weight Эффект пишущей машинки в HTML и CSS Анимация, при которой каждая буква появляется по очереди. Для красоты нужен короткий заголовок в одну строчку и шрифт с фиксированным межбуквенным расстоянием: Courier, Inconsolata, Anonymous Pro, Source Code Pro. Задаём заголовок в HTML:  <body>
+    <header>
+        <h1>This is a Header</h1>
+    </header>
+  </body>  <body>
+    <header>
+        <h1>This is a Header</h1>
+    </header>
+  </body> Теперь стилизуем. Добавляем мигающий курсор в конце текста с помощью свойства border-right: border-right header h1 {
+  font-size: 70px;
+  font-weight: 500;
+  color: #553c9a;
+  border-right: 4px solid #000; /*This will be the blinking cursor*/
+} header h1 {
+  font-size: 70px;
+  font-weight: 500;
+  color: #553c9a;
+  border-right: 4px solid #000; /*This will be the blinking cursor*/
+} Вот что выйдет:   Определяем два свойства animation для текста заголовка и курсора. Называем мигающую анимацию cursor. animation cursor animation: cursor 1s infinite step-end; animation: cursor 1s infinite step-end; Для определения анимации используем @keyframes. Мигать — переходить из видимого в скрытое, так что используем свойство border-color и определяем пойнты, когда оно скрыто, прозрачно, видимо. @keyframes @keyframes cursor{
+  0%, 100%{border-color: transparent;}
+  50%{border-color: #000;}
+} @keyframes cursor{
+  0%, 100%{border-color: transparent;}
+  50%{border-color: #000;}
+} Анимация будет длиться 1 секунду. В начале свойство border-color прозрачное, как определено @keyframes. В середине — на 50% от 1 секунды — оно чёрное, а затем снова прозрачное. Это анимация в бесконечном цикле. border-color @keyframes По умолчанию курсор будет появляться и исчезать плавно — это не тот эффект, который нам нужен. Поэтому время animation устанавливаем на step-end. То есть animation будет резко переходить к каждому пойнту , установленному @keyframes. Добавляем анимацию пишущей машинки CSS Используйте свойство width с единицей измерения ch — количеством символов в заголовке. width ch Используем функцию step, устанавливаем количество пойнтов, равное количеству символов. step animation: cursor 1s infinite step-end, typing 15s infinite steps(16);
+white-space: nowrap;
+overflow: hidden; animation: cursor 1s infinite step-end, typing 15s infinite steps(16);
+white-space: nowrap;
+overflow: hidden; Свойство white-space предотвратит наложение слов и букв друг на друга, свойство overflow: hidden сохранит буквы невидимыми, пока они не будут «набраны» на странице. white-space overflow: hidden Теперь определим каждый шаг в анимации. @keyframes typing{
+  0%{ width: 0ch} /*Text is hidden*/
+  30%{ width: 16ch;} /*The enitre header will be typed out 1 character at a time*/
+  80%{ width: 16ch;} /*Text stays visible*/
+  90%{ width: 0ch;} /*Text is deleted*/
+  100%{ width: 0ch;} /*Text stays hidden*/
+} @keyframes typing{
+  0%{ width: 0ch} /*Text is hidden*/
+  30%{ width: 16ch;} /*The enitre header will be typed out 1 character at a time*/
+  80%{ width: 16ch;} /*Text stays visible*/
+  90%{ width: 0ch;} /*Text is deleted*/
+  100%{ width: 0ch;} /*Text stays hidden*/
+} Итог: ]]></text>
+</doc>

@@ -1,0 +1,229 @@
+<?xml version="1.0" ?>
+<doc>
+	<label auto="true" type="str" verify="true"><![CDATA[Develop]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Kilor]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-12-01, 16:16]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/company/tensor/blog/702902/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[PostgreSQL Antipatterns: простой(?) INSERT… VALUES]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Блог компании Тензор]]></item>
+		<item type="str"><![CDATA[Высокая производительность]]></item>
+		<item type="str"><![CDATA[PostgreSQL]]></item>
+		<item type="str"><![CDATA[SQL]]></item>
+		<item type="str"><![CDATA[Администрирование баз данных]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[postgresql]]></item>
+		<item type="str"><![CDATA[sql]]></item>
+		<item type="str"><![CDATA[sql tips and tricks]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[Представим, что у вас есть некоторая табличка статистики, куда вы периодически скидываете таймстамп последнего "текущего" состояния в паре координат - например, (ID организации, ID сотрудника).
+Как больно наступить на грабли в совсем простом, казалось бы, запросе?
+Вначале он обычно выглядит примерно как-то вот так:
+INSERT INTO activity(
+  fk1
+, fk2
+, ts
+)
+VALUES
+  ('8d335b64-8597-464c-affb-b4734bc67acc', '198d636e-1b35-4a20-a42a-38ec9abc47ee', now())
+, ('8d335b64-8597-464c-affb-b4734bc67acc', '4fa31f97-c5ea-40a3-8a4b-1df598db39ca', now())
+, ('8d335b64-8597-464c-affb-b4734bc67acc', '6b46ec7d-70c4-4b6d-b6bc-4a0a6cf45051', now())
+, ('8d335b64-8597-464c-affb-b4734bc67acc', 'fc41beb4-f67d-45f4-b37a-c71cfe530f43', now())
+, ('8d335b64-8597-464c-affb-b4734bc67acc', 'c868affb-3a8c-4692-92de-2a952134d52f', now())
+, ('8d335b64-8597-464c-affb-b4734bc67acc', '75abe193-ab1f-41b3-8fc8-cd8f34b269f2', now())
+, ('a227a9ee-bb05-48d6-a885-94f7cea06cd8', '388179c4-594e-4088-bb56-c99ff4df7efe', now())
+, ('8d335b64-8597-464c-affb-b4734bc67acc', 'd8b0af23-53a5-45cb-8b08-7f27b04faa6d', now())
+, ('8d335b64-8597-464c-affb-b4734bc67acc', '75aa761d-28da-4b9d-b5d5-a74a60725c36', now())
+-- ... +100500 строк
+ON CONFLICT
+  (fk1, fk2)
+  DO UPDATE SET
+    ts = greatest(activity.ts, EXCLUDED.ts);
+Давайте разберем те проблемы, которые создал таким запросом разработчик как для себя, так и для своей базы.
+Проблема #1: deadlock при конкурентной вставке
+LOG:  process 19607 still waiting for ShareLock on transaction 3456521168 after 1000.105 ms
+DETAIL:  Process holding the lock: 18492. Wait queue: 19607.
+CONTEXT:  while inserting index tuple (16124,49) in relation "activity"
+Казалось бы, ничто не предвещало - у нас ведь "обычный INSERT"?
+На самом деле, не совсем обычный - обратите внимание на часть DO UPDATE SET - то есть при наличии в таблице записи с той же ключевой парой (fk1, fk2), она должна быть обновлена.
+И тут мы возвращаемся к проблеме плохо упорядоченных обновлений, о которой я рассказывал в статье "Борем deadlock при пакетных UPDATE".
+Там же описано и решение - упорядочить обновляемые записи заранее. В нашем случае мы не знаем достоверно, какие из записей захотят обновляться, а какие будут вставлены впервые, поэтому правильным решением будет отсортировать заранее все.
+Проблема #2: выполнение функции на каждой записи
+В каждой записи у нас указана функция now(), которая в рамках одного запроса всегда возвращает одно и то же значение.
+Если бы разработчик хотел действительно разные "реальные" значения, то использовал бы clock_timestamp(). Подробнее про разные функции "сейчас" можно почитать в "SQL HowTo: наперегонки со временем".
+Значит, у нас налицо просто техническая ошибка с повторным вычислением одного и того же, которая нам чего-то да стоила. Давайте попробуем оценить ее величину, вычислив now() 10M раз:
+EXPLAIN (ANALYZE, COSTS OFF)
+SELECT i, now() FROM generate_series(1, 1e7) i;
+Function Scan on generate_series i (actual time=2464.211..3729.080 rows=10000000 loops=1)
+Planning Time: 0.068 ms
+Execution Time: 4176.732 ms
+... или не вычислив:
+EXPLAIN (ANALYZE, COSTS OFF)
+SELECT i, NULL::timestamptz FROM generate_series(1, 1e7) i;
+Function Scan on generate_series i (actual time=2191.738..3374.842 rows=10000000 loops=1)
+Planning Time: 0.035 ms
+Execution Time: 3785.943 ms
+Не сказать, что разница грандиозна, но ~400мс на 10M вызовов тут потрачены - это нам очень повезло, что now() достаточно "легкая", но все-таки лучше эти вызовы не клонировать.
+Проблема #3: повторяющиеся значения в теле запроса
+Очевидно, что организаций у нас всегда будет много меньше, чем сотрудников в них, поэтому значения ID организации будут повторяться достаточно часто.
+Этой темы я уже подробно касался в статье "PostgreSQL Antipatterns: «слишком много золота»", и приведенное там решение достаточно тривиально - собрать все значения в один JSON-параметр, клонируя как можно меньше данных.
+В нашем случае его структура будет примерно такой:
+{
+  fk1_1 : [fk2_1, fk2_2]
+, fk1_2 : [fk2_3, fk2_4, fk2_5]
+}
+Избавляемся от проблем
+Так как же, в итоге, должен выглядеть идеальный запрос для подобной задачи?
+Примерно как-то вот так:
+INSERT INTO activity(
+  fk1
+, fk2
+, ts
+)
+  SELECT
+    fk1
+  , json_array_elements_text(fk2s) fk2 -- разворачиваем json-массив
+  , ts
+  FROM
+    json_each($1::json) T(fk1, fk2s) -- разворачиваем ключи json-объекта
+  , now() ts -- STABLE-функция вызовется однократно
+  ORDER BY
+    1, 2 -- сортируем по (fk1, fk2), чтобы гарантировать совпадение порядка
+ON CONFLICT
+  (fk1, fk2)
+  DO UPDATE SET
+    ts = greatest(activity.ts, EXCLUDED.ts);
+/*
+$1 = {
+  "8d335b64-8597-464c-affb-b4734bc67acc" : [
+    "198d636e-1b35-4a20-a42a-38ec9abc47ee"
+  , "4fa31f97-c5ea-40a3-8a4b-1df598db39ca"
+  , "6b46ec7d-70c4-4b6d-b6bc-4a0a6cf45051"
+  ]
+, "a227a9ee-bb05-48d6-a885-94f7cea06cd8" : [
+    "388179c4-594e-4088-bb56-c99ff4df7efe"
+  ]
+}
+*/ Представим, что у вас есть некоторая табличка статистики, куда вы периодически скидываете таймстамп последнего "текущего" состояния в паре координат - например, (ID организации, ID сотрудника). (ID организации, ID сотрудника) Как больно наступить на грабли в совсем простом, казалось бы, запросе?   Вначале он обычно выглядит примерно как-то вот так: INSERT INTO activity(
+  fk1
+, fk2
+, ts
+)
+VALUES
+  ('8d335b64-8597-464c-affb-b4734bc67acc', '198d636e-1b35-4a20-a42a-38ec9abc47ee', now())
+, ('8d335b64-8597-464c-affb-b4734bc67acc', '4fa31f97-c5ea-40a3-8a4b-1df598db39ca', now())
+, ('8d335b64-8597-464c-affb-b4734bc67acc', '6b46ec7d-70c4-4b6d-b6bc-4a0a6cf45051', now())
+, ('8d335b64-8597-464c-affb-b4734bc67acc', 'fc41beb4-f67d-45f4-b37a-c71cfe530f43', now())
+, ('8d335b64-8597-464c-affb-b4734bc67acc', 'c868affb-3a8c-4692-92de-2a952134d52f', now())
+, ('8d335b64-8597-464c-affb-b4734bc67acc', '75abe193-ab1f-41b3-8fc8-cd8f34b269f2', now())
+, ('a227a9ee-bb05-48d6-a885-94f7cea06cd8', '388179c4-594e-4088-bb56-c99ff4df7efe', now())
+, ('8d335b64-8597-464c-affb-b4734bc67acc', 'd8b0af23-53a5-45cb-8b08-7f27b04faa6d', now())
+, ('8d335b64-8597-464c-affb-b4734bc67acc', '75aa761d-28da-4b9d-b5d5-a74a60725c36', now())
+-- ... +100500 строк
+ON CONFLICT
+  (fk1, fk2)
+  DO UPDATE SET
+    ts = greatest(activity.ts, EXCLUDED.ts); INSERT INTO activity(
+  fk1
+, fk2
+, ts
+)
+VALUES
+  ('8d335b64-8597-464c-affb-b4734bc67acc', '198d636e-1b35-4a20-a42a-38ec9abc47ee', now())
+, ('8d335b64-8597-464c-affb-b4734bc67acc', '4fa31f97-c5ea-40a3-8a4b-1df598db39ca', now())
+, ('8d335b64-8597-464c-affb-b4734bc67acc', '6b46ec7d-70c4-4b6d-b6bc-4a0a6cf45051', now())
+, ('8d335b64-8597-464c-affb-b4734bc67acc', 'fc41beb4-f67d-45f4-b37a-c71cfe530f43', now())
+, ('8d335b64-8597-464c-affb-b4734bc67acc', 'c868affb-3a8c-4692-92de-2a952134d52f', now())
+, ('8d335b64-8597-464c-affb-b4734bc67acc', '75abe193-ab1f-41b3-8fc8-cd8f34b269f2', now())
+, ('a227a9ee-bb05-48d6-a885-94f7cea06cd8', '388179c4-594e-4088-bb56-c99ff4df7efe', now())
+, ('8d335b64-8597-464c-affb-b4734bc67acc', 'd8b0af23-53a5-45cb-8b08-7f27b04faa6d', now())
+, ('8d335b64-8597-464c-affb-b4734bc67acc', '75aa761d-28da-4b9d-b5d5-a74a60725c36', now())
+-- ... +100500 строк
+ON CONFLICT
+  (fk1, fk2)
+  DO UPDATE SET
+    ts = greatest(activity.ts, EXCLUDED.ts); Давайте разберем те проблемы, которые создал таким запросом разработчик как для себя, так и для своей базы. Проблема #1: deadlock при конкурентной вставке LOG:  process 19607 still waiting for ShareLock on transaction 3456521168 after 1000.105 ms
+DETAIL:  Process holding the lock: 18492. Wait queue: 19607.
+CONTEXT:  while inserting index tuple (16124,49) in relation "activity" LOG:  process 19607 still waiting for ShareLock on transaction 3456521168 after 1000.105 ms
+DETAIL:  Process holding the lock: 18492. Wait queue: 19607.
+CONTEXT:  while inserting index tuple (16124,49) in relation "activity" Казалось бы, ничто не предвещало - у нас ведь "обычный INSERT"? INSERT На самом деле, не совсем обычный - обратите внимание на часть DO UPDATE SET - то есть при наличии в таблице записи с той же ключевой парой (fk1, fk2), она должна быть обновлена. DO UPDATE SET (fk1, fk2) И тут мы возвращаемся к проблеме плохо упорядоченных обновлений, о которой я рассказывал в статье "Борем deadlock при пакетных UPDATE". плохо упорядоченных обновлений "Борем deadlock при пакетных UPDATE" Там же описано и решение - упорядочить обновляемые записи заранее. В нашем случае мы не знаем достоверно, какие из записей захотят обновляться, а какие будут вставлены впервые, поэтому правильным решением будет отсортировать заранее все. отсортировать заранее все Проблема #2: выполнение функции на каждой записи В каждой записи у нас указана функция now(), которая в рамках одного запроса всегда возвращает одно и то же значение. now() Если бы разработчик хотел действительно разные "реальные" значения, то использовал бы clock_timestamp(). Подробнее про разные функции "сейчас" можно почитать в "SQL HowTo: наперегонки со временем". Если бы разработчик хотел действительно разные "реальные" значения, то использовал бы clock_timestamp(). Подробнее про разные функции "сейчас" можно почитать в "SQL HowTo: наперегонки со временем". clock_timestamp() "SQL HowTo: наперегонки со временем" Значит, у нас налицо просто техническая ошибка с повторным вычислением одного и того же, которая нам чего-то да стоила. Давайте попробуем оценить ее величину, вычислив now() 10M раз: now() EXPLAIN (ANALYZE, COSTS OFF)
+SELECT i, now() FROM generate_series(1, 1e7) i; EXPLAIN (ANALYZE, COSTS OFF)
+SELECT i, now() FROM generate_series(1, 1e7) i; Function Scan on generate_series i (actual time=2464.211..3729.080 rows=10000000 loops=1)
+Planning Time: 0.068 ms
+Execution Time: 4176.732 ms Function Scan on generate_series i (actual time=2464.211..3729.080 rows=10000000 loops=1)
+Planning Time: 0.068 ms
+Execution Time: 4176.732 ms ... или не вычислив: не EXPLAIN (ANALYZE, COSTS OFF)
+SELECT i, NULL::timestamptz FROM generate_series(1, 1e7) i; EXPLAIN (ANALYZE, COSTS OFF)
+SELECT i, NULL::timestamptz FROM generate_series(1, 1e7) i; Function Scan on generate_series i (actual time=2191.738..3374.842 rows=10000000 loops=1)
+Planning Time: 0.035 ms
+Execution Time: 3785.943 ms Function Scan on generate_series i (actual time=2191.738..3374.842 rows=10000000 loops=1)
+Planning Time: 0.035 ms
+Execution Time: 3785.943 ms Не сказать, что разница грандиозна, но ~400мс на 10M вызовов тут потрачены - это нам очень повезло, что now() достаточно "легкая", но все-таки лучше эти вызовы не клонировать. ~400мс на 10M вызовов now() Проблема #3: повторяющиеся значения в теле запроса Очевидно, что организаций у нас всегда будет много меньше, чем сотрудников в них, поэтому значения ID организации будут повторяться достаточно часто. ID организации Этой темы я уже подробно касался в статье "PostgreSQL Antipatterns: «слишком много золота»", и приведенное там решение достаточно тривиально - собрать все значения в один JSON-параметр, клонируя как можно меньше данных. "PostgreSQL Antipatterns: «слишком много золота»" В нашем случае его структура будет примерно такой: {
+  fk1_1 : [fk2_1, fk2_2]
+, fk1_2 : [fk2_3, fk2_4, fk2_5]
+} {
+  fk1_1 : [fk2_1, fk2_2]
+, fk1_2 : [fk2_3, fk2_4, fk2_5]
+} Избавляемся от проблем Так как же, в итоге, должен выглядеть идеальный запрос для подобной задачи? Примерно как-то вот так: INSERT INTO activity(
+  fk1
+, fk2
+, ts
+)
+  SELECT
+    fk1
+  , json_array_elements_text(fk2s) fk2 -- разворачиваем json-массив
+  , ts
+  FROM
+    json_each($1::json) T(fk1, fk2s) -- разворачиваем ключи json-объекта
+  , now() ts -- STABLE-функция вызовется однократно
+  ORDER BY
+    1, 2 -- сортируем по (fk1, fk2), чтобы гарантировать совпадение порядка
+ON CONFLICT
+  (fk1, fk2)
+  DO UPDATE SET
+    ts = greatest(activity.ts, EXCLUDED.ts);
+/*
+$1 = {
+  "8d335b64-8597-464c-affb-b4734bc67acc" : [
+    "198d636e-1b35-4a20-a42a-38ec9abc47ee"
+  , "4fa31f97-c5ea-40a3-8a4b-1df598db39ca"
+  , "6b46ec7d-70c4-4b6d-b6bc-4a0a6cf45051"
+  ]
+, "a227a9ee-bb05-48d6-a885-94f7cea06cd8" : [
+    "388179c4-594e-4088-bb56-c99ff4df7efe"
+  ]
+}
+*/ INSERT INTO activity(
+  fk1
+, fk2
+, ts
+)
+  SELECT
+    fk1
+  , json_array_elements_text(fk2s) fk2 -- разворачиваем json-массив
+  , ts
+  FROM
+    json_each($1::json) T(fk1, fk2s) -- разворачиваем ключи json-объекта
+  , now() ts -- STABLE-функция вызовется однократно
+  ORDER BY
+    1, 2 -- сортируем по (fk1, fk2), чтобы гарантировать совпадение порядка
+ON CONFLICT
+  (fk1, fk2)
+  DO UPDATE SET
+    ts = greatest(activity.ts, EXCLUDED.ts);
+/*
+$1 = {
+  "8d335b64-8597-464c-affb-b4734bc67acc" : [
+    "198d636e-1b35-4a20-a42a-38ec9abc47ee"
+  , "4fa31f97-c5ea-40a3-8a4b-1df598db39ca"
+  , "6b46ec7d-70c4-4b6d-b6bc-4a0a6cf45051"
+  ]
+, "a227a9ee-bb05-48d6-a885-94f7cea06cd8" : [
+    "388179c4-594e-4088-bb56-c99ff4df7efe"
+  ]
+}
+*/ ]]></text>
+</doc>

@@ -1,0 +1,312 @@
+<?xml version="1.0" ?>
+<doc>
+	<label auto="true" type="str" verify="true"><![CDATA[Develop]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Andrey210]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-12-08, 14:00]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/post/704168/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Маленький dsl]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Kotlin]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[dsl]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[Введение
+Пересел недавно с джавы на котлин и начал осваивать новые сахарные возможности. На проекте у нас во многих местах используются дсл. Я люблю подобные штуки и решил освоить, как и из чего это состоит.
+Дано.
+- На вход программе приходят текстовые команды и идентификатор пользователя.
+- Пользователь может находиться в разных состояниях.
+- В зависимости от состояния есть разные наборы команд которые возможно обработать.
+- Если команда не соответствует ни одной из возможных, выполняется команда по умолчанию.
+Что мы сегодня напишем, Брейн?
+Для начала нужно написать саму систему, которая будет выполнять требуемые действия. Она довольно простая. У нас есть Processor, который достает состояние пользователя и передает StateProviderService команду и состояние. В ответ он получает набор возможных команд в новом состоянии.
+class Processor<E : Enum<E>>(
+    private val stateProviderService: StateProviderService<E>,
+    private val stateService: StateService<E>
+) {
+    fun process(action: String, identifier: Any): Set<String> {
+        return stateService.getState(identifier)
+            .provide(action)
+            .nextState(identifier)
+            .getActions()
+    }
+
+    private fun E.provide(action: String): E {
+        return stateProviderService.provide(this, action)
+    }
+
+    private fun E.nextState(identifier: Any): E {
+        return stateService.nextState(this, identifier)
+    }
+
+    private fun E.getActions(): Set<String> {
+        return stateProviderService.getActions(this)
+    }
+}
+StateProviderService и ActionProviderService устроены очень похоже. В зависимости от состояния StateProviderService вызывает обработку пришедшей команды у определенного обработчика. Аналогично ActionProviderService с командами.
+class StateProviderService<E : Enum<E>> (
+    private val stateProviders: Map<E, ActionProviderService<E>>
+) {
+    fun provide(state: E, action: String): E {
+        return stateProviders[state] ?.provide(action) ?: throw Exception("StateProvider must provide all states")
+    }
+
+    fun getActions(state: E): Set<String> {
+        return stateProviders[state]?.actionProviders?.keys ?: throw IllegalArgumentException("State $state has no actions")
+    }
+}
+
+class ActionProviderService<E : Enum<E>>(
+    val actionProviders: Map<String, () -> E>,
+    val defaultProvider: (() -> E)?
+) {
+    fun provide(action: String): E {
+        return actionProviders[action] ?.invoke() ?: defaultProvider?.invoke() ?: throw Exception("ActionProvider must provide all actions")
+    }
+}
+Да будет билдер
+Следующая задача - заполнить все обработчики. Если бы это был спринг, я бы написал свою аннотацию и помечал бы ей классы обработчики и с помощью бпп заполнял мапы. На этот раз я хочу решить эту проблему с помощью дсл.
+В котлине можно вызывать функцию apply(). Она дает доступ к содержимому объекта и с помощью нее можно удобно изменять его состояние. Проблема в том, что у такого объекта прийдется открыть все поля и сделать пустой конструктор. В случае Processor-а это выглядело бы так:
+Processor().apply {
+    stateProviderService = StateProviderService(...)
+    stateService = StateServiceImpl()
+}
+Я не хочу изменять таким образом системные сервисы. Напишем билдер, который можно будет таким образом настраивать. В билдере, помимо функции получения объекта сервиса, добавим вспомогательные функции для его настройки.
+class StateProviderBuilder<E : Enum<E>> {
+    private val stateProviders: MutableMap<E, ActionProviderService<E>> = mutableMapOf()
+
+    fun toService() = StateProviderService(stateProviders)
+
+    fun state(state: E, builder: ActionProviderBuilder<E>.() -> Unit) =
+        stateProviders.put(state, ActionProviderBuilder<E>().apply(builder).toService())
+}
+
+class ActionProviderBuilder<E : Enum<E>> {
+    private val actionProviders: MutableMap<String, () -> E> = mutableMapOf()
+    private var defaultProvider: (() -> E)? = null
+
+    fun toService() = ActionProviderService(actionProviders, defaultProvider)
+
+    fun action(action: String, body: () -> E) = actionProviders.put(action, body)
+
+    fun default(body: () -> E) {
+        defaultProvider = body
+    }
+}
+В некоторые функции мы передаем билдер и странно выглядящую лямбду. Такая лямбда как например ActionProviderBuilder.() -> Unit позволяет получить доступ к объекту ActionProviderBuilder, как если бы она передавалась в функцию apply. Таким образом вызвав функцию state мы получаем доступ к функциям toService, action, default у объекта класса ActionProviderBuilder внутри лямбды.
+Еще одна приятная особенность - в котлине если лямбда - последний аргумент, ее можно вынести за скобки. В итоге вызов функции state выглядит так:
+state(TestState.A) {
+      action("go-to-B") {
+            println("i'm mooving to B")
+            TestState.B
+      }
+}
+Во первых, это красиво
+В целом результат меня уже устроил, но мне хотелось попробовать infix функции. Это такие функции, которые могут использоваться как операторы. Например я могу сделать функцию, чтобы писать "print" doing {...}. И на самом деле, для этого всего лишь надо дописать рядом с функцией action следующее:
+infix fun String.doing(action: () -> E) {
+    action(this, action)
+}
+И под конец у меня появилась идея. Допустим есть одинаковые переходы из нескольких состояний в другое. Повторять несколько раз одно и то же не хотелось бы, так что допишу еще вот такой вариант: listOf(TestState.A, TestState.B) withAction "action" doing {...}. Здесь я хочу для каждого из перечисленных состояний добавить выполнение некоторой логики по команде "action".
+infix fun List<E>.withAction(actionName: String) =
+  ActionContainer(listOf(this), listOf(actionName))
+
+infix fun ActionContainer<E>.doing(action: () -> E) = 
+  addActionWithActionContainer(this, action)
+
+private fun addActionWithActionContainer(actionContainer: ActionContainer<E>, action: () -> E) {
+    actionContainer.states.forEach {
+        it state { actionContainer.actionNames.doing(action) }
+    }
+}
+
+class ActionContainer<E : Enum<E>>(
+    val states: List<E>,
+    val actionNames: String
+)
+Чему мы научились, Палмер
+Kotlin dsl великолепная вещь! После джавы я получаю огромное удовольствие от таких новых возможностей. Я не коснулся переопределения операторов в этой статье, но такое тоже возможно.
+Пы Сы
+Это переписанная версия, извиняюсь перед всеми, кто видел предыдущую. Очень хотелось быстрее написать, и видимо делать это в ночь - не самая удачная затея.
+Вот репозитрий
+Вот телеграмм (я там пропал надолго, но уже вроде как вернулся) Введение Пересел недавно с джавы на котлин и начал осваивать новые сахарные возможности. На проекте у нас во многих местах используются дсл. Я люблю подобные штуки и решил освоить, как и из чего это состоит. Дано.
+- На вход программе приходят текстовые команды и идентификатор пользователя.
+- Пользователь может находиться в разных состояниях.
+- В зависимости от состояния есть разные наборы команд которые возможно обработать.
+- Если команда не соответствует ни одной из возможных, выполняется команда по умолчанию.     Что мы сегодня напишем, Брейн?   Для начала нужно написать саму систему, которая будет выполнять требуемые действия. Она довольно простая. У нас есть Processor, который достает состояние пользователя и передает StateProviderService команду и состояние. В ответ он получает набор возможных команд в новом состоянии. class Processor<E : Enum<E>>(
+    private val stateProviderService: StateProviderService<E>,
+    private val stateService: StateService<E>
+) {
+    fun process(action: String, identifier: Any): Set<String> {
+        return stateService.getState(identifier)
+            .provide(action)
+            .nextState(identifier)
+            .getActions()
+    }
+
+    private fun E.provide(action: String): E {
+        return stateProviderService.provide(this, action)
+    }
+
+    private fun E.nextState(identifier: Any): E {
+        return stateService.nextState(this, identifier)
+    }
+
+    private fun E.getActions(): Set<String> {
+        return stateProviderService.getActions(this)
+    }
+} class Processor<E : Enum<E>>(
+    private val stateProviderService: StateProviderService<E>,
+    private val stateService: StateService<E>
+) {
+    fun process(action: String, identifier: Any): Set<String> {
+        return stateService.getState(identifier)
+            .provide(action)
+            .nextState(identifier)
+            .getActions()
+    }
+
+    private fun E.provide(action: String): E {
+        return stateProviderService.provide(this, action)
+    }
+
+    private fun E.nextState(identifier: Any): E {
+        return stateService.nextState(this, identifier)
+    }
+
+    private fun E.getActions(): Set<String> {
+        return stateProviderService.getActions(this)
+    }
+} StateProviderService и ActionProviderService устроены очень похоже. В зависимости от состояния StateProviderService вызывает обработку пришедшей команды у определенного обработчика. Аналогично ActionProviderService с командами. class StateProviderService<E : Enum<E>> (
+    private val stateProviders: Map<E, ActionProviderService<E>>
+) {
+    fun provide(state: E, action: String): E {
+        return stateProviders[state] ?.provide(action) ?: throw Exception("StateProvider must provide all states")
+    }
+
+    fun getActions(state: E): Set<String> {
+        return stateProviders[state]?.actionProviders?.keys ?: throw IllegalArgumentException("State $state has no actions")
+    }
+}
+
+class ActionProviderService<E : Enum<E>>(
+    val actionProviders: Map<String, () -> E>,
+    val defaultProvider: (() -> E)?
+) {
+    fun provide(action: String): E {
+        return actionProviders[action] ?.invoke() ?: defaultProvider?.invoke() ?: throw Exception("ActionProvider must provide all actions")
+    }
+} class StateProviderService<E : Enum<E>> (
+    private val stateProviders: Map<E, ActionProviderService<E>>
+) {
+    fun provide(state: E, action: String): E {
+        return stateProviders[state] ?.provide(action) ?: throw Exception("StateProvider must provide all states")
+    }
+
+    fun getActions(state: E): Set<String> {
+        return stateProviders[state]?.actionProviders?.keys ?: throw IllegalArgumentException("State $state has no actions")
+    }
+}
+
+class ActionProviderService<E : Enum<E>>(
+    val actionProviders: Map<String, () -> E>,
+    val defaultProvider: (() -> E)?
+) {
+    fun provide(action: String): E {
+        return actionProviders[action] ?.invoke() ?: defaultProvider?.invoke() ?: throw Exception("ActionProvider must provide all actions")
+    }
+} Да будет билдер   Следующая задача - заполнить все обработчики. Если бы это был спринг, я бы написал свою аннотацию и помечал бы ей классы обработчики и с помощью бпп заполнял мапы. На этот раз я хочу решить эту проблему с помощью дсл. В котлине можно вызывать функцию apply(). Она дает доступ к содержимому объекта и с помощью нее можно удобно изменять его состояние. Проблема в том, что у такого объекта прийдется открыть все поля и сделать пустой конструктор. В случае Processor-а это выглядело бы так: Processor().apply {
+    stateProviderService = StateProviderService(...)
+    stateService = StateServiceImpl()
+} Processor().apply {
+    stateProviderService = StateProviderService(...)
+    stateService = StateServiceImpl()
+} Я не хочу изменять таким образом системные сервисы. Напишем билдер, который можно будет таким образом настраивать. В билдере, помимо функции получения объекта сервиса, добавим вспомогательные функции для его настройки. class StateProviderBuilder<E : Enum<E>> {
+    private val stateProviders: MutableMap<E, ActionProviderService<E>> = mutableMapOf()
+
+    fun toService() = StateProviderService(stateProviders)
+
+    fun state(state: E, builder: ActionProviderBuilder<E>.() -> Unit) =
+        stateProviders.put(state, ActionProviderBuilder<E>().apply(builder).toService())
+}
+
+class ActionProviderBuilder<E : Enum<E>> {
+    private val actionProviders: MutableMap<String, () -> E> = mutableMapOf()
+    private var defaultProvider: (() -> E)? = null
+
+    fun toService() = ActionProviderService(actionProviders, defaultProvider)
+
+    fun action(action: String, body: () -> E) = actionProviders.put(action, body)
+
+    fun default(body: () -> E) {
+        defaultProvider = body
+    }
+} class StateProviderBuilder<E : Enum<E>> {
+    private val stateProviders: MutableMap<E, ActionProviderService<E>> = mutableMapOf()
+
+    fun toService() = StateProviderService(stateProviders)
+
+    fun state(state: E, builder: ActionProviderBuilder<E>.() -> Unit) =
+        stateProviders.put(state, ActionProviderBuilder<E>().apply(builder).toService())
+}
+
+class ActionProviderBuilder<E : Enum<E>> {
+    private val actionProviders: MutableMap<String, () -> E> = mutableMapOf()
+    private var defaultProvider: (() -> E)? = null
+
+    fun toService() = ActionProviderService(actionProviders, defaultProvider)
+
+    fun action(action: String, body: () -> E) = actionProviders.put(action, body)
+
+    fun default(body: () -> E) {
+        defaultProvider = body
+    }
+} В некоторые функции мы передаем билдер и странно выглядящую лямбду. Такая лямбда как например ActionProviderBuilder.() -> Unit позволяет получить доступ к объекту ActionProviderBuilder, как если бы она передавалась в функцию apply. Таким образом вызвав функцию state мы получаем доступ к функциям toService, action, default у объекта класса ActionProviderBuilder внутри лямбды. Еще одна приятная особенность - в котлине если лямбда - последний аргумент, ее можно вынести за скобки. В итоге вызов функции state выглядит так: state(TestState.A) {
+      action("go-to-B") {
+            println("i'm mooving to B")
+            TestState.B
+      }
+} state(TestState.A) {
+      action("go-to-B") {
+            println("i'm mooving to B")
+            TestState.B
+      }
+} Во первых, это красиво В целом результат меня уже устроил, но мне хотелось попробовать infix функции. Это такие функции, которые могут использоваться как операторы. Например я могу сделать функцию, чтобы писать "print" doing {...}. И на самом деле, для этого всего лишь надо дописать рядом с функцией action следующее: infix fun String.doing(action: () -> E) {
+    action(this, action)
+} infix fun String.doing(action: () -> E) {
+    action(this, action)
+} И под конец у меня появилась идея. Допустим есть одинаковые переходы из нескольких состояний в другое. Повторять несколько раз одно и то же не хотелось бы, так что допишу еще вот такой вариант: listOf(TestState.A, TestState.B) withAction "action" doing {...}. Здесь я хочу для каждого из перечисленных состояний добавить выполнение некоторой логики по команде "action". infix fun List<E>.withAction(actionName: String) =
+  ActionContainer(listOf(this), listOf(actionName))
+
+infix fun ActionContainer<E>.doing(action: () -> E) = 
+  addActionWithActionContainer(this, action)
+
+private fun addActionWithActionContainer(actionContainer: ActionContainer<E>, action: () -> E) {
+    actionContainer.states.forEach {
+        it state { actionContainer.actionNames.doing(action) }
+    }
+}
+
+class ActionContainer<E : Enum<E>>(
+    val states: List<E>,
+    val actionNames: String
+) infix fun List<E>.withAction(actionName: String) =
+  ActionContainer(listOf(this), listOf(actionName))
+
+infix fun ActionContainer<E>.doing(action: () -> E) = 
+  addActionWithActionContainer(this, action)
+
+private fun addActionWithActionContainer(actionContainer: ActionContainer<E>, action: () -> E) {
+    actionContainer.states.forEach {
+        it state { actionContainer.actionNames.doing(action) }
+    }
+}
+
+class ActionContainer<E : Enum<E>>(
+    val states: List<E>,
+    val actionNames: String
+) Чему мы научились, Палмер   Kotlin dsl великолепная вещь! После джавы я получаю огромное удовольствие от таких новых возможностей. Я не коснулся переопределения операторов в этой статье, но такое тоже возможно. Пы Сы
+Это переписанная версия, извиняюсь перед всеми, кто видел предыдущую. Очень хотелось быстрее написать, и видимо делать это в ночь - не самая удачная затея.  Вот репозитрий
+Вот телеграмм (я там пропал надолго, но уже вроде как вернулся) репозитрий  телеграмм ]]></text>
+</doc>

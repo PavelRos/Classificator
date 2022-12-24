@@ -1,0 +1,184 @@
+<?xml version="1.0" ?>
+<doc>
+	<original_author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Tobias Weltner]]></item>
+	</original_author>
+	<label auto="true" type="str" verify="true"><![CDATA[Other]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[sundmoon]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-07-27, 18:26]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/post/679384/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Out-GridView with Custom Columns]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[PowerShell]]></item>
+		<item type="str"><![CDATA[Интерфейсы]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[powershell]]></item>
+		<item type="str"><![CDATA[gridview]]></item>
+		<item type="str"><![CDATA[администрирование]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[Командлет Out-GridView можно использовать как универсальный диалоговый интерфейс, для этого предназначены параметры -OutputMode и -PassThru. С ними окно табличного представления (грид) отображает справа внизу дополнительные кнопки, и вы можете передать следующим командлетам выбранные строки.
+Например, остановить выбранный сервис можно было бы так:
+Get-Service | Where-Object CanStop | Out-GridView -Title 'Service to stop?' -OutputMode Single | Stop-Service -WhatIf 
+Однако, командлет Out-GridView не даёт возможности управлять набором свойств, которые он показывает. В этом примере нам нужно видеть только название сервиса и, возможно, зависимые от него сервисы.
+Да, чтобы выбрать свойства для отображения, можно воспользоваться командлетом Select-Object. Теперь грид покажет в точности запрошенные столбцы, но следующие командлеты могут сломаться, потому что вы выкинули прочие свойства и вообще поменяли тип объекта:
+Get-Service | Where-Object CanStop | Select-Object -Property DisplayName, DependentServices | Out-GridView -Title 'Service to stop?' -OutputMode Single | Stop-Service -WhatIf 
+Теперь грид выглядит нужным образом, но командлет Stop-Service не сможет остановить сервис потому, что командлет Select-Object изменил тип объекта, и тот перестал быть сервисом:
+Stop-Service : The specified wildcard character pattern is not valid: @{DisplayName=Windows Audio Endpoint Builder; 
+DependentServices=System.ServiceProcess.ServiceController[]}
+Мы уже рассказывали о скрытой технологии, которой можно было бы воспользоваться чтобы указать командлету Out-GridView, какие столбцы мы от него хотим увидеть - без удаления других свойств и сохранив тип объекта:
+# create object that tells PowerShell which column(s) should be visible:
+# show "DisplayName", and "DependentServices"
+[string[]]$visible = 'DisplayName', 'DependentServices'
+$type = 'DefaultDisplayPropertySet'
+[System.Management.Automation.PSMemberInfo[]]$info = 
+    [System.Management.Automation.PSPropertySet]::new($type,$visible)
+
+
+Get-Service | 
+    Where-Object CanStop | 
+    
+    # add the secret object to each object that you pipe into Out-GridView:
+    Add-Member -MemberType MemberSet -Name PSStandardMembers -Value $info -PassThru |
+    Out-GridView -Title 'Service to stop?' -OutputMode Single | 
+    Stop-Service -WhatIf
+Но и тут возможен облом c красными сообщениями об ошибках. Некоторые объекты PowerShell (например, сервисы) сами реализованы через трюк с добавлением свойства PSStandardMembers, так что мы не можем его добавить второй раз. Чтобы обойти это препятствие, просто клонируйте объекты, пропустив их через командлет Select-Object *:
+# create object that tells PowerShell which column(s) should be visible:
+# show "DisplayName", and "DependentServices"
+[string[]]$visible = 'DisplayName', 'DependentServices'
+$type = 'DefaultDisplayPropertySet'
+[System.Management.Automation.PSMemberInfo[]]$info = 
+    [System.Management.Automation.PSPropertySet]::new($type,$visible)
+
+
+Get-Service | 
+    Where-Object CanStop | 
+    # clone the objects so they now belong to you:
+    Select-Object -Property * |
+    
+    # add the secret object to each object that you pipe into Out-GridView:
+    Add-Member -MemberType MemberSet -Name PSStandardMembers -Value $info -PassThru |
+    Out-GridView -Title 'Service to stop?' -OutputMode Single | 
+    Stop-Service -WhatIf
+Теперь всё опять работает, и Out-GridView показывает только выбранные свойства. При этом, Stop-Process по-прежнему понимает его выдачу и останавливает выбранный сервис (для этого уберите -WhatIf и убедитесь в наличии админстративных привилегий).
+Хотя пропускание объектов через Select-Object изменяет их тип, большинство последующих командлетов этого не замечает, потому что прилетевшие им объекты содержат все свойства оригинала. Вот последняя иллюстрация: хотя командлет Out-GridView и показывает только выбранные свойства, объекты состоят из полного комплекта свойств:
+# create object that tells PowerShell which column(s) should be visible:
+# show "Name", "Description" and "MainWindowTitle"
+[string[]]$visible = 'Name', 'Description', 'MainWindowTitle'
+$type = 'DefaultDisplayPropertySet'
+[System.Management.Automation.PSMemberInfo[]]$info =  
+    [System.Management.Automation.PSPropertySet]::new($type,$visible)
+
+
+Get-Process | 
+    Where-Object MainWindowTitle | 
+    Sort-Object -Property Name |
+    # clone the objects so they now belong to you:
+    Select-Object -Property * |
+    
+    # add the secret object to each object that you pipe into Out-GridView:
+    Add-Member -MemberType MemberSet -Name PSStandardMembers -Value $info -PassThru |
+    Out-GridView -Title 'Select a process' -OutputMode Single |
+    # still all properties available:
+    Select-Object -Property * Командлет Out-GridView можно использовать как универсальный диалоговый интерфейс, для этого предназначены параметры -OutputMode и -PassThru. С ними окно табличного представления (грид) отображает справа внизу дополнительные кнопки, и вы можете передать следующим командлетам выбранные строки. Out-GridView -OutputMode -PassThru Например, остановить выбранный сервис можно было бы так: Get-Service | Where-Object CanStop | Out-GridView -Title 'Service to stop?' -OutputMode Single | Stop-Service -WhatIf  Get-Service | Where-Object CanStop | Out-GridView -Title 'Service to stop?' -OutputMode Single | Stop-Service -WhatIf  Однако, командлет Out-GridView не даёт возможности управлять набором свойств, которые он показывает. В этом примере нам нужно видеть только название сервиса и, возможно, зависимые от него сервисы. Out-GridView Да, чтобы выбрать свойства для отображения, можно воспользоваться командлетом Select-Object. Теперь грид покажет в точности запрошенные столбцы, но следующие командлеты могут сломаться, потому что вы выкинули прочие свойства и вообще поменяли тип объекта: Select-Object Get-Service | Where-Object CanStop | Select-Object -Property DisplayName, DependentServices | Out-GridView -Title 'Service to stop?' -OutputMode Single | Stop-Service -WhatIf  Get-Service | Where-Object CanStop | Select-Object -Property DisplayName, DependentServices | Out-GridView -Title 'Service to stop?' -OutputMode Single | Stop-Service -WhatIf  Теперь грид выглядит нужным образом, но командлет Stop-Service не сможет остановить сервис потому, что командлет Select-Object изменил тип объекта, и тот перестал быть сервисом: Stop-Service Select-Object Stop-Service : The specified wildcard character pattern is not valid: @{DisplayName=Windows Audio Endpoint Builder; 
+DependentServices=System.ServiceProcess.ServiceController[]} Stop-Service : The specified wildcard character pattern is not valid: @{DisplayName=Windows Audio Endpoint Builder; 
+DependentServices=System.ServiceProcess.ServiceController[]} Мы уже рассказывали о скрытой технологии, которой можно было бы воспользоваться чтобы указать командлету Out-GridView, какие столбцы мы от него хотим увидеть - без удаления других свойств и сохранив тип объекта: Out-GridView # create object that tells PowerShell which column(s) should be visible:
+# show "DisplayName", and "DependentServices"
+[string[]]$visible = 'DisplayName', 'DependentServices'
+$type = 'DefaultDisplayPropertySet'
+[System.Management.Automation.PSMemberInfo[]]$info = 
+    [System.Management.Automation.PSPropertySet]::new($type,$visible)
+
+
+Get-Service | 
+    Where-Object CanStop | 
+    
+    # add the secret object to each object that you pipe into Out-GridView:
+    Add-Member -MemberType MemberSet -Name PSStandardMembers -Value $info -PassThru |
+    Out-GridView -Title 'Service to stop?' -OutputMode Single | 
+    Stop-Service -WhatIf # create object that tells PowerShell which column(s) should be visible:
+# show "DisplayName", and "DependentServices"
+[string[]]$visible = 'DisplayName', 'DependentServices'
+$type = 'DefaultDisplayPropertySet'
+[System.Management.Automation.PSMemberInfo[]]$info = 
+    [System.Management.Automation.PSPropertySet]::new($type,$visible)
+
+
+Get-Service | 
+    Where-Object CanStop | 
+    
+    # add the secret object to each object that you pipe into Out-GridView:
+    Add-Member -MemberType MemberSet -Name PSStandardMembers -Value $info -PassThru |
+    Out-GridView -Title 'Service to stop?' -OutputMode Single | 
+    Stop-Service -WhatIf Но и тут возможен облом c красными сообщениями об ошибках. Некоторые объекты PowerShell (например, сервисы) сами реализованы через трюк с добавлением свойства PSStandardMembers, так что мы не можем его добавить второй раз. Чтобы обойти это препятствие, просто клонируйте объекты, пропустив их через командлет Select-Object *: PSStandardMembers Select-Object * # create object that tells PowerShell which column(s) should be visible:
+# show "DisplayName", and "DependentServices"
+[string[]]$visible = 'DisplayName', 'DependentServices'
+$type = 'DefaultDisplayPropertySet'
+[System.Management.Automation.PSMemberInfo[]]$info = 
+    [System.Management.Automation.PSPropertySet]::new($type,$visible)
+
+
+Get-Service | 
+    Where-Object CanStop | 
+    # clone the objects so they now belong to you:
+    Select-Object -Property * |
+    
+    # add the secret object to each object that you pipe into Out-GridView:
+    Add-Member -MemberType MemberSet -Name PSStandardMembers -Value $info -PassThru |
+    Out-GridView -Title 'Service to stop?' -OutputMode Single | 
+    Stop-Service -WhatIf # create object that tells PowerShell which column(s) should be visible:
+# show "DisplayName", and "DependentServices"
+[string[]]$visible = 'DisplayName', 'DependentServices'
+$type = 'DefaultDisplayPropertySet'
+[System.Management.Automation.PSMemberInfo[]]$info = 
+    [System.Management.Automation.PSPropertySet]::new($type,$visible)
+
+
+Get-Service | 
+    Where-Object CanStop | 
+    # clone the objects so they now belong to you:
+    Select-Object -Property * |
+    
+    # add the secret object to each object that you pipe into Out-GridView:
+    Add-Member -MemberType MemberSet -Name PSStandardMembers -Value $info -PassThru |
+    Out-GridView -Title 'Service to stop?' -OutputMode Single | 
+    Stop-Service -WhatIf Теперь всё опять работает, и Out-GridView показывает только выбранные свойства. При этом, Stop-Process по-прежнему понимает его выдачу и останавливает выбранный сервис (для этого уберите -WhatIf и убедитесь в наличии админстративных привилегий). Out-GridView Stop-Process -WhatIf Хотя пропускание объектов через Select-Object изменяет их тип, большинство последующих командлетов этого не замечает, потому что прилетевшие им объекты содержат все свойства оригинала. Вот последняя иллюстрация: хотя командлет Out-GridView и показывает только выбранные свойства, объекты состоят из полного комплекта свойств: Select-Object Out-GridView # create object that tells PowerShell which column(s) should be visible:
+# show "Name", "Description" and "MainWindowTitle"
+[string[]]$visible = 'Name', 'Description', 'MainWindowTitle'
+$type = 'DefaultDisplayPropertySet'
+[System.Management.Automation.PSMemberInfo[]]$info =  
+    [System.Management.Automation.PSPropertySet]::new($type,$visible)
+
+
+Get-Process | 
+    Where-Object MainWindowTitle | 
+    Sort-Object -Property Name |
+    # clone the objects so they now belong to you:
+    Select-Object -Property * |
+    
+    # add the secret object to each object that you pipe into Out-GridView:
+    Add-Member -MemberType MemberSet -Name PSStandardMembers -Value $info -PassThru |
+    Out-GridView -Title 'Select a process' -OutputMode Single |
+    # still all properties available:
+    Select-Object -Property * # create object that tells PowerShell which column(s) should be visible:
+# show "Name", "Description" and "MainWindowTitle"
+[string[]]$visible = 'Name', 'Description', 'MainWindowTitle'
+$type = 'DefaultDisplayPropertySet'
+[System.Management.Automation.PSMemberInfo[]]$info =  
+    [System.Management.Automation.PSPropertySet]::new($type,$visible)
+
+
+Get-Process | 
+    Where-Object MainWindowTitle | 
+    Sort-Object -Property Name |
+    # clone the objects so they now belong to you:
+    Select-Object -Property * |
+    
+    # add the secret object to each object that you pipe into Out-GridView:
+    Add-Member -MemberType MemberSet -Name PSStandardMembers -Value $info -PassThru |
+    Out-GridView -Title 'Select a process' -OutputMode Single |
+    # still all properties available:
+    Select-Object -Property * ]]></text>
+</doc>

@@ -1,0 +1,144 @@
+<?xml version="1.0" ?>
+<doc>
+	<label auto="true" type="str" verify="true"><![CDATA[Develop]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[ZhksB]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-12-12, 23:11]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/post/705062/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Настраиваем QtCreator для полноценного программирования и отладки микроконтроллеров STM32]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Open source]]></item>
+		<item type="str"><![CDATA[C]]></item>
+		<item type="str"><![CDATA[Программирование микроконтроллеров]]></item>
+		<item type="str"><![CDATA[DIY или Сделай сам]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[stm32]]></item>
+		<item type="str"><![CDATA[qtcreator]]></item>
+		<item type="str"><![CDATA[gcc]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[Введение
+Привет всем.
+На данный момент я активно осваиваю разработку ПО для STM32 и хотел бы поделиться моим опытом.
+Как известно, для STM32 имеется много сред для разработки, однако часть из них, несмотря на удобность, имеют ограничения по использованию в случае пробной версии. Так, для IAR размер прошивки ограничивается 32 кБ, что весьма немного.
+В данной публикации будет рассмотрен способ настройки окружения для полноценной разработки и отладки ПО для микроконтроллеров STM32 в среде QtCreator.
+Прежде всего, определимся, что нам понадобится для проведения экспериментов.
+Железо
+В качестве примера я использую плату bluepill на базе STM32F103C8T6. В моем случае openocd жаловался на некорректный номер STM32. Решается 2 способами: или подменой номера в конфиге openocd или заменой МК на оригинальный. Я выбрал 2 вариант. Для загрузки и отладки программ в МК будем использовать интерфейс ST-Link.
+Софт
+Сами эксперименты проводились на виртуальной машине ОС Windows 10 в Virtual Box.
+Для настройки окружения понадобится следующее ПО:
+QtCreator. Можно скачать онлайн-установщик с сайта Qt. Но в нем при установке требуется регистрация и, кроме того, нам нужен только сам QtCreator. Поэтому я обычно его скачиваю непосредственно с GitHub. https://github.com/qt-creator/qt-creator/tags.
+gcc-arm-none-eabi. https://developer.arm.com/downloads/-/gnu-rm.
+Git. https://git-scm.com/downloads.
+openocd. https://github.com/openocd-org/openocd/tags. Это программа для загрузки прошивки и отладки микроконтроллера STM.
+make. https://gnuwin32.sourceforge.net/packages/make.htm
+ST-LINK Utility. Программа для прошивки STM32 + драйвер для самого ST-Link. https://www.st.com/en/development-tools/stsw-link004.html
+Python2.7. https://www.python.org/downloads/release/python-2718/
+Прежде всего, скачиваем и распаковываем QtCreator. Затем гит, компилятор, openocd, python, make и st-link.
+QtCreator и openocd распаковал в C:\Tools. Все программы, кроме QtCreator, должны быть добавлены в Path.
+Проверяем, что компилятор и openocd подтянулись в path вызовом из командной строки.
+Далее перейдем к настройке QtCreator.
+Настройка QtCreator
+Запускаем QtCreator. Для работы нужно установить плагины BareMetal и GenericProjectManager. Для этого идем в Help->About Plugins. После настройки перезапускаем QtCreator.
+Переходим в Edit->Preferences. Выбираем Kits слева. Тут видим наш комплект для сборки ARM, который подтянулся из Path. Идем в раздел Devices на вкладку Bare Metal и добавляем OpenOCD server. Выбираем название, в моем случае OpenOCD-STM32F103.
+В поле Executable file пишем путь к нашему openocd (по-идее, можно взять из path).
+В поле Root scripts directory указываем на директорию со скриптами в openocd.
+В поле Additional arguments указываем аргументы для прошивки MK. В нашем случае конфиг для STLink и target. Применяем.
+Переходим на вкладку Devices. Нажимаем Add->Bare Metal Device и Start Wizard. В появившемся окне выбираем Debug server provider ранее созданный OpenOCD-STM32F103. Далее Finish.
+Возвращаемся в Kits и донастраиваем наш комплект. Выбираем Device type и Device – Bar Metal Device. Применяем.
+На этом QtCreator пока откладываем и переходим к настройке самого проекта.
+Настройка проекта
+Теперь можно приступить непосредственно к созданию и настройке репозитория. Создадим простейший проект на CMSIS, который будет моргать светодиодами.
+Прежде всего, нужно подтянуть необходимые библиотеки в виде submodules из официальных репозиториев ARM и ST. Открываем bash-терминал, который устанавливается с git. Создадим папку led_blink_cmsis и перейдем в нее.
+mkdir led_blink_cmsis && cd led_blink_cmsis
+Внутри создадим папки build, lib и src.
+mkdir build && mkdir src && mkdir lib
+В папке build будут артефакты сборки, в src – наши исходники, а в lib – сторонние библиотеки.
+Инициализируем git.
+git init
+Далее добавим сторонние библиотеки cmsis для билда с использованием git submodules. Первая библиотека – форк от ARM, вторая содержит настройки и определения для STM32 семейства F1.
+git submodule add https://github.com/STMicroelectronics/cmsis_core lib/cmsis_core && cd lib/cmsis_core
+git checkout v5.6.0 && cd ../..
+git submodule add https://github.com/STMicroelectronics/cmsis_device_f1 lib/cmsis_device_f1 && cd lib/cmsis_device_f1
+git checkout v4.3.3 && cd ../..
+Git checkout здесь необходим, чтобы использовать релизные версии библиотек, в данном случае 5.6.0 и 4.3.3 для cmsis_core и cmsis_device соответственно.
+Далее создадим файлы main.c, init.h и init.c в папке src, в которых будем писать исходный код.
+touch src/main.c src/init.h src/init.c
+Наполним файлы кодом. В файле main.c находится код, которые включает и выключает светодиод, а также вызывает функции clock_init и port_init. Эти функции настраивает тактовую частоту МК и тактирование от кварца, а также работу порта C на выход в режиме пуш-пулл. Кроме того, init.c содержит реализацию функции delay_ms.
+main.c
+init.h
+init.c
+И, наконец, добавим в проект Makefile, в соответствии с которыми будут собираться наша прошивка. Шаблон этого файла взят из генератора кода mxcube и адаптирован под текущий проект. Файл имеет следующее содержание.
+Makefile
+В C_INCLUDES указываем пути к нашим .h файлам.
+В C_SOURCES указываем пути к нашим .c/.cpp файлам.
+DEBUG указывает на добавление дебаг-символов в прошивку. Для релиза выставляем в 0.
+OPT указывает на оптимизацию. Для релиза включаем оптимизацию, например, Os.
+Конечно, в качестве билд-системы можно использовать любую другую, например, CMake с тулчейном для STM32.
+Добавим папку build в .gitignore, чтобы гит ее не отслеживал.
+echo build/* > .gitignore
+На этом настройка проекта завершена и его можно импортировать в QtCreator.
+Импорт и настройка проекта в QtCreator
+QtCreator не очень дружит с Makefiles. Если попытаться использовать Autotools плагин, то у меня добавлялись только .c и .cpp файлы. Поэтому импортируем проект через специальный интерфейс QtCreator. Для этого понадобится плагин GenericProjectManager.
+Переходим в File->New Project. Слева в Import Existing Project.
+Далее указываем название проекта led_blink_cmsis и путь C:\led_blink_cmsis. Next.
+Выбираем какие директории и файлы импортировать. Выбираем пока только нашу папку src. Next.
+Затем add to version control – none и нажимаем Finish. Файлы теперь импортированы.
+Далее очень важная деталь – надо добавить в led_blink_cmsis.config определение нашего контроллера, #define STM32F103xB. Без этого дефайна ничего не будет работать, т.к. в библиотеке cmsis требуется указать тип контроллера для включения кода для работы с ним.
+На данном этапе ide не распознает зависимости. Настроим это.
+Добавим наши .c файлы в led_blink_cmsis.files
+src/init.c
+src/main.c
+А в led_blink_cmsis.inludes пути к заголовочным файлам.
+src/
+lib/cmsis_core/Include
+lib/cmsis_device_f1/Include
+Теперь все должно отображаться корректно.
+Попробуем собрать проект, нажав кнопку build. Проект должен собраться, а в конце будет таблица с размером нашей прошивки.
+Теперь добавим автозагрузку нашей прошивки на МК по нажатию на кнопку Run. Переходим в Projects слева, выбираем наш комплект arm-baremetal-generic-elf-32bit, затем снизу Run. Справа, где deployment, Add Deploy Step->Make. Затем повторяем, выбрав Custom Process Step и добавляем туда команду для прошивки через ST_link CLI.
+C:\Program Files (x86)\STMicroelectronics\STM32 ST-LINK Utility\ST-LINK Utility\ST-LINK_CLI.exe
+-P ".\build\led_blink_cmsis.bin" 0x08000000 –Rst
+Перед прошивкой подключаем наш ST-Link c МК. Мы прошиваем МК, начиная с адреса 0x08000000, и перезагружаем МК после прошивки.
+Таким образом, подключив МК через ST-Link и нажав кнопку Run, все должно скомпилиться, загрузиться, а светодиод начать моргать. Это можно видеть по показаниям осциллографа, который подключен к PC13.
+Таким образом, мы рассмотрели как настроить проект для STM32, его скомпилировать и загрузить в МК. Дальше настроим отладчик для комфортной отладки STM32.
+Настройка отладки
+Ранее мы уже настроили удаленный отладчик через openocd, и он должен работать
+Однако было весьма здорово иметь возможность видеть состояние регистров МК. Добавим такую возможность. Для этого нам понадобится .svd файл для нашего МК, т.е. STM32F103. Скачать его можно, например, из этого репозитория:
+https://github.com/fduignan/stm32f103c8t6
+Далее перейдем в QtCreator Edit->Preferences->Devices, на вкладку Bar Metal и выберем OpenOCD. Указываем в Peripherial description file наш путь .svd файлу.
+Теперь в режиме отладки перейдем в View->Views->Peripheral
+Registers, чтобы отобразить состояние конфигурационных регистров. Запустив
+окно отладки и, кликнув правой клавишей мыши на окне Peripheral registers,
+можно выбрать группу регистров для отображения, в нашем примере View Groups->GPIOC.
+В итоге мы имеем все удобства для отладки устройств на STM32 в IDE QtCreator.
+Заключение
+Таким образом, в рамках данной статьи рассмотрена настройка QtCreator в связке с GNU компиляторами для полноценной разработки ПО для МК STM32. Надеюсь, что статья была полезна.
+Спасибо за внимание! Введение Привет всем. На данный момент я активно осваиваю разработку ПО для STM32 и хотел бы поделиться моим опытом. Как известно, для STM32 имеется много сред для разработки, однако часть из них, несмотря на удобность, имеют ограничения по использованию в случае пробной версии. Так, для IAR размер прошивки ограничивается 32 кБ, что весьма немного. В данной публикации будет рассмотрен способ настройки окружения для полноценной разработки и отладки ПО для микроконтроллеров STM32 в среде QtCreator. Прежде всего, определимся, что нам понадобится для проведения экспериментов. Железо В качестве примера я использую плату bluepill на базе STM32F103C8T6. В моем случае openocd жаловался на некорректный номер STM32. Решается 2 способами: или подменой номера в конфиге openocd или заменой МК на оригинальный. Я выбрал 2 вариант. Для загрузки и отладки программ в МК будем использовать интерфейс ST-Link. bluepill STM32F103C8T6 openocd openocd ST-Link Софт Сами эксперименты проводились на виртуальной машине ОС Windows 10 в Virtual Box. Для настройки окружения понадобится следующее ПО: QtCreator. Можно скачать онлайн-установщик с сайта Qt. Но в нем при установке требуется регистрация и, кроме того, нам нужен только сам QtCreator. Поэтому я обычно его скачиваю непосредственно с GitHub. https://github.com/qt-creator/qt-creator/tags.
+gcc-arm-none-eabi. https://developer.arm.com/downloads/-/gnu-rm.
+Git. https://git-scm.com/downloads.
+openocd. https://github.com/openocd-org/openocd/tags. Это программа для загрузки прошивки и отладки микроконтроллера STM.
+make. https://gnuwin32.sourceforge.net/packages/make.htm
+ST-LINK Utility. Программа для прошивки STM32 + драйвер для самого ST-Link. https://www.st.com/en/development-tools/stsw-link004.html
+Python2.7. https://www.python.org/downloads/release/python-2718/ QtCreator. Можно скачать онлайн-установщик с сайта Qt. Но в нем при установке требуется регистрация и, кроме того, нам нужен только сам QtCreator. Поэтому я обычно его скачиваю непосредственно с GitHub. https://github.com/qt-creator/qt-creator/tags. QtCreator. Можно скачать онлайн-установщик с сайта Qt. Но в нем при установке требуется регистрация и, кроме того, нам нужен только сам QtCreator. Поэтому я обычно его скачиваю непосредственно с GitHub. https://github.com/qt-creator/qt-creator/tags. QtCreator gcc-arm-none-eabi. https://developer.arm.com/downloads/-/gnu-rm. gcc-arm-none-eabi. https://developer.arm.com/downloads/-/gnu-rm. gcc-arm-none-eabi  Git. https://git-scm.com/downloads. Git. https://git-scm.com/downloads. Git openocd. https://github.com/openocd-org/openocd/tags. Это программа для загрузки прошивки и отладки микроконтроллера STM. openocd. https://github.com/openocd-org/openocd/tags. Это программа для загрузки прошивки и отладки микроконтроллера STM. openocd make. https://gnuwin32.sourceforge.net/packages/make.htm make. https://gnuwin32.sourceforge.net/packages/make.htm make https://gnuwin32.sourceforge.net/packages/make.htm ST-LINK Utility. Программа для прошивки STM32 + драйвер для самого ST-Link. https://www.st.com/en/development-tools/stsw-link004.html ST-LINK Utility. Программа для прошивки STM32 + драйвер для самого ST-Link. https://www.st.com/en/development-tools/stsw-link004.html ST-LINK Utility Python2.7. https://www.python.org/downloads/release/python-2718/ Python2.7. https://www.python.org/downloads/release/python-2718/ Python2.7 Прежде всего, скачиваем и распаковываем QtCreator. Затем гит, компилятор, openocd, python, make и st-link.    QtCreator и openocd распаковал в C:\Tools. Все программы, кроме QtCreator, должны быть добавлены в Path. Path   Проверяем, что компилятор и openocd подтянулись в path вызовом из командной строки.   Далее перейдем к настройке QtCreator. Настройка QtCreator Запускаем QtCreator. Для работы нужно установить плагины BareMetal и GenericProjectManager. Для этого идем в Help->About Plugins. После настройки перезапускаем QtCreator. BareMetal GenericProjectManager Help->About Plugins   Переходим в Edit->Preferences. Выбираем Kits слева. Тут видим наш комплект для сборки ARM, который подтянулся из Path. Идем в раздел Devices на вкладку Bare Metal и добавляем OpenOCD server. Выбираем название, в моем случае OpenOCD-STM32F103. Edit->Preferences Kits Devices Bare Metal OpenOCD OpenOCD-STM32F103   В поле Executable file пишем путь к нашему openocd (по-идее, можно взять из path). Executable file openocd В поле Root scripts directory указываем на директорию со скриптами в openocd. Root scripts В поле Additional arguments указываем аргументы для прошивки MK. В нашем случае конфиг для STLink и target. Применяем. Additional arguments Переходим на вкладку Devices. Нажимаем Add->Bare Metal Device и Start Wizard. В появившемся окне выбираем Debug server provider ранее созданный OpenOCD-STM32F103. Далее Finish. Devices Add->Bare Metal Device Start Wizard Debug server provider OpenOCD-STM32F103   Возвращаемся в Kits и донастраиваем наш комплект. Выбираем Device type и Device – Bar Metal Device. Применяем. Kits Device type Device – Bar Metal Device   На этом QtCreator пока откладываем и переходим к настройке самого проекта. Настройка проекта Теперь можно приступить непосредственно к созданию и настройке репозитория. Создадим простейший проект на CMSIS, который будет моргать светодиодами. CMSIS Прежде всего, нужно подтянуть необходимые библиотеки в виде submodules из официальных репозиториев ARM и ST. Открываем bash-терминал, который устанавливается с git. Создадим папку led_blink_cmsis и перейдем в нее. mkdir led_blink_cmsis && cd led_blink_cmsis mkdir led_blink_cmsis && cd led_blink_cmsis Внутри создадим папки build, lib и src. build lib src mkdir build && mkdir src && mkdir lib mkdir build && mkdir src && mkdir lib В папке build будут артефакты сборки, в src – наши исходники, а в lib – сторонние библиотеки. build src lib Инициализируем git. git init git init Далее добавим сторонние библиотеки cmsis для билда с использованием git submodules. Первая библиотека – форк от ARM, вторая содержит настройки и определения для STM32 семейства F1. git submodules git submodule add https://github.com/STMicroelectronics/cmsis_core lib/cmsis_core && cd lib/cmsis_core
+git checkout v5.6.0 && cd ../.. git submodule add https://github.com/STMicroelectronics/cmsis_core lib/cmsis_core && cd lib/cmsis_core
+git checkout v5.6.0 && cd ../..   git submodule add https://github.com/STMicroelectronics/cmsis_device_f1 lib/cmsis_device_f1 && cd lib/cmsis_device_f1
+git checkout v4.3.3 && cd ../.. git submodule add https://github.com/STMicroelectronics/cmsis_device_f1 lib/cmsis_device_f1 && cd lib/cmsis_device_f1
+git checkout v4.3.3 && cd ../.. Git checkout здесь необходим, чтобы использовать релизные версии библиотек, в данном случае 5.6.0 и 4.3.3 для cmsis_core и cmsis_device соответственно. Далее создадим файлы main.c, init.h и init.c в папке src, в которых будем писать исходный код. main.c init.h init.c src touch src/main.c src/init.h src/init.c touch src/main.c src/init.h src/init.c Наполним файлы кодом. В файле main.c находится код, которые включает и выключает светодиод, а также вызывает функции clock_init и port_init. Эти функции настраивает тактовую частоту МК и тактирование от кварца, а также работу порта C на выход в режиме пуш-пулл. Кроме того, init.c содержит реализацию функции delay_ms. main.c clock_init port_init init.c delay_ms main.c main.c     init.h init.h     init.c init.c     И, наконец, добавим в проект Makefile, в соответствии с которыми будут собираться наша прошивка. Шаблон этого файла взят из генератора кода mxcube и адаптирован под текущий проект. Файл имеет следующее содержание. Makefile mxcube Makefile Makefile     В C_INCLUDES указываем пути к нашим .h файлам.
+В C_SOURCES указываем пути к нашим .c/.cpp файлам.
+DEBUG указывает на добавление дебаг-символов в прошивку. Для релиза выставляем в 0.
+OPT указывает на оптимизацию. Для релиза включаем оптимизацию, например, Os. В C_INCLUDES указываем пути к нашим .h файлам. В C_INCLUDES указываем пути к нашим .h файлам. В C_SOURCES указываем пути к нашим .c/.cpp файлам. В C_SOURCES указываем пути к нашим .c/.cpp файлам. DEBUG указывает на добавление дебаг-символов в прошивку. Для релиза выставляем в 0. DEBUG указывает на добавление дебаг-символов в прошивку. Для релиза выставляем в 0. OPT указывает на оптимизацию. Для релиза включаем оптимизацию, например, Os. OPT указывает на оптимизацию. Для релиза включаем оптимизацию, например, Os. Конечно, в качестве билд-системы можно использовать любую другую, например, CMake с тулчейном для STM32. CMake Добавим папку build в .gitignore, чтобы гит ее не отслеживал. build .gitignore echo build/* > .gitignore echo build/* > .gitignore На этом настройка проекта завершена и его можно импортировать в QtCreator. Импорт и настройка проекта в QtCreator QtCreator не очень дружит с Makefiles. Если попытаться использовать Autotools плагин, то у меня добавлялись только .c и .cpp файлы. Поэтому импортируем проект через специальный интерфейс QtCreator. Для этого понадобится плагин GenericProjectManager. GenericProjectManager Переходим в File->New Project. Слева в Import Existing Project. File->New Project Import Existing Project Далее указываем название проекта led_blink_cmsis и путь C:\led_blink_cmsis. Next. ed_blink_cmsis C:\led_blink_cmsis Выбираем какие директории и файлы импортировать. Выбираем пока только нашу папку src. Next. src   Затем add to version control – none и нажимаем Finish. Файлы теперь импортированы. add to version control – none Далее очень важная деталь – надо добавить в led_blink_cmsis.config определение нашего контроллера, #define STM32F103xB. Без этого дефайна ничего не будет работать, т.к. в библиотеке cmsis требуется указать тип контроллера для включения кода для работы с ним. led_blink_cmsis.config #define STM32F103xB   На данном этапе ide не распознает зависимости. Настроим это. Добавим наши .c файлы в led_blink_cmsis.files .c led_blink_cmsis.files src/init.c
+src/main.c src/init.c
+src/main.c А в led_blink_cmsis.inludes пути к заголовочным файлам. led_blink_cmsis.inludes src/
+lib/cmsis_core/Include
+lib/cmsis_device_f1/Include src/
+lib/cmsis_core/Include
+lib/cmsis_device_f1/Include Теперь все должно отображаться корректно.   Попробуем собрать проект, нажав кнопку build. Проект должен собраться, а в конце будет таблица с размером нашей прошивки. build   Теперь добавим автозагрузку нашей прошивки на МК по нажатию на кнопку Run. Переходим в Projects слева, выбираем наш комплект arm-baremetal-generic-elf-32bit, затем снизу Run. Справа, где deployment, Add Deploy Step->Make. Затем повторяем, выбрав Custom Process Step и добавляем туда команду для прошивки через ST_link CLI. Run Projects arm-baremetal-generic-elf-32bit Run Add Deploy Step->Make Custom Process Step ST_link CLI C:\Program Files (x86)\STMicroelectronics\STM32 ST-LINK Utility\ST-LINK Utility\ST-LINK_CLI.exe
+-P ".\build\led_blink_cmsis.bin" 0x08000000 –Rst C:\Program Files (x86)\STMicroelectronics\STM32 ST-LINK Utility\ST-LINK Utility\ST-LINK_CLI.exe
+-P ".\build\led_blink_cmsis.bin" 0x08000000 –Rst Перед прошивкой подключаем наш ST-Link c МК. Мы прошиваем МК, начиная с адреса 0x08000000, и перезагружаем МК после прошивки.   Таким образом, подключив МК через ST-Link и нажав кнопку Run, все должно скомпилиться, загрузиться, а светодиод начать моргать. Это можно видеть по показаниям осциллографа, который подключен к PC13. Run   Таким образом, мы рассмотрели как настроить проект для STM32, его скомпилировать и загрузить в МК. Дальше настроим отладчик для комфортной отладки STM32. Настройка отладки Ранее мы уже настроили удаленный отладчик через openocd, и он должен работать    Однако было весьма здорово иметь возможность видеть состояние регистров МК. Добавим такую возможность. Для этого нам понадобится .svd файл для нашего МК, т.е. STM32F103. Скачать его можно, например, из этого репозитория: .svd STM32F103 https://github.com/fduignan/stm32f103c8t6 https://github.com/fduignan/stm32f103c8t6 https://github.com/fduignan/stm32f103c8t6 Далее перейдем в QtCreator Edit->Preferences->Devices, на вкладку Bar Metal и выберем OpenOCD. Указываем в Peripherial description file наш путь .svd файлу. QtCreator Edit->Preferences->Devices Bar Metal OpenOCD Peripherial description file .svd Теперь в режиме отладки перейдем в View->Views->Peripheral
+Registers, чтобы отобразить состояние конфигурационных регистров. Запустив
+окно отладки и, кликнув правой клавишей мыши на окне Peripheral registers,
+можно выбрать группу регистров для отображения, в нашем примере View Groups->GPIOC. View->Views->Peripheral
+Registers   Peripheral registers  View Groups->GPIOC   В итоге мы имеем все удобства для отладки устройств на STM32 в IDE QtCreator. Заключение Таким образом, в рамках данной статьи рассмотрена настройка QtCreator в связке с GNU компиляторами для полноценной разработки ПО для МК STM32. Надеюсь, что статья была полезна. Спасибо за внимание! ]]></text>
+</doc>

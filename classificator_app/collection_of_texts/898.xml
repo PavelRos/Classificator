@@ -1,0 +1,120 @@
+<?xml version="1.0" ?>
+<doc>
+	<label auto="true" type="str" verify="true"><![CDATA[Other]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[yar3333]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-10-20, 08:20]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/post/694212/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[AiPainter — цифровой AI-художник]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Python]]></item>
+		<item type="str"><![CDATA[.NET]]></item>
+		<item type="str"><![CDATA[C#]]></item>
+		<item type="str"><![CDATA[Графический дизайн]]></item>
+		<item type="str"><![CDATA[Искусственный интеллект]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[stablediffusion]]></item>
+		<item type="str"><![CDATA[нейросети]]></item>
+		<item type="str"><![CDATA[генерация изображений]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[Доброго времени суток, уважаемые коллеги по цеху! Хочу рассказать о своём последнем проекте, написанном по фану - обёртке для трёх нейросетевых проектов: нашумевшей StableDiffusion (используется её форк InvokeAI) и более старых - lama-cleaner и rembg.
+Чуть технических деталей
+Само приложение AiPainter написано на C# под современный .NET 6.0. Взаимодействие с нейросетевыми проектами происходит через их WebAPI. Python-проекты откомпилированы в *.exe, используя pyinstaller, и не нуждаются в установленном python. Для удобства разработки, AiPainter может как использовать внедрённые в него InvokeAI/lama-cleaner/rembg, так и внешние, которые вы можете запускать откуда угодно, лишь бы наружу торчал HTTP-интерфейс (в Config.json проекта AiPainter можно задать кастомные URL-ы, на которые он будет обращаться).
+InvokeAI (форк оригинального StableDiffusion) умеет как генерировать картинки 512x512 по текстовому описанию, так и изменять отдельные области по маске (делать inpaint). Маска задаётся на исходном изображении через прозрачность пикселей. При этом реальная цветовая информация этих самых пикселей должна быть сохранена.
+lama-cleaner - сеть для удаления с изображения какого-нибудь объекта (по маске, она здесь задаётся отдельным изображением - белым цветом на чёрном фоне). Размеры изображения не так сильно ограничены, как для StableDiffusion.
+rembg - проект для автоматического удаления фона у картики. Всё просто: на вход картинка, на выходе - она же, но с прозрачным фоном.
+Расширение картинки
+Сгенерированное изображение
+Нередко картинки, генерируемые StableDiffusion получаются как бы обрезанными (см. девушка выше). Для решения этой проблемы хорошо бы научиться делать outpaint - дорисовывать изображение по краям. Однако, нельзя просто подать на вход StableDiffusion картинку с прозрачностью, например, в левой части, т.к. под этой прозрачностью будет просто чёрная область, а нужно что-то хотя бы отдалённо похожее на левый (или правый?) бок, в нашем случае, девушки.
+После сдвига вправо и вызова lama-cleaner для левой части картинки
+Решение подсмотрел уже не помню где: нужно сначала расширить картинку в нужную сторону, потом сделать для новой области inpaint (например, при помощи lama-cleaner), а затем уже делать область прозрачной и натравливать на неё InvokeAI. Получаются приемлемые результаты.
+После inpaint левой части изображения через StableDiffusion
+Процесс можно продолжать. Кисти рук - больное место для StableDiffusion :)
+Упаковка нейросетевых python-проектов в exe-файлы
+Хотелось, чтобы проект запускался из коробки. Тут есть две проблемы: 1) современные нейросетевые проекты имеют кучу зависимостей и 2) юридические вопросы касательно распространения в т.ч. pretrained-моделей.
+Первая проблема решилась через pyinstaller (автор специализируется на C#/PHP/web, пайтон лишь наблюдает издали) и танцы с бубнами в течение нескольких дней. Например, InvokeAI собирается такой командой:
+call conda run -n invokeai --cwd repo --no-capture-output pyinstaller ^
+--distpath ..\dist ^
+--collect-submodules torch ^
+--hidden-import=pytorch --collect-data torch --copy-metadata torch ^
+--hidden-import=scipy --collect-data scipy --copy-metadata scipy ^
+--hidden-import=huggingface_hub.hf_api ^
+--hidden-import=huggingface_hub.repository ^
+--collect-submodules dns ^
+--copy-metadata tqdm ^
+--copy-metadata regex ^
+--copy-metadata requests ^
+--copy-metadata packaging ^
+--copy-metadata filelock ^
+--copy-metadata numpy ^
+--copy-metadata tokenizers ^
+--collect-submodules eventlet ^
+--collect-submodules eventlet.hubs ^
+--hidden-import=ldm.models.diffusion.ddpm ^
+--hidden-import=ldm.modules.diffusionmodules.openaimodel ^
+--hidden-import=ldm.modules.encoders ^
+--hidden-import=ldm.modules.encoders.modules ^
+--hidden-import=ldm.modules.embedding_manager ^
+--add-binary "c:\WinProg\anaconda3\envs\invokeai\Lib\site-packages\pywin32_system32\pythoncom39.dll;." ^
+--paths="." ^
+--paths="c:\WinProg\anaconda3\envs\invokeai\Lib\site-packages\cv2" ^
+scripts\legacy_api.py
+Как видите, не совсем тривиально. Все команды для сборки лежат в репозитории проекта (*.cmd файлы).
+Вторая проблема посложнее. Т.к. проект по фану - пошёл на риск - модели включил в релиз. За исключением основной модели StableDiffusion (она тяжёлая ~4GB) - предполагаю, что пользователи смогут её скачать самостоятельно (программа при запуске предлагает перейти на сайт HuggingFace и подсказывает куда положить скачанный файл).
+Заключение
+Надеюсь, получилось юзабельно. Репозиторий проекта: https://github.com/yar3333/aipainter. Разработка заняла порядка месяца работы по вечерам и несколько дней фулл-тайм.
+Хоть и делал по фану, всё-таки пару раз срывался в рефакторинг, так что качество кода, вроде, на уровне. Если вы новичок - можете покопаться в исходниках, возможно, это будет для вас полезно.
+Всем удачи! :)   Доброго времени суток, уважаемые коллеги по цеху! Хочу рассказать о своём последнем проекте, написанном по фану - обёртке для трёх нейросетевых проектов: нашумевшей StableDiffusion (используется её форк InvokeAI) и более старых - lama-cleaner и rembg. Чуть технических деталей Само приложение AiPainter написано на C# под современный .NET 6.0. Взаимодействие с нейросетевыми проектами происходит через их WebAPI. Python-проекты откомпилированы в *.exe, используя pyinstaller, и не нуждаются в установленном python. Для удобства разработки, AiPainter может как использовать внедрённые в него InvokeAI/lama-cleaner/rembg, так и внешние, которые вы можете запускать откуда угодно, лишь бы наружу торчал HTTP-интерфейс (в Config.json проекта AiPainter можно задать кастомные URL-ы, на которые он будет обращаться). pyinstaller Config.json InvokeAI (форк оригинального StableDiffusion) умеет как генерировать картинки 512x512 по текстовому описанию, так и изменять отдельные области по маске (делать inpaint). Маска задаётся на исходном изображении через прозрачность пикселей. При этом реальная цветовая информация этих самых пикселей должна быть сохранена. InvokeAI ) lama-cleaner - сеть для удаления с изображения какого-нибудь объекта (по маске, она здесь задаётся отдельным изображением - белым цветом на чёрном фоне). Размеры изображения не так сильно ограничены, как для StableDiffusion. lama-cleaner rembg - проект для автоматического удаления фона у картики. Всё просто: на вход картинка, на выходе - она же, но с прозрачным фоном. rembg Расширение картинки Сгенерированное изображение  Сгенерированное изображение Нередко картинки, генерируемые StableDiffusion получаются как бы обрезанными (см. девушка выше). Для решения этой проблемы хорошо бы научиться делать outpaint - дорисовывать изображение по краям. Однако, нельзя просто подать на вход StableDiffusion картинку с прозрачностью, например, в левой части, т.к. под этой прозрачностью будет просто чёрная область, а нужно что-то хотя бы отдалённо похожее на левый (или правый?) бок, в нашем случае, девушки. После сдвига вправо и вызова lama-cleaner для левой части картинки  После сдвига вправо и вызова lama-cleaner для левой части картинки Решение подсмотрел уже не помню где: нужно сначала расширить картинку в нужную сторону, потом сделать для новой области inpaint (например, при помощи lama-cleaner), а затем уже делать область прозрачной и натравливать на неё InvokeAI. Получаются приемлемые результаты.  После inpaint левой части изображения через StableDiffusion  Процесс можно продолжать. Кисти рук - больное место для StableDiffusion :) Упаковка нейросетевых python-проектов в exe-файлы Хотелось, чтобы проект запускался из коробки. Тут есть две проблемы: 1) современные нейросетевые проекты имеют кучу зависимостей и 2) юридические вопросы касательно распространения в т.ч. pretrained-моделей. Первая проблема решилась через pyinstaller (автор специализируется на C#/PHP/web, пайтон лишь наблюдает издали) и танцы с бубнами в течение нескольких дней. Например, InvokeAI собирается такой командой: call conda run -n invokeai --cwd repo --no-capture-output pyinstaller ^
+--distpath ..\dist ^
+--collect-submodules torch ^
+--hidden-import=pytorch --collect-data torch --copy-metadata torch ^
+--hidden-import=scipy --collect-data scipy --copy-metadata scipy ^
+--hidden-import=huggingface_hub.hf_api ^
+--hidden-import=huggingface_hub.repository ^
+--collect-submodules dns ^
+--copy-metadata tqdm ^
+--copy-metadata regex ^
+--copy-metadata requests ^
+--copy-metadata packaging ^
+--copy-metadata filelock ^
+--copy-metadata numpy ^
+--copy-metadata tokenizers ^
+--collect-submodules eventlet ^
+--collect-submodules eventlet.hubs ^
+--hidden-import=ldm.models.diffusion.ddpm ^
+--hidden-import=ldm.modules.diffusionmodules.openaimodel ^
+--hidden-import=ldm.modules.encoders ^
+--hidden-import=ldm.modules.encoders.modules ^
+--hidden-import=ldm.modules.embedding_manager ^
+--add-binary "c:\WinProg\anaconda3\envs\invokeai\Lib\site-packages\pywin32_system32\pythoncom39.dll;." ^
+--paths="." ^
+--paths="c:\WinProg\anaconda3\envs\invokeai\Lib\site-packages\cv2" ^
+scripts\legacy_api.py call conda run -n invokeai --cwd repo --no-capture-output pyinstaller ^
+--distpath ..\dist ^
+--collect-submodules torch ^
+--hidden-import=pytorch --collect-data torch --copy-metadata torch ^
+--hidden-import=scipy --collect-data scipy --copy-metadata scipy ^
+--hidden-import=huggingface_hub.hf_api ^
+--hidden-import=huggingface_hub.repository ^
+--collect-submodules dns ^
+--copy-metadata tqdm ^
+--copy-metadata regex ^
+--copy-metadata requests ^
+--copy-metadata packaging ^
+--copy-metadata filelock ^
+--copy-metadata numpy ^
+--copy-metadata tokenizers ^
+--collect-submodules eventlet ^
+--collect-submodules eventlet.hubs ^
+--hidden-import=ldm.models.diffusion.ddpm ^
+--hidden-import=ldm.modules.diffusionmodules.openaimodel ^
+--hidden-import=ldm.modules.encoders ^
+--hidden-import=ldm.modules.encoders.modules ^
+--hidden-import=ldm.modules.embedding_manager ^
+--add-binary "c:\WinProg\anaconda3\envs\invokeai\Lib\site-packages\pywin32_system32\pythoncom39.dll;." ^
+--paths="." ^
+--paths="c:\WinProg\anaconda3\envs\invokeai\Lib\site-packages\cv2" ^
+scripts\legacy_api.py                          Как видите, не совсем тривиально. Все команды для сборки лежат в репозитории проекта (*.cmd файлы). *.cmd Вторая проблема посложнее. Т.к. проект по фану - пошёл на риск - модели включил в релиз. За исключением основной модели StableDiffusion (она тяжёлая ~4GB) - предполагаю, что пользователи смогут её скачать самостоятельно (программа при запуске предлагает перейти на сайт HuggingFace и подсказывает куда положить скачанный файл). Заключение Надеюсь, получилось юзабельно. Репозиторий проекта: https://github.com/yar3333/aipainter. Разработка заняла порядка месяца работы по вечерам и несколько дней фулл-тайм. https://github.com/yar3333/aipainter Хоть и делал по фану, всё-таки пару раз срывался в рефакторинг, так что качество кода, вроде, на уровне. Если вы новичок - можете покопаться в исходниках, возможно, это будет для вас полезно. Всем удачи! :) ]]></text>
+</doc>

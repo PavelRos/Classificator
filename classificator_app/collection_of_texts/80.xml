@@ -1,0 +1,211 @@
+<?xml version="1.0" ?>
+<doc>
+	<label auto="true" type="str" verify="true"><![CDATA[Develop]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[KosteevAlex]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-12-15, 10:51]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/post/705656/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Оптимизация данных в MS SQL]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Microsoft SQL Server]]></item>
+		<item type="str"><![CDATA[Хранилища данных]]></item>
+		<item type="str"><![CDATA[Data Engineering]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[olap]]></item>
+		<item type="str"><![CDATA[olap-кубы]]></item>
+		<item type="str"><![CDATA[mssql]]></item>
+		<item type="str"><![CDATA[ms sql server]]></item>
+		<item type="str"><![CDATA[оптимизация]]></item>
+		<item type="str"><![CDATA[оптимизация кода]]></item>
+		<item type="str"><![CDATA[оптимизация запросов]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[Основная статья Взаимодействие DWH Oracle и MS SQL
+Одним из методов для оптимизации обработки, хранения и администрирования данных в базе данных и кубах MS SQL — это процесс создании партицирования данных.
+Partitioning (партицирование или по-другому секционирование) —  это разбиение таблицы на несколько частей, а эти части на одну или несколько файловых групп. Партицирование необходимо для целей ускорения доступа чтения или изменения данных и администрирования. Так как выровненный индекс по таблице будет содержаться в каждой условно своей секции, то при чтении или изменении данных будет обращение к конкретной секции и конкретному индексу в этой секции.
+Со стороны администрирования для процесса переноса (например архивирования) данных в другую таблицу без физического перемещения данных, а перемещения только логической секций, подлежащих этой операции, выполнение этого действия происходит мгновенно, что экономит время и ресурсы машины. Для этого необходимо подготовить таблицу «архив» — копию по структуре с таблицей источника, она может быть не партицированна.
+Пример кода для переноса в таблицу:
+ALTER TABLE DB.schema.table_sourse SWITCH PARTITION 1 TO DB.schema.table_arch;
+Но если мы хотим перемещать в партицированную таблицу, то таблица приемник должна использовать ту же функцию и схему партицирования, или схему и функцию повторяющую нужные нам диапазоны секционирования. Так же таблица должна содержать CONSTRAINT (ограничение), которое накладывается по полю секционирования.
+Пример кода для переноса в партицированную таблицу:
+ALTER TABLE DB.schema.table_arch  WITH CHECK ADD CONSTRAINT chk_name CHECK (Field_name <= N'YYYY-MM-DD');
+ALTER TABLE DB.schema.table_sourse SWITCH PARTITION 1 TO DB.schema.table_arch PARTITION  1 WITH (WAIT_AT_LOW_PRIORITY (MAX_DURATION = 0 MINUTES, ABORT_AFTER_WAIT = NONE));
+Пример кода для проверки:
+SELECT
+  partition_number AS PartNumber
+ ,row_count AS PartCount
+FROM sys.dm_db_partition_stats
+WHERE object_id = OBJECT_ID('table_arch ');
+Так же партицирование можно использовать как быстрое удаление части данных, не прибегая к операции DELETE. Для этого переносим партицию в таблицу назначения и выполняем операцию TRUNCATE TABLE над таблицей с полученной партицией. Вот такой небольшой трюк может сэкономить нам время для ненужных данных.
+Со стороны ускорения доступа для чтения данных или изменения, нам необходимо чтобы наша партиция в OLAP кубе смотрела на партицию в таблице. Первым этапом создаем функцию и схему партицирования, по умолчанию файловая группа которого задается как Primary. В дальнейшем создаем таблицу и в таблице определяем поле, по которому необходимо создать партицирование.
+Пример кода создания функции, схемы партицирование и применения для таблицы:
+CREATE PARTITION FUNCTION f_Partition_name(date) AS RANGE RIGHT FOR VALUES (N'2022-01-01', N'2022-02-01', N'2022-03-01', N'2022-03-01');
+CREATE PARTITION SCHEME PartitionScheme_name AS PARTITION f_Partition_name ALL TO ([Primary]);
+CREATE TABLE DB.schema.table_name (
+  OPER_DATE date not null,
+  Field1 int,
+  Field2 varchar
+)
+ON PartitionScheme_name (OPER_DATE);
+Если таблица уже создана и имеет данные, то необходимо создать кластеризованный индекс по полю, подходящему для секционирования.
+Пример кода для существующий таблицы:
+CREATE CLUSTERED INDEX Idx_name ON db.schema.table_name ([oper_date]) WITH (SORT_IN_TEMPDB = OFF, DROP_EXISTING = OFF, ONLINE = OFF) ON [PartitionScheme_name]([oper_date]);
+Так же можно и нужно для нашей цели создавать партицирование для таблиц фактов, при котором в дальнейшем будет использоваться Сolumnstore индекс. Необходимо иметь ввиду особенность данного индекса, что всегда требуется иметь одну пустую секцию для будущих данных, так как если все секции заняты данными, то мы не сможем добавить дополнительную секцию при необходимости.
+Пример создания таблицы с колоночным индексом:
+CREATE TABLE DB.schema.table_name (
+  OPER_DATE date not null,
+  Field1 int,
+  Field2 varchar
+)
+ON PartitionScheme_name (OPER_DATE);
+
+CREATE CLUSTERED COLUMNSTORE INDEX CSX_name
+ON CARD_TRN.card_trn.TRN_FACT
+ON PartitionScheme_name (oper_date);
+С течением времени у нас возникает необходимость добавления дополнительных секций для будущих данных, для этого мы должны позаботиться о создании партиции на будущие даты.
+Пример кода добавления секции:
+ALTER PARTITION SCHEME PartitionScheme_name NEXT USED [PRIMARY];
+ALTER PARTITION FUNCTION f_Partition_name () SPLIT RANGE (N '2022-04-01');
+Отвечая на вопрос, как же нам удаётся манипулировать большими объемами данных и получать высокую скорость чтения при обработке куба (таблицы могут содержать 1 и более миллиарда строк), то вот и ответ. Таблица фактов хранится в Сolumnstore индексе, так же таблица имеет партицирование (секционирование) по отчетной дате, и каждая партиция в OLAP кубе имеет строго смотрящий интервал даты в партицию таблицы.
+За счет использования Сolumnstore индекса уменьшается 10-ти кратно объем занимаемого места на диске. И при считывании данных каждого по столбцу методом distinct получаем огромный прирост скорости. Самое главное, надо понимать, что при хранении таким способом, необходимо избегать операции update, так как данные в этом индексе не удаляются, а дополняются новыми значениями, но это можно исправить перестроением индекса. Так же можно улучшить производительность индексов columnstore, обновив при этом промежуточную таблицу, и уже после выполнить операции delete и insert вместо прямого update.
+Для постоянно изменяющихся данных используем партицирование + clustered индекс и сжатие по page для всех данных, кроме последней отчетной даты, в ней используем сжатие row.
+В качестве примера хотел показать план запроса при обработке мер в кубе:
+Рис. 1 Плана запроса при считывании меры
+Запрос генерируемый при обработке заданной меры:
+SELECT
+  [card_trn_TRN_FACT].[SUM_TRAN_CARD] AS [card_trn_TRN_FACTSUM_TRAN_CARD0_0]
+ ,[card_trn_TRN_FACT].[SUM_TRAN_PRC] AS [card_trn_TRN_FACTSUM_TRAN_PRC0_1]
+ ,[card_trn_TRN_FACT].[SUM_COM_VAL] AS [card_trn_TRN_FACTSUM_COM_VAL0_2]
+ ,[card_trn_TRN_FACT].[SUM_COM_VAL_ZN] AS [card_trn_TRN_FACTSUM_COM_VAL_ZN0_3]
+ ,[card_trn_TRN_FACT].[SUM_COM_RUR] AS [card_trn_TRN_FACTSUM_COM_RUR0_4]
+ ,[card_trn_TRN_FACT].[SUM_COM_RUR_ZN] AS [card_trn_TRN_FACTSUM_COM_RUR_ZN0_5]
+ ,[card_trn_TRN_FACT].[SUM_DEAL] AS [card_trn_TRN_FACTSUM_DEAL0_6]
+ ,[card_trn_TRN_FACT].[SUM_DEAL_RUR] AS [card_trn_TRN_FACTSUM_DEAL_RUR0_7]
+ ,[card_trn_TRN_FACT].[SUM_TRAN_CARD_RUR] AS [card_trn_TRN_FACTSUM_TRAN_CARD_RUR0_8]
+ ,[card_trn_TRN_FACT].[id] AS [card_trn_TRN_FACTID0_9]
+ ,[card_trn_TRN_FACT].[OPER_DATE] AS [card_trn_TRN_FACToper_date0_10]
+ ,[card_trn_TRN_FACT].[id_trans_type] AS [card_trn_TRN_FACTid_trans_type0_11]
+ ,[card_trn_TRN_FACT].[ID_TERMINAL] AS [card_trn_TRN_FACTID_TERMINAL0_12]
+ ,[card_trn_TRN_FACT].[ID_CUSTOMER] AS [card_trn_TRN_FACTID_CUSTOMER0_13]
+ ,[card_trn_TRN_FACT].[CUR_PRC] AS [card_trn_TRN_FACTCUR_PRC0_14]
+ ,[card_trn_TRN_FACT].[id_CARD] AS [card_trn_TRN_FACTid_CARD0_15]
+ ,[card_trn_TRN_FACT].[AGREEMENT_RK] AS [card_trn_TRN_FACTAGREEMENT_RK0_16]
+ ,[card_trn_TRN_FACT].[LOAN_AGR_PROP_ID] AS [card_trn_TRN_FACTLOAN_AGR_PROP_ID0_17]
+ ,[card_trn_TRN_FACT].[CARD_MERCHANT_HLV_RK] AS [card_trn_TRN_FACTCARD_MERCHANT_HLV_RK0_18]
+ ,[card_trn_TRN_FACT].[CARD_MERCHANT_HLV_TERM_RK] AS [card_trn_TRN_FACTCARD_MERCHANT_HLV_TERM_RK0_19]
+ ,[card_trn_TRN_FACT].[LOAN_AGR_ID] AS [card_trn_TRN_FACTLOAN_AGR_ID0_20]
+ ,[card_trn_TRN_FACT].[CARD_ENTITY_HLV_RK] AS [card_trn_TRN_FACTCARD_ENTITY_HLV_RK0_21]
+ ,[card_trn_TRN_FACT].[BAKET_ID] AS [card_trn_TRN_FACTBAKET_ID0_22]
+ ,[card_trn_TRN_FACT].[BAKET_MC_ID] AS [card_trn_TRN_FACTBAKET_MC_ID0_23]
+ ,[card_trn_TRN_FACT].[BAKET_MIR_ID] AS [card_trn_TRN_FACTBAKET_MIR_ID0_24]
+ ,[card_trn_TRN_FACT].[BAKET_VISA_ID] AS [card_trn_TRN_FACTBAKET_VISA_ID0_25]
+FROM (SELECT *
+  FROM [CARD_TRN].[TRN_FACT]
+  WHERE oper_date >= '20220101'
+  AND oper_date <= '20220331') AS [card_trn_TRN_FACT] Основная статья Взаимодействие DWH Oracle и MS SQL Взаимодействие DWH Oracle и MS SQL Одним из методов для оптимизации обработки, хранения и администрирования данных в базе данных и кубах MS SQL — это процесс создании партицирования данных. Partitioning (партицирование или по-другому секционирование) —  это разбиение таблицы на несколько частей, а эти части на одну или несколько файловых групп. Партицирование необходимо для целей ускорения доступа чтения или изменения данных и администрирования. Так как выровненный индекс по таблице будет содержаться в каждой условно своей секции, то при чтении или изменении данных будет обращение к конкретной секции и конкретному индексу в этой секции. Со стороны администрирования для процесса переноса (например архивирования) данных в другую таблицу без физического перемещения данных, а перемещения только логической секций, подлежащих этой операции, выполнение этого действия происходит мгновенно, что экономит время и ресурсы машины. Для этого необходимо подготовить таблицу «архив» — копию по структуре с таблицей источника, она может быть не партицированна. Пример кода для переноса в таблицу: ALTER TABLE DB.schema.table_sourse SWITCH PARTITION 1 TO DB.schema.table_arch; ALTER TABLE DB.schema.table_sourse SWITCH PARTITION 1 TO DB.schema.table_arch; Но если мы хотим перемещать в партицированную таблицу, то таблица приемник должна использовать ту же функцию и схему партицирования, или схему и функцию повторяющую нужные нам диапазоны секционирования. Так же таблица должна содержать CONSTRAINT (ограничение), которое накладывается по полю секционирования. Пример кода для переноса в партицированную таблицу: ALTER TABLE DB.schema.table_arch  WITH CHECK ADD CONSTRAINT chk_name CHECK (Field_name <= N'YYYY-MM-DD');
+ALTER TABLE DB.schema.table_sourse SWITCH PARTITION 1 TO DB.schema.table_arch PARTITION  1 WITH (WAIT_AT_LOW_PRIORITY (MAX_DURATION = 0 MINUTES, ABORT_AFTER_WAIT = NONE)); ALTER TABLE DB.schema.table_arch  WITH CHECK ADD CONSTRAINT chk_name CHECK (Field_name <= N'YYYY-MM-DD');
+ALTER TABLE DB.schema.table_sourse SWITCH PARTITION 1 TO DB.schema.table_arch PARTITION  1 WITH (WAIT_AT_LOW_PRIORITY (MAX_DURATION = 0 MINUTES, ABORT_AFTER_WAIT = NONE)); Пример кода для проверки: SELECT
+  partition_number AS PartNumber
+ ,row_count AS PartCount
+FROM sys.dm_db_partition_stats
+WHERE object_id = OBJECT_ID('table_arch '); SELECT
+  partition_number AS PartNumber
+ ,row_count AS PartCount
+FROM sys.dm_db_partition_stats
+WHERE object_id = OBJECT_ID('table_arch '); Так же партицирование можно использовать как быстрое удаление части данных, не прибегая к операции DELETE. Для этого переносим партицию в таблицу назначения и выполняем операцию TRUNCATE TABLE над таблицей с полученной партицией. Вот такой небольшой трюк может сэкономить нам время для ненужных данных. DELETE TRUNCATE TABLE Со стороны ускорения доступа для чтения данных или изменения, нам необходимо чтобы наша партиция в OLAP кубе смотрела на партицию в таблице. Первым этапом создаем функцию и схему партицирования, по умолчанию файловая группа которого задается как Primary. В дальнейшем создаем таблицу и в таблице определяем поле, по которому необходимо создать партицирование. Primary. Пример кода создания функции, схемы партицирование и применения для таблицы: CREATE PARTITION FUNCTION f_Partition_name(date) AS RANGE RIGHT FOR VALUES (N'2022-01-01', N'2022-02-01', N'2022-03-01', N'2022-03-01');
+CREATE PARTITION SCHEME PartitionScheme_name AS PARTITION f_Partition_name ALL TO ([Primary]);
+CREATE TABLE DB.schema.table_name (
+  OPER_DATE date not null,
+  Field1 int,
+  Field2 varchar
+)
+ON PartitionScheme_name (OPER_DATE); CREATE PARTITION FUNCTION f_Partition_name(date) AS RANGE RIGHT FOR VALUES (N'2022-01-01', N'2022-02-01', N'2022-03-01', N'2022-03-01');
+CREATE PARTITION SCHEME PartitionScheme_name AS PARTITION f_Partition_name ALL TO ([Primary]);
+CREATE TABLE DB.schema.table_name (
+  OPER_DATE date not null,
+  Field1 int,
+  Field2 varchar
+)
+ON PartitionScheme_name (OPER_DATE); Если таблица уже создана и имеет данные, то необходимо создать кластеризованный индекс по полю, подходящему для секционирования. Пример кода для существующий таблицы: CREATE CLUSTERED INDEX Idx_name ON db.schema.table_name ([oper_date]) WITH (SORT_IN_TEMPDB = OFF, DROP_EXISTING = OFF, ONLINE = OFF) ON [PartitionScheme_name]([oper_date]); CREATE CLUSTERED INDEX Idx_name ON db.schema.table_name ([oper_date]) WITH (SORT_IN_TEMPDB = OFF, DROP_EXISTING = OFF, ONLINE = OFF) ON [PartitionScheme_name]([oper_date]); Так же можно и нужно для нашей цели создавать партицирование для таблиц фактов, при котором в дальнейшем будет использоваться Сolumnstore индекс. Необходимо иметь ввиду особенность данного индекса, что всегда требуется иметь одну пустую секцию для будущих данных, так как если все секции заняты данными, то мы не сможем добавить дополнительную секцию при необходимости. Пример создания таблицы с колоночным индексом: CREATE TABLE DB.schema.table_name (
+  OPER_DATE date not null,
+  Field1 int,
+  Field2 varchar
+)
+ON PartitionScheme_name (OPER_DATE);
+
+CREATE CLUSTERED COLUMNSTORE INDEX CSX_name
+ON CARD_TRN.card_trn.TRN_FACT
+ON PartitionScheme_name (oper_date); CREATE TABLE DB.schema.table_name (
+  OPER_DATE date not null,
+  Field1 int,
+  Field2 varchar
+)
+ON PartitionScheme_name (OPER_DATE);
+
+CREATE CLUSTERED COLUMNSTORE INDEX CSX_name
+ON CARD_TRN.card_trn.TRN_FACT
+ON PartitionScheme_name (oper_date); С течением времени у нас возникает необходимость добавления дополнительных секций для будущих данных, для этого мы должны позаботиться о создании партиции на будущие даты. Пример кода добавления секции: ALTER PARTITION SCHEME PartitionScheme_name NEXT USED [PRIMARY];
+ALTER PARTITION FUNCTION f_Partition_name () SPLIT RANGE (N '2022-04-01'); ALTER PARTITION SCHEME PartitionScheme_name NEXT USED [PRIMARY];
+ALTER PARTITION FUNCTION f_Partition_name () SPLIT RANGE (N '2022-04-01'); Отвечая на вопрос, как же нам удаётся манипулировать большими объемами данных и получать высокую скорость чтения при обработке куба (таблицы могут содержать 1 и более миллиарда строк), то вот и ответ. Таблица фактов хранится в Сolumnstore индексе, так же таблица имеет партицирование (секционирование) по отчетной дате, и каждая партиция в OLAP кубе имеет строго смотрящий интервал даты в партицию таблицы. За счет использования Сolumnstore индекса уменьшается 10-ти кратно объем занимаемого места на диске. И при считывании данных каждого по столбцу методом distinct получаем огромный прирост скорости. Самое главное, надо понимать, что при хранении таким способом, необходимо избегать операции update, так как данные в этом индексе не удаляются, а дополняются новыми значениями, но это можно исправить перестроением индекса. Так же можно улучшить производительность индексов columnstore, обновив при этом промежуточную таблицу, и уже после выполнить операции delete и insert вместо прямого update. distinct update delete insert update Для постоянно изменяющихся данных используем партицирование + clustered индекс и сжатие по page для всех данных, кроме последней отчетной даты, в ней используем сжатие row. page row В качестве примера хотел показать план запроса при обработке мер в кубе:  Рис. 1 Плана запроса при считывании меры Запрос генерируемый при обработке заданной меры: SELECT
+  [card_trn_TRN_FACT].[SUM_TRAN_CARD] AS [card_trn_TRN_FACTSUM_TRAN_CARD0_0]
+ ,[card_trn_TRN_FACT].[SUM_TRAN_PRC] AS [card_trn_TRN_FACTSUM_TRAN_PRC0_1]
+ ,[card_trn_TRN_FACT].[SUM_COM_VAL] AS [card_trn_TRN_FACTSUM_COM_VAL0_2]
+ ,[card_trn_TRN_FACT].[SUM_COM_VAL_ZN] AS [card_trn_TRN_FACTSUM_COM_VAL_ZN0_3]
+ ,[card_trn_TRN_FACT].[SUM_COM_RUR] AS [card_trn_TRN_FACTSUM_COM_RUR0_4]
+ ,[card_trn_TRN_FACT].[SUM_COM_RUR_ZN] AS [card_trn_TRN_FACTSUM_COM_RUR_ZN0_5]
+ ,[card_trn_TRN_FACT].[SUM_DEAL] AS [card_trn_TRN_FACTSUM_DEAL0_6]
+ ,[card_trn_TRN_FACT].[SUM_DEAL_RUR] AS [card_trn_TRN_FACTSUM_DEAL_RUR0_7]
+ ,[card_trn_TRN_FACT].[SUM_TRAN_CARD_RUR] AS [card_trn_TRN_FACTSUM_TRAN_CARD_RUR0_8]
+ ,[card_trn_TRN_FACT].[id] AS [card_trn_TRN_FACTID0_9]
+ ,[card_trn_TRN_FACT].[OPER_DATE] AS [card_trn_TRN_FACToper_date0_10]
+ ,[card_trn_TRN_FACT].[id_trans_type] AS [card_trn_TRN_FACTid_trans_type0_11]
+ ,[card_trn_TRN_FACT].[ID_TERMINAL] AS [card_trn_TRN_FACTID_TERMINAL0_12]
+ ,[card_trn_TRN_FACT].[ID_CUSTOMER] AS [card_trn_TRN_FACTID_CUSTOMER0_13]
+ ,[card_trn_TRN_FACT].[CUR_PRC] AS [card_trn_TRN_FACTCUR_PRC0_14]
+ ,[card_trn_TRN_FACT].[id_CARD] AS [card_trn_TRN_FACTid_CARD0_15]
+ ,[card_trn_TRN_FACT].[AGREEMENT_RK] AS [card_trn_TRN_FACTAGREEMENT_RK0_16]
+ ,[card_trn_TRN_FACT].[LOAN_AGR_PROP_ID] AS [card_trn_TRN_FACTLOAN_AGR_PROP_ID0_17]
+ ,[card_trn_TRN_FACT].[CARD_MERCHANT_HLV_RK] AS [card_trn_TRN_FACTCARD_MERCHANT_HLV_RK0_18]
+ ,[card_trn_TRN_FACT].[CARD_MERCHANT_HLV_TERM_RK] AS [card_trn_TRN_FACTCARD_MERCHANT_HLV_TERM_RK0_19]
+ ,[card_trn_TRN_FACT].[LOAN_AGR_ID] AS [card_trn_TRN_FACTLOAN_AGR_ID0_20]
+ ,[card_trn_TRN_FACT].[CARD_ENTITY_HLV_RK] AS [card_trn_TRN_FACTCARD_ENTITY_HLV_RK0_21]
+ ,[card_trn_TRN_FACT].[BAKET_ID] AS [card_trn_TRN_FACTBAKET_ID0_22]
+ ,[card_trn_TRN_FACT].[BAKET_MC_ID] AS [card_trn_TRN_FACTBAKET_MC_ID0_23]
+ ,[card_trn_TRN_FACT].[BAKET_MIR_ID] AS [card_trn_TRN_FACTBAKET_MIR_ID0_24]
+ ,[card_trn_TRN_FACT].[BAKET_VISA_ID] AS [card_trn_TRN_FACTBAKET_VISA_ID0_25]
+FROM (SELECT *
+  FROM [CARD_TRN].[TRN_FACT]
+  WHERE oper_date >= '20220101'
+  AND oper_date <= '20220331') AS [card_trn_TRN_FACT] SELECT
+  [card_trn_TRN_FACT].[SUM_TRAN_CARD] AS [card_trn_TRN_FACTSUM_TRAN_CARD0_0]
+ ,[card_trn_TRN_FACT].[SUM_TRAN_PRC] AS [card_trn_TRN_FACTSUM_TRAN_PRC0_1]
+ ,[card_trn_TRN_FACT].[SUM_COM_VAL] AS [card_trn_TRN_FACTSUM_COM_VAL0_2]
+ ,[card_trn_TRN_FACT].[SUM_COM_VAL_ZN] AS [card_trn_TRN_FACTSUM_COM_VAL_ZN0_3]
+ ,[card_trn_TRN_FACT].[SUM_COM_RUR] AS [card_trn_TRN_FACTSUM_COM_RUR0_4]
+ ,[card_trn_TRN_FACT].[SUM_COM_RUR_ZN] AS [card_trn_TRN_FACTSUM_COM_RUR_ZN0_5]
+ ,[card_trn_TRN_FACT].[SUM_DEAL] AS [card_trn_TRN_FACTSUM_DEAL0_6]
+ ,[card_trn_TRN_FACT].[SUM_DEAL_RUR] AS [card_trn_TRN_FACTSUM_DEAL_RUR0_7]
+ ,[card_trn_TRN_FACT].[SUM_TRAN_CARD_RUR] AS [card_trn_TRN_FACTSUM_TRAN_CARD_RUR0_8]
+ ,[card_trn_TRN_FACT].[id] AS [card_trn_TRN_FACTID0_9]
+ ,[card_trn_TRN_FACT].[OPER_DATE] AS [card_trn_TRN_FACToper_date0_10]
+ ,[card_trn_TRN_FACT].[id_trans_type] AS [card_trn_TRN_FACTid_trans_type0_11]
+ ,[card_trn_TRN_FACT].[ID_TERMINAL] AS [card_trn_TRN_FACTID_TERMINAL0_12]
+ ,[card_trn_TRN_FACT].[ID_CUSTOMER] AS [card_trn_TRN_FACTID_CUSTOMER0_13]
+ ,[card_trn_TRN_FACT].[CUR_PRC] AS [card_trn_TRN_FACTCUR_PRC0_14]
+ ,[card_trn_TRN_FACT].[id_CARD] AS [card_trn_TRN_FACTid_CARD0_15]
+ ,[card_trn_TRN_FACT].[AGREEMENT_RK] AS [card_trn_TRN_FACTAGREEMENT_RK0_16]
+ ,[card_trn_TRN_FACT].[LOAN_AGR_PROP_ID] AS [card_trn_TRN_FACTLOAN_AGR_PROP_ID0_17]
+ ,[card_trn_TRN_FACT].[CARD_MERCHANT_HLV_RK] AS [card_trn_TRN_FACTCARD_MERCHANT_HLV_RK0_18]
+ ,[card_trn_TRN_FACT].[CARD_MERCHANT_HLV_TERM_RK] AS [card_trn_TRN_FACTCARD_MERCHANT_HLV_TERM_RK0_19]
+ ,[card_trn_TRN_FACT].[LOAN_AGR_ID] AS [card_trn_TRN_FACTLOAN_AGR_ID0_20]
+ ,[card_trn_TRN_FACT].[CARD_ENTITY_HLV_RK] AS [card_trn_TRN_FACTCARD_ENTITY_HLV_RK0_21]
+ ,[card_trn_TRN_FACT].[BAKET_ID] AS [card_trn_TRN_FACTBAKET_ID0_22]
+ ,[card_trn_TRN_FACT].[BAKET_MC_ID] AS [card_trn_TRN_FACTBAKET_MC_ID0_23]
+ ,[card_trn_TRN_FACT].[BAKET_MIR_ID] AS [card_trn_TRN_FACTBAKET_MIR_ID0_24]
+ ,[card_trn_TRN_FACT].[BAKET_VISA_ID] AS [card_trn_TRN_FACTBAKET_VISA_ID0_25]
+FROM (SELECT *
+  FROM [CARD_TRN].[TRN_FACT]
+  WHERE oper_date >= '20220101'
+  AND oper_date <= '20220331') AS [card_trn_TRN_FACT] ]]></text>
+</doc>

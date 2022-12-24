@@ -1,0 +1,133 @@
+<?xml version="1.0" ?>
+<doc>
+	<original_author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Craig Freedman]]></item>
+	</original_author>
+	<label auto="true" type="str" verify="true"><![CDATA[Develop]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[mssqlhelp]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-12-07, 17:01]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/post/704110/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Подробнее о TOP]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Microsoft SQL Server]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[sql server]]></item>
+		<item type="str"><![CDATA[операторы в плане запроса]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[В прошлой статье я писал об особом виде оператора TOP, известного как ROWCOUNT TOP. Теперь рассмотрим несколько других интересных сценариев появления в плане оператора TOP. 
+В общем случае, ТОР — довольно приземленный оператор. Он просто подсчитывает и возвращает заданное количество строк. SQL Server 2005 включает в себя два усовершенствования этого оператора, которых не было в SQL Server 2000.
+Во-первых, в SQL Server 2000 можно указать только константу в виде целого числа возвращаемых строк. В SQL Server 2005 мы можем указать произвольное выражение, включая выражение, содержащее переменные или параметры T-SQL. 
+Во-вторых, SQL Server 2000 допускает только TOP в операторе SELECT (хотя он поддерживает ROWCOUNT TOP в операторах INSERT, UPDATE и DELETE). SQL Server 2005 допускает TOP с операторами SELECT, INSERT, UPDATE и DELETE.
+В этой статье мы сосредоточимся на нескольких простых примерах с оператором SELECT. Для начала создадим небольшую таблицу:
+CREATE TABLE T (A INT, B INT)
+CREATE CLUSTERED INDEX TA ON T(A)
+SET NOCOUNT ON
+DECLARE @i INT
+SET @i = 0
+WHILE @i < 100
+  BEGIN
+    INSERT T VALUES (@i, @i)
+    SET @i = @i + 1
+  END
+SET NOCOUNT OFF
+План простейшего запроса с TOP не нуждается в пояснениях:
+SELECT TOP 5 * FROM T
+Rows   Executes
+5      1        |--Top(TOP EXPRESSION:((5)))
+5      1             |--Clustered Index Scan(OBJECT:([tempdb].[dbo].[T].[TA]))
+TOP часто используется в сочетании с ORDER BY. Сочетание TOP с ORDER BY способствует детерминированности выборки. Без ORDER BY выборка зависит от плана запроса и даже может меняться от выполнения к выполнению. Если у нас есть подходящий индекс для поддержки выбранного порядка строк, план запроса останется простым (обратите внимание на ключевые слова ORDERED FORWARD):
+SELECT TOP 5 * FROM T ORDER BY A
+Rows   Executes
+5      1        |--Top(TOP EXPRESSION:((5)))
+5      1             |--Clustered Index Scan(OBJECT:([tempdb].[dbo].[T].[TA]), ORDERED FORWARD)
+Если подходящего индекса нет, SQL Server вынужден будет добавить в план сортировку:
+SELECT TOP 5 * FROM T ORDER BY B
+Rows   Executes
+5      1        |--Sort(TOP 5, ORDER BY:([tempdb].[dbo].[T].[B] ASC))
+100    1             |--Clustered Index Scan(OBJECT:([tempdb].[dbo].[T].[TA]))
+Обратите внимание что, если нет подходящего индекса для выборки первых 5 строк SQL Server должен просмотреть все 100 строк таблицы. Также обратите внимание, что сортировка в этом сценарии будет «TOP sort». Такая сортировка обычно использует меньше памяти, чем обычная сортировка, поскольку ей нужно прокрутить через алгоритм сортировки только несколько топовых строк, а не всю таблицу.
+Теперь давайте рассмотрим, что произойдет, если мы запросим TOP 5% строк. Чтобы это определить. Для получения результата SQL Server должен подсчитать все строки и вычислить 5%. Это делает запросы, использующие TOP PERCENT, менее эффективными, чем запросы, использующие TOP с абсолютным числом строк.
+SELECT TOP 5 PERCENT * FROM T
+Rows   Executes
+5      1        |--Top(TOP EXPRESSION:((5.000000000000000e+000)) PERCENT)
+5      1             |--Table Spool
+100    1                 |--Clustered Index Scan(OBJECT:([tempdb].[dbo].[T].[TA]))
+Как и в предыдущем примере, SQL Server будет просматривать все 100 строк таблицы. Тут SQL Server использует «жадную» очередь (Eager Spool), которая буферизует и подсчитывает все входные строки, прежде чем что-либо возвращать. Затем TOP запрашивает число строк в очереди, вычисляет 5% и продолжает работу, как любой другой TOP.
+Если SQL Server в плане запроса должен выполнять сортировку, этим он также может обеспечить подсчёт затронутых строк. Однако только обычная сортировка умеет подсчитывать их количество. Сортировка «TOP sort» должна знать какое число строк необходимо вернуть с самого начала.
+SELECT TOP 5 PERCENT * FROM T ORDER BY B
+Rows   Executes
+5      1        |--Top(TOP EXPRESSION:((5.000000000000000e+000)) PERCENT)
+5      1             |--Sort(ORDER BY:([tempdb].[dbo].[T].[B] ASC))
+100    1                  |--Clustered Index Scan(OBJECT:([tempdb].[dbo].[T].[TA]))
+TOP WITH TIES также несовместим с «TOP sort». TOP WITH TIES не позволяет узнать наверняка, сколько строк будет получено, пока не будет вычитаны все «привязки». В нашем примере давайте сделаем «привязку» для пятой строки:
+INSERT T VALUES (4, 4)
+SELECT TOP 5 WITH TIES * FROM T ORDER BY B
+Rows   Executes
+6      1        |--Top(TOP EXPRESSION:((5)))
+7      1             |--Sort(ORDER BY:([tempdb].[dbo].[T].[B] ASC))
+101    1                  |--Clustered Index Scan(OBJECT:([tempdb].[dbo].[T].[TA]))
+В этом представлении плана нет TOP WITH TIES, но при SHOWPLAN_ALL или STATISTICS PROFILE можно увидеть следующее: "TIE COLUMNS:([T].[B])". Это также доступно в графическом и XML-планах запроса для SQL Server 2005. Обратите внимание, что TOP теперь возвращает на одну строку больше. Когда TOP N WITH TIES достигает N-й строки, он хранит копию для привязки значения столбца этой строки (в примере B==4) и сравнивает каждую следующую в выборке строку с этим значением. Если есть подходящие строки, он их все вернёт в результате запроса. Поскольку TOP вынужден сравнивать значения всех оставшихся строк, пока не выберет все совпадения для первых N строк, в нашем примере TOP извлечёт из сортировки на одну строку больше, чем было до него.
+Наконец, есть пара вырожденных случаев, когда оптимизатор знает, что TOP 0 и TOP 0 PERCENT никогда ничего не возвращают, и заменяет любой такой план запроса на сканирование константы:
+SELECT TOP 0 * FROM T
+  |--Constant Scan
+Оптимизатор также знает, что TOP 100 PERCENT всегда возвращает все строки и удаляет оператор TOP из плана запроса:
+SELECT TOP 100 PERCENT * FROM T
+  |--Clustered Index Scan(OBJECT:([tempdb].[dbo].[T].[TA]))
+Для этих случаев требуется, чтобы количество строк было постоянным. Например, использование выражения, включающего переменную или параметр T-SQL, приведёт к тому, что план запроса будет такой же, как в общем случае. Оба описанных упрощения плана также работают и с операторами INSERT, UPDATE и DELETE.
+Обратите внимание, что не рекомендуется использовать TOP для обхода ограничений языка SQL на использование ORDER BY в подзапросах или представлениях или для принудительного определенных порядка использования операторов в плане запроса. В прошлой статье я писал об особом виде оператора TOP, известного как ROWCOUNT TOP. Теперь рассмотрим несколько других интересных сценариев появления в плане оператора TOP.  ROWCOUNT TOP В общем случае, ТОР — довольно приземленный оператор. Он просто подсчитывает и возвращает заданное количество строк. SQL Server 2005 включает в себя два усовершенствования этого оператора, которых не было в SQL Server 2000. Во-первых, в SQL Server 2000 можно указать только константу в виде целого числа возвращаемых строк. В SQL Server 2005 мы можем указать произвольное выражение, включая выражение, содержащее переменные или параметры T-SQL.  Во-вторых, SQL Server 2000 допускает только TOP в операторе SELECT (хотя он поддерживает ROWCOUNT TOP в операторах INSERT, UPDATE и DELETE). SQL Server 2005 допускает TOP с операторами SELECT, INSERT, UPDATE и DELETE. В этой статье мы сосредоточимся на нескольких простых примерах с оператором SELECT. Для начала создадим небольшую таблицу: CREATE TABLE T (A INT, B INT)
+CREATE CLUSTERED INDEX TA ON T(A)
+SET NOCOUNT ON
+DECLARE @i INT
+SET @i = 0
+WHILE @i < 100
+  BEGIN
+    INSERT T VALUES (@i, @i)
+    SET @i = @i + 1
+  END
+SET NOCOUNT OFF CREATE TABLE T (A INT, B INT)
+CREATE CLUSTERED INDEX TA ON T(A)
+SET NOCOUNT ON
+DECLARE @i INT
+SET @i = 0
+WHILE @i < 100
+  BEGIN
+    INSERT T VALUES (@i, @i)
+    SET @i = @i + 1
+  END
+SET NOCOUNT OFF План простейшего запроса с TOP не нуждается в пояснениях: SELECT TOP 5 * FROM T SELECT TOP 5 * FROM T Rows   Executes
+5      1        |--Top(TOP EXPRESSION:((5)))
+5      1             |--Clustered Index Scan(OBJECT:([tempdb].[dbo].[T].[TA])) Rows   Executes
+5      1        |--Top(TOP EXPRESSION:((5)))
+5      1             |--Clustered Index Scan(OBJECT:([tempdb].[dbo].[T].[TA])) TOP часто используется в сочетании с ORDER BY. Сочетание TOP с ORDER BY способствует детерминированности выборки. Без ORDER BY выборка зависит от плана запроса и даже может меняться от выполнения к выполнению. Если у нас есть подходящий индекс для поддержки выбранного порядка строк, план запроса останется простым (обратите внимание на ключевые слова ORDERED FORWARD): SELECT TOP 5 * FROM T ORDER BY A SELECT TOP 5 * FROM T ORDER BY A Rows   Executes
+5      1        |--Top(TOP EXPRESSION:((5)))
+5      1             |--Clustered Index Scan(OBJECT:([tempdb].[dbo].[T].[TA]), ORDERED FORWARD) Rows   Executes
+5      1        |--Top(TOP EXPRESSION:((5)))
+5      1             |--Clustered Index Scan(OBJECT:([tempdb].[dbo].[T].[TA]), ORDERED FORWARD) Если подходящего индекса нет, SQL Server вынужден будет добавить в план сортировку: SELECT TOP 5 * FROM T ORDER BY B SELECT TOP 5 * FROM T ORDER BY B Rows   Executes
+5      1        |--Sort(TOP 5, ORDER BY:([tempdb].[dbo].[T].[B] ASC))
+100    1             |--Clustered Index Scan(OBJECT:([tempdb].[dbo].[T].[TA])) Rows   Executes
+5      1        |--Sort(TOP 5, ORDER BY:([tempdb].[dbo].[T].[B] ASC))
+100    1             |--Clustered Index Scan(OBJECT:([tempdb].[dbo].[T].[TA])) Обратите внимание что, если нет подходящего индекса для выборки первых 5 строк SQL Server должен просмотреть все 100 строк таблицы. Также обратите внимание, что сортировка в этом сценарии будет «TOP sort». Такая сортировка обычно использует меньше памяти, чем обычная сортировка, поскольку ей нужно прокрутить через алгоритм сортировки только несколько топовых строк, а не всю таблицу. Теперь давайте рассмотрим, что произойдет, если мы запросим TOP 5% строк. Чтобы это определить. Для получения результата SQL Server должен подсчитать все строки и вычислить 5%. Это делает запросы, использующие TOP PERCENT, менее эффективными, чем запросы, использующие TOP с абсолютным числом строк. SELECT TOP 5 PERCENT * FROM T SELECT TOP 5 PERCENT * FROM T Rows   Executes
+5      1        |--Top(TOP EXPRESSION:((5.000000000000000e+000)) PERCENT)
+5      1             |--Table Spool
+100    1                 |--Clustered Index Scan(OBJECT:([tempdb].[dbo].[T].[TA])) Rows   Executes
+5      1        |--Top(TOP EXPRESSION:((5.000000000000000e+000)) PERCENT)
+5      1             |--Table Spool
+100    1                 |--Clustered Index Scan(OBJECT:([tempdb].[dbo].[T].[TA])) Как и в предыдущем примере, SQL Server будет просматривать все 100 строк таблицы. Тут SQL Server использует «жадную» очередь (Eager Spool), которая буферизует и подсчитывает все входные строки, прежде чем что-либо возвращать. Затем TOP запрашивает число строк в очереди, вычисляет 5% и продолжает работу, как любой другой TOP. Eager Spool Если SQL Server в плане запроса должен выполнять сортировку, этим он также может обеспечить подсчёт затронутых строк. Однако только обычная сортировка умеет подсчитывать их количество. Сортировка «TOP sort» должна знать какое число строк необходимо вернуть с самого начала. SELECT TOP 5 PERCENT * FROM T ORDER BY B SELECT TOP 5 PERCENT * FROM T ORDER BY B Rows   Executes
+5      1        |--Top(TOP EXPRESSION:((5.000000000000000e+000)) PERCENT)
+5      1             |--Sort(ORDER BY:([tempdb].[dbo].[T].[B] ASC))
+100    1                  |--Clustered Index Scan(OBJECT:([tempdb].[dbo].[T].[TA])) Rows   Executes
+5      1        |--Top(TOP EXPRESSION:((5.000000000000000e+000)) PERCENT)
+5      1             |--Sort(ORDER BY:([tempdb].[dbo].[T].[B] ASC))
+100    1                  |--Clustered Index Scan(OBJECT:([tempdb].[dbo].[T].[TA])) TOP WITH TIES также несовместим с «TOP sort». TOP WITH TIES не позволяет узнать наверняка, сколько строк будет получено, пока не будет вычитаны все «привязки». В нашем примере давайте сделаем «привязку» для пятой строки: TOP WITH TIES INSERT T VALUES (4, 4)
+SELECT TOP 5 WITH TIES * FROM T ORDER BY B INSERT T VALUES (4, 4)
+SELECT TOP 5 WITH TIES * FROM T ORDER BY B Rows   Executes
+6      1        |--Top(TOP EXPRESSION:((5)))
+7      1             |--Sort(ORDER BY:([tempdb].[dbo].[T].[B] ASC))
+101    1                  |--Clustered Index Scan(OBJECT:([tempdb].[dbo].[T].[TA])) Rows   Executes
+6      1        |--Top(TOP EXPRESSION:((5)))
+7      1             |--Sort(ORDER BY:([tempdb].[dbo].[T].[B] ASC))
+101    1                  |--Clustered Index Scan(OBJECT:([tempdb].[dbo].[T].[TA])) В этом представлении плана нет TOP WITH TIES, но при SHOWPLAN_ALL или STATISTICS PROFILE можно увидеть следующее: "TIE COLUMNS:([T].[B])". Это также доступно в графическом и XML-планах запроса для SQL Server 2005. Обратите внимание, что TOP теперь возвращает на одну строку больше. Когда TOP N WITH TIES достигает N-й строки, он хранит копию для привязки значения столбца этой строки (в примере B==4) и сравнивает каждую следующую в выборке строку с этим значением. Если есть подходящие строки, он их все вернёт в результате запроса. Поскольку TOP вынужден сравнивать значения всех оставшихся строк, пока не выберет все совпадения для первых N строк, в нашем примере TOP извлечёт из сортировки на одну строку больше, чем было до него. Наконец, есть пара вырожденных случаев, когда оптимизатор знает, что TOP 0 и TOP 0 PERCENT никогда ничего не возвращают, и заменяет любой такой план запроса на сканирование константы: SELECT TOP 0 * FROM T SELECT TOP 0 * FROM T   |--Constant Scan   |--Constant Scan Оптимизатор также знает, что TOP 100 PERCENT всегда возвращает все строки и удаляет оператор TOP из плана запроса: SELECT TOP 100 PERCENT * FROM T SELECT TOP 100 PERCENT * FROM T   |--Clustered Index Scan(OBJECT:([tempdb].[dbo].[T].[TA]))   |--Clustered Index Scan(OBJECT:([tempdb].[dbo].[T].[TA])) Для этих случаев требуется, чтобы количество строк было постоянным. Например, использование выражения, включающего переменную или параметр T-SQL, приведёт к тому, что план запроса будет такой же, как в общем случае. Оба описанных упрощения плана также работают и с операторами INSERT, UPDATE и DELETE. Обратите внимание, что не рекомендуется использовать TOP для обхода ограничений языка SQL на использование ORDER BY в подзапросах или представлениях или для принудительного определенных порядка использования операторов в плане запроса. для обхода ограничений языка SQL на использование ORDER BY в подзапросах или представлениях для принудительного определенных порядка использования операторов в плане запроса ]]></text>
+</doc>

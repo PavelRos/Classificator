@@ -1,0 +1,163 @@
+<?xml version="1.0" ?>
+<doc>
+	<label auto="true" type="str" verify="true"><![CDATA[Develop]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[ProductivityInside]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-12-12, 18:11]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/company/productivity_inside/blog/705006/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Мобильная разработка за неделю #469 (5 — 11 декабря)]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Блог компании Productivity Inside]]></item>
+		<item type="str"><![CDATA[Разработка под iOS]]></item>
+		<item type="str"><![CDATA[Разработка мобильных приложений]]></item>
+		<item type="str"><![CDATA[Разработка под Android]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[дайджест]]></item>
+		<item type="str"><![CDATA[дайджест разработчика]]></item>
+		<item type="str"><![CDATA[маркетинг]]></item>
+		<item type="str"><![CDATA[аналитика]]></item>
+		<item type="str"><![CDATA[монетизация]]></item>
+		<item type="str"><![CDATA[аналитика мобильных приложений]]></item>
+		<item type="str"><![CDATA[ai]]></item>
+		<item type="str"><![CDATA[iot]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[В нашей новой подборке инженерия переходов в Airbnb, рисование сна и новые цены в App Store, работа Activity и провал первой игры, фичефоны в Африке, какие категории растут в спад и многое другое.
+
+В нашем Telegram-канале Mobile Insights, еще больше материалов для разработчиков — подключайтесь!
+
+
+
+iOS
+
+• Инженерия движения в масштабе
+• Простой процесс локализации в XCode с помощью Таблицы Google
+• Делаем плавный скролл в нагруженных таблицах
+• Bottom sheet: Scrolling and interactions
+• Нарисуй сон
+• clipped() не оказывает влияния на проверку касаний
+• Создание custom layout в SwiftUI. Кэширование
+• Tuist: от монолита к uFeature
+• Вышла Lottie 4.0 для iOS с поддержкой Core Animation
+• Компания Apple объявила о самом большом обновление цен в App Store
+•  Create a Basic Shortcut using App Intents
+•  Using vulnerable libraries in iOS apps
+•  UI/UX Design: The Dynamic Island
+•  Build a HealthKit App Using SwiftUI
+•  Embedding Python interpreter inside a iOS app and publish to the App Store successfully
+•  Simple Localisation Process for XCode with Google Sheets
+•  Implementing address autocomplete using SwiftUI and MapKit
+•  Customize iOS Simulator for Test Automation
+•  My personal (opinionated) iOS Interview Questions
+•  ChatGPT Does SwiftUI
+•  Finding Memory Leaks in Mobile Apps
+•  Pass data using NSNotification in Swift
+•  Using ImageRenderer to Convert SwiftUI Views into Images
+•  Code Your Own ASCII Art With SwiftUI
+•  Guide to Unit Testing with Async/Await in Swift
+•  Getting Started with Xcode Cloud
+•  Setup a 3D Chessboard With SwiftUI and RealityKit
+•  Motion Engineering at Scale
+•  How to: Create a bank-level security blur screen with SwiftUI
+•  Chromecast from iOS using GoogleCast SDK
+•  SnapshotTesting: тестирование снепшотов в Swift
+•  CodeScanner: сканирование QR и штрих-кодов в SwiftUI
+
+Android
+
+• Как работает Activity. Часть 1
+• Делаем кастомный Collapsing Toolbar на Jetpack Compose
+• Advent of Code 2022 в Kotlin
+• Многомодульность и Koin 3
+• Google объяснил, как работает Private Compute Core в Android
+• Транзитивные зависимости и нарушения правил Play Store
+•  Kotlin Coroutines use cases for Presentation/API/UI Layer
+•  My life after `afterEvaluate {}`
+•  Memory Safe Languages in Android 13
+•  Dynamic Multiple Base URL with Annotations | Android
+•  This simple trick to return multiple values from Kotlin Functions
+•  Designing Slot APIs in Jetpack Compose
+•  Blurring the Lines
+•  7 Android Resources To Level Up As a Developer
+•  Introducing the Architecture Templates
+•  Modernize Your Android App With The Single Activity Pattern
+•  There’s a new operator in Kotlin!
+•  Bottom Sheet in Jetpack Compose
+•  Creating a custom keyboard for sharing custom content in chat applications
+•  Dark Theme in Jetpack Compose with Material 3
+•  Compose for Wear OS 1.1 is now stable
+•  Stream Log: логи в Kotlin
+•  VLC for Android: порт плеера для Android
+•  Circuit: Compose-driven архитектура для Kotlin и Android
+
+Кроссплатформа
+
+• Flutter, создание Home Widget на платформе iOS
+•  Top 3 Floating Action Button Packages for Flutter
+•  Enabling Facial Recognition in Flutter Apps
+•  Flutter — Authentication
+•  Implement a simple spell checker system in Flutter
+•  Implementing Clips on iOS and Android
+•  Decorator Design Patterns For Dart & Flutter
+•  Scrum Testing Methodology In Flutter
+•  Building a perfect Boilerplate Flutter Project from scratch
+•  Flutter | Clean Application Architecture
+•  Building Native Modules for React Native with Kotlin and Swift
+•  Building Games in Flutter with Flame: Getting Started
+
+Разработка
+
+• Как я запустил свою первую мобильную игру и провалился
+• По ложному пути: катастрофа последнего обновления Duolingo
+• Suggestion: Чего не хватает в принципах тестирования
+• Разработка игр на Kotlin Native. Часть 1
+• Продакт и продукт
+• IT пузырь лопнул. Что делать junior-разработчикам?
+• Podlodka #297: функциональная архитектура
+• Будущее дополненной реальности: Snapchat монетизирует линзы
+• 1х1: о мобильной разработке в Яндексе
+• Разработка лучших интерфейсов для разработчика
+• TLDR объясняет, что делает фрагмент кода
+• KaiOS получила инвестиции на расширение в Африке
+•  Clear Code: How To Write Code That Is Easy To Read
+•  How I passed the AWS Certified Solutions Architect Professional exam
+•  Why Do Many Developers Consider Scrum to Be an Evil Scam?
+•  The Importance of Code Ownership
+•  Avoid these ship-sinking coding practices
+•  No More Leetcode: The Stripe Interview Experience
+•  I Don’t Know What Serverless Is Anymore
+•  7 behavioural UX approaches encouraging sustainable purchases
+•  Firebase is Overrated. 5 Alternatives that are currently killing it
+•  One Click Install For Stable Diffusion UI 2.0 — Run Locally
+•  5 Tools That Make My Life Easier When Writing Code
+•  The Hidden Cost of High Salaries in Tech
+
+Аналитика, маркетинг и монетизация
+
+• SKAN 4: все, что нужно знать рекламодателям
+• Приложения и категории, бросающие вызов спаду
+• Telegram Premium собрал более 1 млн подписчиков
+• SubHub Podcast #17: Андрей Ребров (Scentbird)
+• $26 млн в Серии B: Chattermill — ИИ-инсайты из отзывов клиентов
+• $30 млн: Zoe — научный подход к здоровому питанию
+• В RuStore появились рекомендации и тематические подборки
+• Indie App Santa предлагает инди-приложения со скидкой
+• Приложения для медитации теряют пользователей (но увеличивают доход)
+•  Price Testing for Mobile Apps
+
+AI, Устройства, IoT
+
+• LoRa one love. Почему стандарт разочаровал коммунальщиков, но зашёл на заводах
+• Управление вентиляцией: собираем, интегрируем, экономим
+• Что внутри лаборатории для испытания NB-IoT-устройств
+• Как получить доступ к chatGPT в России
+• Введение в библиотеку Transformers и платформу Hugging Face
+• О Multi-Drop Bus замолвите слово или торговый автомат по розливу воды с управлением по MDB
+• Kincony KC868-AI: 48 цифровых входов + ESP32, ETH, RS232, RS485 и приёмники IR и 433 МГц
+• GitHub запустил Copilot for Business
+• Google добавил No-code машинное обучение в Таблицы
+• Apple отказывается от полностью автономного автомобиля
+
+? Предыдущий дайджест. Если у вас есть другие интересные материалы или вы нашли ошибку — пришлите, пожалуйста, в почту.   В нашем Telegram-канале Mobile Insights, еще больше материалов для разработчиков — подключайтесь! Mobile Insights Mobile Insights        iOS   Инженерия движения в масштабе  Простой процесс локализации в XCode с помощью Таблицы Google  Делаем плавный скролл в нагруженных таблицах  Bottom sheet: Scrolling and interactions  Нарисуй сон  clipped() не оказывает влияния на проверку касаний  Создание custom layout в SwiftUI. Кэширование  Tuist: от монолита к uFeature  Вышла Lottie 4.0 для iOS с поддержкой Core Animation  Компания Apple объявила о самом большом обновление цен в App Store   Create a Basic Shortcut using App Intents   Using vulnerable libraries in iOS apps   UI/UX Design: The Dynamic Island   Build a HealthKit App Using SwiftUI   Embedding Python interpreter inside a iOS app and publish to the App Store successfully   Simple Localisation Process for XCode with Google Sheets   Implementing address autocomplete using SwiftUI and MapKit   Customize iOS Simulator for Test Automation   My personal (opinionated) iOS Interview Questions   ChatGPT Does SwiftUI   Finding Memory Leaks in Mobile Apps   Pass data using NSNotification in Swift   Using ImageRenderer to Convert SwiftUI Views into Images   Code Your Own ASCII Art With SwiftUI   Guide to Unit Testing with Async/Await in Swift   Getting Started with Xcode Cloud   Setup a 3D Chessboard With SwiftUI and RealityKit   Motion Engineering at Scale   How to: Create a bank-level security blur screen with SwiftUI  ]]></text>
+</doc>

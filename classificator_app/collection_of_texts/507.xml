@@ -1,0 +1,975 @@
+<?xml version="1.0" ?>
+<doc>
+	<label auto="true" type="str" verify="true"><![CDATA[Develop]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[ru51a4]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-12-01, 22:49]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/post/703010/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[server-queryselector aka парсим html в nodejs]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[JavaScript]]></item>
+		<item type="str"><![CDATA[HTML]]></item>
+		<item type="str"><![CDATA[Node.JS]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[парсер сайтов]]></item>
+		<item type="str"><![CDATA[html парсер]]></item>
+		<item type="str"><![CDATA[html parser]]></item>
+		<item type="str"><![CDATA[scraping]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[Итак, мы хотим получить информацию с веб сайта — это можно сделать в 3 шага
+1) Получить html сайта (пропустим этот шаг)
+2) Распарсить html строку и создать dom. — builderdom.js
+3) Найти нужные dom_node из dom по кссселекторам.
+3.1) Распарсить строку кссселекторов и создать дерево для поиска. — cssselectorparser.js
+3.2) Отфильтровать дом_ноды по дереву кссселекторов и найти нужные. — treeworker.js
+2) Парсим html:
+2.1) Нарезаем строки(выделил в отдельный проект superxmlparser74)
+Создаем строки, накапливаем в них токены и обрезаем по маркерам
+Таким образом у нас есть тег/innerTEXT — t, аттрибуты в виде массива — attr
+клик
+
+2.2) Создаем дерево
+const superxmlparser74 = require("superxmlparser74");
+
+class dom_node {
+    childrens = [];
+    innerTEXT = '';
+    tag;
+    treeWorker;
+
+    constructor() {
+        this.treeWorker = global.treeworker;
+    }
+
+    innerHTML = (cliFormat = false) => {
+        return this.treeWorker.getInnerHTML(this, cliFormat);
+    };
+    querySelector = (selector) => {
+        this.treeWorker.setCurrentTreeByNode(this);
+        return this.treeWorker.filtredBySelector(selector);
+    }
+}
+
+class BuilderDOM {
+    html_to_dom(str) {
+        var utils = {
+            noEndTag(tag) {
+                let noEndTags = [
+                    'noscript',
+                    'link',
+                    'base',
+                    'meta',
+                    'input',
+                    'svg',
+                    'path',
+                    'img',
+                    'br',
+                    'area',
+                    'base',
+                    'br',
+                    'col',
+                    'embed',
+                    'hr',
+                    'img',
+                    'input',
+                    'keygen',
+                    'link',
+                    'meta',
+                    'param',
+                    'source',
+                    'track',
+                    'wbr'
+                ];
+                return noEndTags.includes(tag);
+            }
+        };
+
+        let res = [];
+        let parentStack = [];
+        superxmlparser74.parse(str,
+            (item) => {
+                //opentag
+                if (item.tag === 'p' && parentStack[parentStack.length - 1]?.tag === 'p') {
+                    parentStack.pop();
+                }
+                //
+                let el = new dom_node();
+                el.attr = item.attr;
+                el.tag = item.tag;
+                res.push(el);
+                el.attr.push({
+                    key: 'tag',
+                    value: [item.tag]
+                })
+                if (parentStack[parentStack.length - 1] && el.tag !== 'script') {
+                    parentStack[parentStack.length - 1].childrens.push(el)
+                }
+                if (!utils.noEndTag(el.tag)) {
+                    parentStack.push(el);
+                }
+            },
+            (item) => {
+                //innertext
+                if (parentStack[parentStack.length - 1]) {
+                    parentStack[parentStack.length - 1].innerTEXT += item.value;
+                }
+            },
+            (item) => {
+                //closedtag
+                parentStack.pop();
+            });
+
+        return res;
+    }
+
+}
+3) Поиск
+3.1) Парсинг кссселекторов
+Разбиваем строку кссселекторов по разделителям, определяем какой это кссселектор, обрезаем и создаем дерево.
+class cssSelectorParser {
+    parse(str) {
+        let res = [];
+        str = this.utils.lex(str);
+        for (var i = 0; i <= str.length - 1; i++) {
+            if (str[i].includes(".")) {
+                res.push({key: 'class', value: str[i].substring(1)});
+            } else if (str[i].includes("#")) {
+                res.push({key: 'id', value: str[i].substring(1)});
+            } else if (str[i].includes("[")) {
+                let current = str[i];
+                current = current.substring(1);
+                current = current.slice(0, -1);
+                current = current.split("=");
+                res.push({key: current[0], value: current[1]});
+            } else if (str[i] === '>') {
+                res.push({key: '', value: str[i]});
+            } else if (str[i] === ' ') {
+                res.push({key: '', value: str[i]});
+            } else if(str[i] !== '') {
+                res.push({key: 'tag', value: str[i]});
+            }
+        }
+        //merge
+        let mergeRes = [];
+        let t = [];
+        for (var i = 0; i <= res.length - 1; i++) {
+            if (res[i].value === ' ') {
+                mergeRes.push(t);
+                t = [];
+            } else {
+                t.push(res[i]);
+            }
+        }
+        mergeRes.push(t);
+        //
+        return mergeRes;
+    }
+ 
+    utils = {
+        lex(str) {
+            let res = '';
+            for (var i = 0; i <= str.length - 1; i++) {
+                res += str[i];
+                if (str[i + 1] === "." || str[i + 1] === '#' || str[i + 1] === '>' || str[i + 1] === '[' || (str[i] === ' ')) {
+                    res += "\n";
+                } else if (str[i + 1] === " ") {
+                    res += "\n"
+                }
+            }
+            return res.split("\n");
+        }
+    }
+}
+3.2) Теперь отфильтруем дом_ноды по кссселекторам
+class treeWorker {
+    //Текущий массив дом_ноде
+    _tree;
+ 
+    //Построить массив элементов всех детей ноды
+    setCurrentTreeByNode(node) {
+        let tree = this._getChildrens([node]);
+        this._tree = tree;
+    }
+    //Основной цикл, где мы и фильтруем dom по дереву кссселекторов
+    filtredBySelector(selector) {
+        let cssselectorParser = new cssSelectorParser();
+        selector = cssselectorParser.parse(selector);
+        let res;
+        for (let i = 0; i <= selector.length - 1; i++) {
+            let currentSelector = selector[i];
+            let key;
+            let item;
+            let isArrowSelector = (currentSelector[0].value === '>');
+            if (isArrowSelector) {
+                continue;
+            }
+            for (var j = 0; j < currentSelector.length; j++) {
+                key = currentSelector[j].key
+                item = currentSelector[j].value;
+                this._filtredByAttribute(key, item)
+            }
+            res = this._tree;
+            let nextSelectorArrow = selector[i + 1] && selector[i + 1][0] && selector[i + 1][0].value === '>';
+            this._sliceChildrens(nextSelectorArrow)
+        }
+        return res;
+    }
+ 
+    //Построить весь хтмл ноды
+    getInnerHTML(dom_node, cliFormat = false) {
+        let res = '';
+        let lvl = -1;
+        function deep(node) {
+            let leftMargin = '';
+            for (let i = 0; i <= lvl; i++) {
+                leftMargin += (cliFormat) ? '   ' : '';
+            }
+            res += leftMargin + '<' + node.tag + ">"
+            res += (cliFormat) ? "\n" : "";
+            res += (cliFormat && node.innerTEXT !== '') ? leftMargin + '   ' : '';
+            res += node.innerTEXT;
+            res += (cliFormat && node.innerTEXT !== '') ? "\n" : "";
+            node.childrens.forEach((childNode) => {
+                lvl++;
+                deep(childNode);
+                lvl--;
+            });
+            res += leftMargin + '';
+            res += (cliFormat && lvl !== -1) ? "\n" : "";
+        }
+ 
+        deep(dom_node);
+        return res;
+    }
+ 
+    //Фильтрация текущего массива дом_ноде по аттрибутам
+    _filtredByAttribute(_key, _value) {
+        this._tree = this._tree.filter((item) => {
+            let currentAttr = item.attr.find((attr) => attr.key === _key);
+            if (currentAttr) {
+                return currentAttr.value.includes(_value.trim())
+            }
+        });
+    }
+    //Получить детей(первый срез или весь) текущего массива дом_ноде
+    _sliceChildrens(firstChild = false) {
+        let res = [];
+        if (firstChild) {
+            for (let i = 0; i <= this._tree.length - 1; i++) {
+                res.push(...this._tree[i].childrens);
+            }
+        } else {
+            res = this._getChildrens(this._tree)
+        }
+        this._tree = res;
+    }
+ 
+    //Получить всех детей дом нод
+    _getChildrens(currentNodes) {
+        //get all childs
+        let allChilds = [...currentNodes];
+        let queue = [...currentNodes];
+        while(queue.length){
+            let item = queue.shift();
+            for(let i = 0; i <= item.childrens.length - 1; i++){
+                queue.push(item.childrens[i]);
+                allChilds.push(item.childrens[i]);
+            }
+        }
+        return allChilds;
+    }
+ 
+}
+Рассмотрим подробнее — Основной цикл, где мы и фильтруем «текущие элементы dom» по дереву кссселекторов.
+//
+Храним текущие дом_ноды в this._tree, фильтруем их, нарезаем детей, репит
+filtredBySelector(selector) {
+        let cssselectorParser = new cssSelectorParser();
+        //Получаем дерево кссселекторов
+        selector = cssselectorParser.parse(selector);
+        let res;
+        //проходим по дереву
+        for (let i = 0; i <= selector.length - 1; i++) {
+            let currentSelector = selector[i];
+            let key;
+            let item;
+            //если текущ элем дерева - эрров - пропускаем фильтр
+            let isArrowSelector = (currentSelector[0].value === '>');
+            if (isArrowSelector) {
+                continue;
+            }
+            //проходим по всем элементам текущего кссселектора
+            for (var j = 0; j < currentSelector.length; j++) {
+                key = currentSelector[j].key
+                item = currentSelector[j].value;
+                //фильтруем текущее this._tree по аттрибутам
+                this._filtredByAttribute(key, item)
+                }
+            }
+            res = this._tree;
+            //если следующий элемент - эрров - срезаем только первый слой, если нет - всех детей
+            let nextSelectorArrow = selector[i + 1] && selector[i + 1][0] && selector[i + 1][0].value === '>';
+            this._sliceChildrens(nextSelectorArrow)
+        }
+        return res;
+    }
+//
+Эти сущности и выполняют основную работу, теперь создадим входную сущность documentServer.
+class documentServer {
+ 
+    builderDOM = new BuilderDOM();
+    domTreeWorker;
+    startNode;
+    querySelector(selector) {
+        this.domTreeWorker.setCurrentTreeByNode(this.startNode);
+        return this.domTreeWorker.filtredBySelector(selector);
+    }
+ 
+    build(str) {
+        this.domTreeWorker = new treeWorker();
+        global.treeworker = this.domTreeWorker;
+        let dom = this.builderDOM.html_to_dom(str);
+        global.treeworker = null;
+        this.startNode = dom[0];
+    }
+}
+Осталось реализовать фичу — квериселектор из ноды, поэтому прокинем domTreeWorker в дом_ноду через глобал
+class dom_node {
+    childrens = [];
+    innerTEXT = '';
+    tag;
+    treeWorker;
+ 
+    constructor() {
+        this.treeWorker = global.treeworker;
+    }
+ 
+    innerHTML = (cliFormat = false) => {
+        return this.treeWorker.getInnerHTML(this, cliFormat);
+    };
+    querySelector = (selector) => {
+        this.treeWorker.setCurrentTreeByNode(this);
+        return this.treeWorker.filtredBySelector(selector);
+    }
+}
+Ссылка на гитхаб Итак, мы хотим получить информацию с веб сайта — это можно сделать в 3 шага 1) Получить html сайта (пропустим этот шаг) 2) Распарсить html строку и создать dom. — builderdom.js 3) Найти нужные dom_node из dom по кссселекторам. 3.1) Распарсить строку кссселекторов и создать дерево для поиска. — cssselectorparser.js
+3.2) Отфильтровать дом_ноды по дереву кссселекторов и найти нужные. — treeworker.js     2) Парсим html: 2.1) Нарезаем строки(выделил в отдельный проект superxmlparser74)
+Создаем строки, накапливаем в них токены и обрезаем по маркерам superxmlparser74  Таким образом у нас есть тег/innerTEXT — t, аттрибуты в виде массива — attr клик клик     2.2) Создаем дерево  const superxmlparser74 = require("superxmlparser74");
+
+class dom_node {
+    childrens = [];
+    innerTEXT = '';
+    tag;
+    treeWorker;
+
+    constructor() {
+        this.treeWorker = global.treeworker;
+    }
+
+    innerHTML = (cliFormat = false) => {
+        return this.treeWorker.getInnerHTML(this, cliFormat);
+    };
+    querySelector = (selector) => {
+        this.treeWorker.setCurrentTreeByNode(this);
+        return this.treeWorker.filtredBySelector(selector);
+    }
+}
+
+class BuilderDOM {
+    html_to_dom(str) {
+        var utils = {
+            noEndTag(tag) {
+                let noEndTags = [
+                    'noscript',
+                    'link',
+                    'base',
+                    'meta',
+                    'input',
+                    'svg',
+                    'path',
+                    'img',
+                    'br',
+                    'area',
+                    'base',
+                    'br',
+                    'col',
+                    'embed',
+                    'hr',
+                    'img',
+                    'input',
+                    'keygen',
+                    'link',
+                    'meta',
+                    'param',
+                    'source',
+                    'track',
+                    'wbr'
+                ];
+                return noEndTags.includes(tag);
+            }
+        };
+
+        let res = [];
+        let parentStack = [];
+        superxmlparser74.parse(str,
+            (item) => {
+                //opentag
+                if (item.tag === 'p' && parentStack[parentStack.length - 1]?.tag === 'p') {
+                    parentStack.pop();
+                }
+                //
+                let el = new dom_node();
+                el.attr = item.attr;
+                el.tag = item.tag;
+                res.push(el);
+                el.attr.push({
+                    key: 'tag',
+                    value: [item.tag]
+                })
+                if (parentStack[parentStack.length - 1] && el.tag !== 'script') {
+                    parentStack[parentStack.length - 1].childrens.push(el)
+                }
+                if (!utils.noEndTag(el.tag)) {
+                    parentStack.push(el);
+                }
+            },
+            (item) => {
+                //innertext
+                if (parentStack[parentStack.length - 1]) {
+                    parentStack[parentStack.length - 1].innerTEXT += item.value;
+                }
+            },
+            (item) => {
+                //closedtag
+                parentStack.pop();
+            });
+
+        return res;
+    }
+
+} const superxmlparser74 = require("superxmlparser74");
+
+class dom_node {
+    childrens = [];
+    innerTEXT = '';
+    tag;
+    treeWorker;
+
+    constructor() {
+        this.treeWorker = global.treeworker;
+    }
+
+    innerHTML = (cliFormat = false) => {
+        return this.treeWorker.getInnerHTML(this, cliFormat);
+    };
+    querySelector = (selector) => {
+        this.treeWorker.setCurrentTreeByNode(this);
+        return this.treeWorker.filtredBySelector(selector);
+    }
+}
+
+class BuilderDOM {
+    html_to_dom(str) {
+        var utils = {
+            noEndTag(tag) {
+                let noEndTags = [
+                    'noscript',
+                    'link',
+                    'base',
+                    'meta',
+                    'input',
+                    'svg',
+                    'path',
+                    'img',
+                    'br',
+                    'area',
+                    'base',
+                    'br',
+                    'col',
+                    'embed',
+                    'hr',
+                    'img',
+                    'input',
+                    'keygen',
+                    'link',
+                    'meta',
+                    'param',
+                    'source',
+                    'track',
+                    'wbr'
+                ];
+                return noEndTags.includes(tag);
+            }
+        };
+
+        let res = [];
+        let parentStack = [];
+        superxmlparser74.parse(str,
+            (item) => {
+                //opentag
+                if (item.tag === 'p' && parentStack[parentStack.length - 1]?.tag === 'p') {
+                    parentStack.pop();
+                }
+                //
+                let el = new dom_node();
+                el.attr = item.attr;
+                el.tag = item.tag;
+                res.push(el);
+                el.attr.push({
+                    key: 'tag',
+                    value: [item.tag]
+                })
+                if (parentStack[parentStack.length - 1] && el.tag !== 'script') {
+                    parentStack[parentStack.length - 1].childrens.push(el)
+                }
+                if (!utils.noEndTag(el.tag)) {
+                    parentStack.push(el);
+                }
+            },
+            (item) => {
+                //innertext
+                if (parentStack[parentStack.length - 1]) {
+                    parentStack[parentStack.length - 1].innerTEXT += item.value;
+                }
+            },
+            (item) => {
+                //closedtag
+                parentStack.pop();
+            });
+
+        return res;
+    }
+
+} 3) Поиск 3.1) Парсинг кссселекторов Разбиваем строку кссселекторов по разделителям, определяем какой это кссселектор, обрезаем и создаем дерево. class cssSelectorParser {
+    parse(str) {
+        let res = [];
+        str = this.utils.lex(str);
+        for (var i = 0; i <= str.length - 1; i++) {
+            if (str[i].includes(".")) {
+                res.push({key: 'class', value: str[i].substring(1)});
+            } else if (str[i].includes("#")) {
+                res.push({key: 'id', value: str[i].substring(1)});
+            } else if (str[i].includes("[")) {
+                let current = str[i];
+                current = current.substring(1);
+                current = current.slice(0, -1);
+                current = current.split("=");
+                res.push({key: current[0], value: current[1]});
+            } else if (str[i] === '>') {
+                res.push({key: '', value: str[i]});
+            } else if (str[i] === ' ') {
+                res.push({key: '', value: str[i]});
+            } else if(str[i] !== '') {
+                res.push({key: 'tag', value: str[i]});
+            }
+        }
+        //merge
+        let mergeRes = [];
+        let t = [];
+        for (var i = 0; i <= res.length - 1; i++) {
+            if (res[i].value === ' ') {
+                mergeRes.push(t);
+                t = [];
+            } else {
+                t.push(res[i]);
+            }
+        }
+        mergeRes.push(t);
+        //
+        return mergeRes;
+    }
+ 
+    utils = {
+        lex(str) {
+            let res = '';
+            for (var i = 0; i <= str.length - 1; i++) {
+                res += str[i];
+                if (str[i + 1] === "." || str[i + 1] === '#' || str[i + 1] === '>' || str[i + 1] === '[' || (str[i] === ' ')) {
+                    res += "\n";
+                } else if (str[i + 1] === " ") {
+                    res += "\n"
+                }
+            }
+            return res.split("\n");
+        }
+    }
+} class cssSelectorParser {
+    parse(str) {
+        let res = [];
+        str = this.utils.lex(str);
+        for (var i = 0; i <= str.length - 1; i++) {
+            if (str[i].includes(".")) {
+                res.push({key: 'class', value: str[i].substring(1)});
+            } else if (str[i].includes("#")) {
+                res.push({key: 'id', value: str[i].substring(1)});
+            } else if (str[i].includes("[")) {
+                let current = str[i];
+                current = current.substring(1);
+                current = current.slice(0, -1);
+                current = current.split("=");
+                res.push({key: current[0], value: current[1]});
+            } else if (str[i] === '>') {
+                res.push({key: '', value: str[i]});
+            } else if (str[i] === ' ') {
+                res.push({key: '', value: str[i]});
+            } else if(str[i] !== '') {
+                res.push({key: 'tag', value: str[i]});
+            }
+        }
+        //merge
+        let mergeRes = [];
+        let t = [];
+        for (var i = 0; i <= res.length - 1; i++) {
+            if (res[i].value === ' ') {
+                mergeRes.push(t);
+                t = [];
+            } else {
+                t.push(res[i]);
+            }
+        }
+        mergeRes.push(t);
+        //
+        return mergeRes;
+    }
+ 
+    utils = {
+        lex(str) {
+            let res = '';
+            for (var i = 0; i <= str.length - 1; i++) {
+                res += str[i];
+                if (str[i + 1] === "." || str[i + 1] === '#' || str[i + 1] === '>' || str[i + 1] === '[' || (str[i] === ' ')) {
+                    res += "\n";
+                } else if (str[i + 1] === " ") {
+                    res += "\n"
+                }
+            }
+            return res.split("\n");
+        }
+    }
+} 3.2) Теперь отфильтруем дом_ноды по кссселекторам class treeWorker {
+    //Текущий массив дом_ноде
+    _tree;
+ 
+    //Построить массив элементов всех детей ноды
+    setCurrentTreeByNode(node) {
+        let tree = this._getChildrens([node]);
+        this._tree = tree;
+    }
+    //Основной цикл, где мы и фильтруем dom по дереву кссселекторов
+    filtredBySelector(selector) {
+        let cssselectorParser = new cssSelectorParser();
+        selector = cssselectorParser.parse(selector);
+        let res;
+        for (let i = 0; i <= selector.length - 1; i++) {
+            let currentSelector = selector[i];
+            let key;
+            let item;
+            let isArrowSelector = (currentSelector[0].value === '>');
+            if (isArrowSelector) {
+                continue;
+            }
+            for (var j = 0; j < currentSelector.length; j++) {
+                key = currentSelector[j].key
+                item = currentSelector[j].value;
+                this._filtredByAttribute(key, item)
+            }
+            res = this._tree;
+            let nextSelectorArrow = selector[i + 1] && selector[i + 1][0] && selector[i + 1][0].value === '>';
+            this._sliceChildrens(nextSelectorArrow)
+        }
+        return res;
+    }
+ 
+    //Построить весь хтмл ноды
+    getInnerHTML(dom_node, cliFormat = false) {
+        let res = '';
+        let lvl = -1;
+        function deep(node) {
+            let leftMargin = '';
+            for (let i = 0; i <= lvl; i++) {
+                leftMargin += (cliFormat) ? '   ' : '';
+            }
+            res += leftMargin + '<' + node.tag + ">"
+            res += (cliFormat) ? "\n" : "";
+            res += (cliFormat && node.innerTEXT !== '') ? leftMargin + '   ' : '';
+            res += node.innerTEXT;
+            res += (cliFormat && node.innerTEXT !== '') ? "\n" : "";
+            node.childrens.forEach((childNode) => {
+                lvl++;
+                deep(childNode);
+                lvl--;
+            });
+            res += leftMargin + '';
+            res += (cliFormat && lvl !== -1) ? "\n" : "";
+        }
+ 
+        deep(dom_node);
+        return res;
+    }
+ 
+    //Фильтрация текущего массива дом_ноде по аттрибутам
+    _filtredByAttribute(_key, _value) {
+        this._tree = this._tree.filter((item) => {
+            let currentAttr = item.attr.find((attr) => attr.key === _key);
+            if (currentAttr) {
+                return currentAttr.value.includes(_value.trim())
+            }
+        });
+    }
+    //Получить детей(первый срез или весь) текущего массива дом_ноде
+    _sliceChildrens(firstChild = false) {
+        let res = [];
+        if (firstChild) {
+            for (let i = 0; i <= this._tree.length - 1; i++) {
+                res.push(...this._tree[i].childrens);
+            }
+        } else {
+            res = this._getChildrens(this._tree)
+        }
+        this._tree = res;
+    }
+ 
+    //Получить всех детей дом нод
+    _getChildrens(currentNodes) {
+        //get all childs
+        let allChilds = [...currentNodes];
+        let queue = [...currentNodes];
+        while(queue.length){
+            let item = queue.shift();
+            for(let i = 0; i <= item.childrens.length - 1; i++){
+                queue.push(item.childrens[i]);
+                allChilds.push(item.childrens[i]);
+            }
+        }
+        return allChilds;
+    }
+ 
+} class treeWorker {
+    //Текущий массив дом_ноде
+    _tree;
+ 
+    //Построить массив элементов всех детей ноды
+    setCurrentTreeByNode(node) {
+        let tree = this._getChildrens([node]);
+        this._tree = tree;
+    }
+    //Основной цикл, где мы и фильтруем dom по дереву кссселекторов
+    filtredBySelector(selector) {
+        let cssselectorParser = new cssSelectorParser();
+        selector = cssselectorParser.parse(selector);
+        let res;
+        for (let i = 0; i <= selector.length - 1; i++) {
+            let currentSelector = selector[i];
+            let key;
+            let item;
+            let isArrowSelector = (currentSelector[0].value === '>');
+            if (isArrowSelector) {
+                continue;
+            }
+            for (var j = 0; j < currentSelector.length; j++) {
+                key = currentSelector[j].key
+                item = currentSelector[j].value;
+                this._filtredByAttribute(key, item)
+            }
+            res = this._tree;
+            let nextSelectorArrow = selector[i + 1] && selector[i + 1][0] && selector[i + 1][0].value === '>';
+            this._sliceChildrens(nextSelectorArrow)
+        }
+        return res;
+    }
+ 
+    //Построить весь хтмл ноды
+    getInnerHTML(dom_node, cliFormat = false) {
+        let res = '';
+        let lvl = -1;
+        function deep(node) {
+            let leftMargin = '';
+            for (let i = 0; i <= lvl; i++) {
+                leftMargin += (cliFormat) ? '   ' : '';
+            }
+            res += leftMargin + '<' + node.tag + ">"
+            res += (cliFormat) ? "\n" : "";
+            res += (cliFormat && node.innerTEXT !== '') ? leftMargin + '   ' : '';
+            res += node.innerTEXT;
+            res += (cliFormat && node.innerTEXT !== '') ? "\n" : "";
+            node.childrens.forEach((childNode) => {
+                lvl++;
+                deep(childNode);
+                lvl--;
+            });
+            res += leftMargin + '';
+            res += (cliFormat && lvl !== -1) ? "\n" : "";
+        }
+ 
+        deep(dom_node);
+        return res;
+    }
+ 
+    //Фильтрация текущего массива дом_ноде по аттрибутам
+    _filtredByAttribute(_key, _value) {
+        this._tree = this._tree.filter((item) => {
+            let currentAttr = item.attr.find((attr) => attr.key === _key);
+            if (currentAttr) {
+                return currentAttr.value.includes(_value.trim())
+            }
+        });
+    }
+    //Получить детей(первый срез или весь) текущего массива дом_ноде
+    _sliceChildrens(firstChild = false) {
+        let res = [];
+        if (firstChild) {
+            for (let i = 0; i <= this._tree.length - 1; i++) {
+                res.push(...this._tree[i].childrens);
+            }
+        } else {
+            res = this._getChildrens(this._tree)
+        }
+        this._tree = res;
+    }
+ 
+    //Получить всех детей дом нод
+    _getChildrens(currentNodes) {
+        //get all childs
+        let allChilds = [...currentNodes];
+        let queue = [...currentNodes];
+        while(queue.length){
+            let item = queue.shift();
+            for(let i = 0; i <= item.childrens.length - 1; i++){
+                queue.push(item.childrens[i]);
+                allChilds.push(item.childrens[i]);
+            }
+        }
+        return allChilds;
+    }
+ 
+} Рассмотрим подробнее — Основной цикл, где мы и фильтруем «текущие элементы dom» по дереву кссселекторов. //
+Храним текущие дом_ноды в this._tree, фильтруем их, нарезаем детей, репит  Храним текущие дом_ноды в this._tree, фильтруем их, нарезаем детей, репит    filtredBySelector(selector) {
+        let cssselectorParser = new cssSelectorParser();
+        //Получаем дерево кссселекторов
+        selector = cssselectorParser.parse(selector);
+        let res;
+        //проходим по дереву
+        for (let i = 0; i <= selector.length - 1; i++) {
+            let currentSelector = selector[i];
+            let key;
+            let item;
+            //если текущ элем дерева - эрров - пропускаем фильтр
+            let isArrowSelector = (currentSelector[0].value === '>');
+            if (isArrowSelector) {
+                continue;
+            }
+            //проходим по всем элементам текущего кссселектора
+            for (var j = 0; j < currentSelector.length; j++) {
+                key = currentSelector[j].key
+                item = currentSelector[j].value;
+                //фильтруем текущее this._tree по аттрибутам
+                this._filtredByAttribute(key, item)
+                }
+            }
+            res = this._tree;
+            //если следующий элемент - эрров - срезаем только первый слой, если нет - всех детей
+            let nextSelectorArrow = selector[i + 1] && selector[i + 1][0] && selector[i + 1][0].value === '>';
+            this._sliceChildrens(nextSelectorArrow)
+        }
+        return res;
+    } filtredBySelector(selector) {
+        let cssselectorParser = new cssSelectorParser();
+        //Получаем дерево кссселекторов
+        selector = cssselectorParser.parse(selector);
+        let res;
+        //проходим по дереву
+        for (let i = 0; i <= selector.length - 1; i++) {
+            let currentSelector = selector[i];
+            let key;
+            let item;
+            //если текущ элем дерева - эрров - пропускаем фильтр
+            let isArrowSelector = (currentSelector[0].value === '>');
+            if (isArrowSelector) {
+                continue;
+            }
+            //проходим по всем элементам текущего кссселектора
+            for (var j = 0; j < currentSelector.length; j++) {
+                key = currentSelector[j].key
+                item = currentSelector[j].value;
+                //фильтруем текущее this._tree по аттрибутам
+                this._filtredByAttribute(key, item)
+                }
+            }
+            res = this._tree;
+            //если следующий элемент - эрров - срезаем только первый слой, если нет - всех детей
+            let nextSelectorArrow = selector[i + 1] && selector[i + 1][0] && selector[i + 1][0].value === '>';
+            this._sliceChildrens(nextSelectorArrow)
+        }
+        return res;
+    } // Эти сущности и выполняют основную работу, теперь создадим входную сущность documentServer. class documentServer {
+ 
+    builderDOM = new BuilderDOM();
+    domTreeWorker;
+    startNode;
+    querySelector(selector) {
+        this.domTreeWorker.setCurrentTreeByNode(this.startNode);
+        return this.domTreeWorker.filtredBySelector(selector);
+    }
+ 
+    build(str) {
+        this.domTreeWorker = new treeWorker();
+        global.treeworker = this.domTreeWorker;
+        let dom = this.builderDOM.html_to_dom(str);
+        global.treeworker = null;
+        this.startNode = dom[0];
+    }
+} class documentServer {
+ 
+    builderDOM = new BuilderDOM();
+    domTreeWorker;
+    startNode;
+    querySelector(selector) {
+        this.domTreeWorker.setCurrentTreeByNode(this.startNode);
+        return this.domTreeWorker.filtredBySelector(selector);
+    }
+ 
+    build(str) {
+        this.domTreeWorker = new treeWorker();
+        global.treeworker = this.domTreeWorker;
+        let dom = this.builderDOM.html_to_dom(str);
+        global.treeworker = null;
+        this.startNode = dom[0];
+    }
+} Осталось реализовать фичу — квериселектор из ноды, поэтому прокинем domTreeWorker в дом_ноду через глобал class dom_node {
+    childrens = [];
+    innerTEXT = '';
+    tag;
+    treeWorker;
+ 
+    constructor() {
+        this.treeWorker = global.treeworker;
+    }
+ 
+    innerHTML = (cliFormat = false) => {
+        return this.treeWorker.getInnerHTML(this, cliFormat);
+    };
+    querySelector = (selector) => {
+        this.treeWorker.setCurrentTreeByNode(this);
+        return this.treeWorker.filtredBySelector(selector);
+    }
+} class dom_node {
+    childrens = [];
+    innerTEXT = '';
+    tag;
+    treeWorker;
+ 
+    constructor() {
+        this.treeWorker = global.treeworker;
+    }
+ 
+    innerHTML = (cliFormat = false) => {
+        return this.treeWorker.getInnerHTML(this, cliFormat);
+    };
+    querySelector = (selector) => {
+        this.treeWorker.setCurrentTreeByNode(this);
+        return this.treeWorker.filtredBySelector(selector);
+    }
+} Ссылка на гитхаб Ссылка на гитхаб]]></text>
+</doc>

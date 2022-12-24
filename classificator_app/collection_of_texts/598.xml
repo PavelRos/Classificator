@@ -1,0 +1,561 @@
+<?xml version="1.0" ?>
+<doc>
+	<original_author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Szymon Stepniak]]></item>
+	</original_author>
+	<label auto="true" type="str" verify="true"><![CDATA[Develop]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[rikki_tikki]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-11-29, 17:47]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/company/otus/blog/702356/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Эти 10 новых возможностей делают Groovy 4.0 потрясающим]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Блог компании OTUS]]></item>
+		<item type="str"><![CDATA[Программирование]]></item>
+		<item type="str"><![CDATA[Groovy & Grails]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[groovy]]></item>
+		<item type="str"><![CDATA[groovy 4.0]]></item>
+		<item type="str"><![CDATA[фичи]]></item>
+		<item type="str"><![CDATA[Jenkins 123]]></item>
+		<item type="str"><![CDATA[пайплайны]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[Изолированные (sealed) типы, switch-выражения и типы record. Это лишь несколько из новых фич, появившихся в последнем выпуске Groovy 4.0. В этом видео я хочу показать вам десять вещей, которые делают Groovy 4.0 удивительным. Чтобы не делать его слишком затянутым, мы не станем глубоко погружаться в каждую из них. Вместо этого я намерен дать вам краткий обзор новых возможностей.
+ℹ️ Репозиторий исходного кода: https://github.com/wololock/groovy-4-examples
+Switch-выражение 
+В Groovy всегда были гораздо более мощные операторы switch по сравнению с Java. Значения регистра класса, значения регистра регулярного выражения, значения регистра коллекции, значения регистра замыкания или, в конце концов, регистр равных значений. Все эти возможности делали оператор switch объектом первого класса в области Groovy. А теперь, следуя последним обновлениям в языке программирования Java, Groovy также поддерживает и switch-выражение. Основное различие между оператором и выражением switch заключается в том, что последнее использует синтаксис, совместимый с Java, и возвращает значение. Вы по-прежнему можете использовать различные комбинации в качестве регистров, но новый синтаксис сделает ваш код немного элегантнее.
+switch (value) {
+    case null -> 'just a null'
+    case 0 -> 'zero'
+    case 1 -> 'one'
+    case { it instanceof List && it.empty } -> 'an empty list'
+    case List -> 'a list'
+    case '007' -> 'James Bond'
+    case ~/\d+/ -> 'a number'
+    default -> 'unknown'
+}
+Records (Записи)
+Records, удобный неизменяемый (иммутабельный) тип "носителя данных", был представлен в Java 16. Теперь он доступен и в Groovy. Синтаксис тот же, хотя Groovy также вводит аннотацию @RecordType, которую можно использовать как взаимозаменяемую. И даже если это не настолько сильно меняет правила игры, как было для Java, все равно приятно видеть, что Groovy идет в ногу с новейшими возможностями, представленными в его родном языке.
+record Point(int x, int y) {}
+
+def p1 = new Point(0, 0)
+def p2 = new Point(2, 4)
+def p3 = new Point(0, 0)
+
+assert p1.x() == 0
+assert p1.y() == 0
+assert p2.x() == 2
+assert p2.y() == 4
+assert p1.toString() == 'Point[x=0, y=0]'
+assert p2.toString() == 'Point[x=2, y=4]'
+assert p1 == p3
+Изолированные (Sealed) типы
+Это еще одна фича, на которую повлияли последние изменения в языке программирования Java. Изолированные типы позволяют вам ограничить, какие классы (или интерфейсы) могут расширять конкретный sealed тип. Это можно сделать как явно (с помощью ключевого слова "permits"), так и неявно (без ключевого слова), если все соответствующие классы хранятся в одном исходном файле. Подобно records, Groovy также вводит аннотацию @Sealed, которую вы можете использовать как взаимозаменяемую, если это вам больше нравится. Когда использовать изолированные типы? Возможно, вы не хотите разрешать кому-либо расширять ваш класс из соображений безопасности. Или, возможно, вы хотите добавить новые методы в интерфейс в будущем, и при этом необходимо иметь строгий контроль над подклассами. Если это так — изолированные типы могут быть именно тем, на что вам следует обратить внимание.
+import groovy.transform.ToString
+
+sealed interface Tree<T> { }
+
+@Singleton
+final class Empty implements Tree {
+    String toString() { "Empty" }
+}
+
+@ToString
+final class Node<T> implements Tree<T> {
+    final T value
+    final Tree<T> left, right
+
+    Node(T value, Tree<T> left, Tree<T> right) {
+        this.value = value
+        this.left = left
+        this.right = right
+    }
+}
+Средства проверки типов (тайп-чекеры)
+Хотя Groovy, в основном, известен благодаря своим динамическим возможностям, он позволяет вам быть гораздо более строгим в проверке типов, чем Java. Недавно добавленный дополнительный модуль groovy-typecheckers представляет регекс-чекер, который поможет вам выявить ошибки в ваших регулярных выражениях во время компиляции. Как в этом примере — в регулярном выражении отсутствует закрывающая скобка. Обычно компилятор сразу не может обнаружить такую проблему, поэтому мы находим ее только во время юнит-теста или рантайма. Здесь я запускаю этот скрипт в GroovyShell, чтобы перехватить ожидаемое исключение MultipleCompilationErrorsException.
+import groovy.transform.TypeChecked
+
+@TypeChecked(extensions = 'groovy.typecheckers.RegexChecker')
+def testRegexChecker() {
+    def date = '2022-04-03'
+
+    assert date ==~ /(\d{4})-(\d{1,2})-(\d{1,2}/
+}
+Встроенные макрометоды
+Макрометоды позволяют вам получать доступ к структурам данных компилятора AST и манипулировать ими. Вызов макрометода напоминает обычный вызов метода, но это не так — во время компиляции он будет заменен сгенерированным кодом. Вот несколько примеров таких макрометодов. Например, метод SV создает строку с именами переменных и связанными с ними значениями. Метод SVI использует метод Groovy inspect, который выдает немного другой результат — например, он не раскрывает объект range, как показано в этом примере.
+def num = 42
+def list = [1 ,2, 3]
+def range = 0..5
+def string = 'foo'
+
+assert SV(num, list, range, string) == 'num=42, list=[1, 2, 3], range=[0, 1, 2, 3, 4, 5], string=foo'
+
+assert SVI(range) == 'range=0..5'
+
+assert NV(range) instanceof NamedValue
+
+assert NV(string).name == 'string' && NV(string).val == 'foo'
+Аннотация @POJO
+Если вы знакомы с Groovy, то уже знаете, что каждый класс этого языка реализует интерфейс GroovyObject. Здесь нет ничего страшного, если вы остаетесь со своим кодом только в экосистеме Groovy. Однако иногда вы хотите использовать Groovy для написания библиотечного кода, которым можно оперировать и в чистом Java-проекте. Объединить эти две области можно с помощью новой аннотации @POJO . Любой класс, аннотированный @POJO, может быть использован без добавления Groovy во время рантайма. Так же, как и класс PojoPoint, показанный в этом примере. Давайте скомпилируем его и запустим как программу на Java.
+import groovy.transform.CompileStatic
+import groovy.transform.Immutable
+import groovy.transform.stc.POJO
+
+@POJO
+@Immutable
+@CompileStatic
+class PojoPoint {
+    int x, y
+
+    static void main(String[] args) {
+        PojoPoint point = new PojoPoint(1,1)
+        System.out.println(point.toString())
+    }
+}
+Контракты Groovy
+Контракты Groovy могут стать для вас настоящим благом, если вы устали писать защитный код. Аннотация класса @Invariant определяет утверждения, которые проверяются во время лайфтайма объекта — после вызова конструктора, до и после вызова метода. Аннотация @Requires представляет предварительное условие метода — утверждение, выполняемое перед его вызовом. А аннотация @Ensures работает как постусловие — утверждение, выполняемое после вызова метода. Возможно, кто-то скажет, что эти аннотации с легкостью можно заменить явными утверждениями в теле метода. И это правда. Но если вы действительно хотите, чтобы контракт и бизнес-логика были хорошо разделены, то контракты Groovy — это подходящее решение для начала данного процесса.
+import groovy.contracts.Ensures
+import groovy.contracts.Invariant
+import groovy.contracts.Requires
+
+@Invariant({ speed >= 0 })
+class Rocket {
+    int speed = 0
+    boolean started = false
+
+    @Requires({ !started })
+    Rocket startEngine() { tap {started = true }}
+
+    @Requires({ started })
+    Rocket stopEngine() { tap { started = false }}
+
+    @Requires({ started })
+    @Ensures({ old.speed < speed })
+    Rocket accelerate(int value) { tap { speed += value }}
+}
+GINQ
+GINQ — Groovy-интегрированный язык запросов. Вам понравится эта фича, если вы являетесь поклонником SQL-подобных языков. GINQ позволяет запрашивать коллекции, используя SQL-подобный синтаксис. Как в этом примере. У нас есть JSON-документ, содержащий поле people (люди). Мы используем GINQ, чтобы найти всех людей в возрасте 18+ в порядке убывания, взяв первые три результата и изменив возвращаемые данные так, чтобы они были в верхнем регистре и ограничивались только первыми двумя буквами. Насколько я знаю, команда Groovy планирует расширить GINQ для поддержки баз данных SQL, чтобы вы могли писать SQL-запросы, генерируемые во время компиляции и проверяемые по типу.
+import groovy.json.JsonSlurper
+
+def json = new JsonSlurper().parseText '''
+    {
+        "people": [
+            {"name": "Alan", "age": 11},
+            {"name": "Mary", "age": 26},
+            {"name": "Eric", "age": 34},
+            {"name": "Elisabeth", "age": 14},
+            {"name": "Marc", "age": 2},
+            {"name": "Robert", "age": 52},
+            {"name": "Veronica", "age": 32},
+            {"name": "Alex", "age": 17}
+        ]
+    }
+    '''
+
+assert GQ {
+    from f in json.people
+    where f.age >= 18
+    orderby f.age in desc
+    limit 3
+    select f.name.toUpperCase().take(2)
+
+}.toList() == ['RO', 'ER', 'VE']
+Поддержка TOML
+В Groovy 3 была добавлена поддержка формата YAML, а теперь в Groovy 4 включена поддержка формата TOML. Это полезно, если вы работаете с таким форматом в своей кодовой базе. Стоит отметить, что вывод, создаваемый классом TomlBuilder, содержит не заголовки таблиц, а имена полей, разделенные точками.
+import groovy.toml.TomlBuilder
+import groovy.toml.TomlSlurper
+
+String input = '''
+# This is a TOML document (taken from https://toml.io)
+
+title = "TOML Example"
+
+[owner]
+name = "Tom Preston-Werner"
+dob = 1979-05-27T07:32:00-08:00
+
+[database]
+enabled = true
+ports = [ 8000, 8001, 8002 ]
+data = [ ["delta", "phi"], [3.14] ]
+temp_targets = { cpu = 79.5, case = 72.0 }
+
+[servers]
+
+[servers.alpha]
+ip = "10.0.0.1"
+role = "frontend"
+
+[servers.beta]
+ip = "10.0.0.2"
+role = "backend"
+'''
+
+def toml = new TomlSlurper().parseText(input)
+
+assert toml.title == 'TOML Example'
+assert toml.owner.name == 'Tom Preston-Werner'
+assert toml.database.ports == [8000, 8001, 8002]
+assert toml.servers.alpha.ip == '10.0.0.1'
+assert toml.servers.beta.ip == '10.0.0.2'
+
+
+TomlBuilder builder = new TomlBuilder()
+builder {
+    title 'This is TOML document'
+    servers {
+        alpha {
+            ip '10.0.0.1'
+        }
+        beta {
+            ip '10.0.0.2'
+        }
+    }
+}
+assert builder.toString() ==
+'''title = 'This is TOML document'
+servers.alpha.ip = '10.0.0.1'
+servers.beta.ip = '10.0.0.2'
+'''
+Совместимость с JDK 8
+Минимальная версия Java, необходимая для работы Groovy 4, — JDK 8. Вы можете спросить — "но как Groovy обрабатывает, например, записи"? Сейчас я вам это покажу. Беру Java 17 и Groovy 4.0.1. Компилирую этот скрипт в файл класса, и когда мы откроем его в IntelliJ, то увидим, что он создает эквивалент записи на Java, как и ожидалось. Теперь перейдем на Java 8 и проделаем то же самое. Открыв файл класса в IntelliJ, можно увидеть, что теперь сгенерированный класс "эмулирует" поведение записи, но при этом не использует ее родной синтаксис. И в этом вся прелесть переносимости кода Groovy — тот же код и совершенно новые возможности языка, которые работают даже на довольно старой версии Java.
+Приглашаем всех желающих DevOps-инженеров и Java-разработчиков на открытое занятие «Настройка пайплайнов в Jenkins 123». На занятии посмотрим на пайплайны в Jenkins: из каких шагов и блоков состоят; научимся писать groovy скрипты для создания пайплайнов и изучим их составные части. Регистрация открыта по ссылке.   Изолированные (sealed) типы, switch-выражения и типы record. Это лишь несколько из новых фич, появившихся в последнем выпуске Groovy 4.0. В этом видео я хочу показать вам десять вещей, которые делают Groovy 4.0 удивительным. Чтобы не делать его слишком затянутым, мы не станем глубоко погружаться в каждую из них. Вместо этого я намерен дать вам краткий обзор новых возможностей.  ℹ️ Репозиторий исходного кода: https://github.com/wololock/groovy-4-examples https://github.com/wololock/groovy-4-examples https://github.com/wololock/groovy-4-examples Switch-выражение  В Groovy всегда были гораздо более мощные операторы switch по сравнению с Java. Значения регистра класса, значения регистра регулярного выражения, значения регистра коллекции, значения регистра замыкания или, в конце концов, регистр равных значений. Все эти возможности делали оператор switch объектом первого класса в области Groovy. А теперь, следуя последним обновлениям в языке программирования Java, Groovy также поддерживает и switch-выражение. Основное различие между оператором и выражением switch заключается в том, что последнее использует синтаксис, совместимый с Java, и возвращает значение. Вы по-прежнему можете использовать различные комбинации в качестве регистров, но новый синтаксис сделает ваш код немного элегантнее. switch (value) {
+    case null -> 'just a null'
+    case 0 -> 'zero'
+    case 1 -> 'one'
+    case { it instanceof List && it.empty } -> 'an empty list'
+    case List -> 'a list'
+    case '007' -> 'James Bond'
+    case ~/\d+/ -> 'a number'
+    default -> 'unknown'
+} switch (value) {
+    case null -> 'just a null'
+    case 0 -> 'zero'
+    case 1 -> 'one'
+    case { it instanceof List && it.empty } -> 'an empty list'
+    case List -> 'a list'
+    case '007' -> 'James Bond'
+    case ~/\d+/ -> 'a number'
+    default -> 'unknown'
+} Records (Записи) Records, удобный неизменяемый (иммутабельный) тип "носителя данных", был представлен в Java 16. Теперь он доступен и в Groovy. Синтаксис тот же, хотя Groovy также вводит аннотацию @RecordType, которую можно использовать как взаимозаменяемую. И даже если это не настолько сильно меняет правила игры, как было для Java, все равно приятно видеть, что Groovy идет в ногу с новейшими возможностями, представленными в его родном языке. @RecordType record Point(int x, int y) {}
+
+def p1 = new Point(0, 0)
+def p2 = new Point(2, 4)
+def p3 = new Point(0, 0)
+
+assert p1.x() == 0
+assert p1.y() == 0
+assert p2.x() == 2
+assert p2.y() == 4
+assert p1.toString() == 'Point[x=0, y=0]'
+assert p2.toString() == 'Point[x=2, y=4]'
+assert p1 == p3 record Point(int x, int y) {}
+
+def p1 = new Point(0, 0)
+def p2 = new Point(2, 4)
+def p3 = new Point(0, 0)
+
+assert p1.x() == 0
+assert p1.y() == 0
+assert p2.x() == 2
+assert p2.y() == 4
+assert p1.toString() == 'Point[x=0, y=0]'
+assert p2.toString() == 'Point[x=2, y=4]'
+assert p1 == p3 Изолированные (Sealed) типы Это еще одна фича, на которую повлияли последние изменения в языке программирования Java. Изолированные типы позволяют вам ограничить, какие классы (или интерфейсы) могут расширять конкретный sealed тип. Это можно сделать как явно (с помощью ключевого слова "permits"), так и неявно (без ключевого слова), если все соответствующие классы хранятся в одном исходном файле. Подобно records, Groovy также вводит аннотацию @Sealed, которую вы можете использовать как взаимозаменяемую, если это вам больше нравится. Когда использовать изолированные типы? Возможно, вы не хотите разрешать кому-либо расширять ваш класс из соображений безопасности. Или, возможно, вы хотите добавить новые методы в интерфейс в будущем, и при этом необходимо иметь строгий контроль над подклассами. Если это так — изолированные типы могут быть именно тем, на что вам следует обратить внимание. @Sealed import groovy.transform.ToString
+
+sealed interface Tree<T> { }
+
+@Singleton
+final class Empty implements Tree {
+    String toString() { "Empty" }
+}
+
+@ToString
+final class Node<T> implements Tree<T> {
+    final T value
+    final Tree<T> left, right
+
+    Node(T value, Tree<T> left, Tree<T> right) {
+        this.value = value
+        this.left = left
+        this.right = right
+    }
+} import groovy.transform.ToString
+
+sealed interface Tree<T> { }
+
+@Singleton
+final class Empty implements Tree {
+    String toString() { "Empty" }
+}
+
+@ToString
+final class Node<T> implements Tree<T> {
+    final T value
+    final Tree<T> left, right
+
+    Node(T value, Tree<T> left, Tree<T> right) {
+        this.value = value
+        this.left = left
+        this.right = right
+    }
+} Средства проверки типов (тайп-чекеры) Хотя Groovy, в основном, известен благодаря своим динамическим возможностям, он позволяет вам быть гораздо более строгим в проверке типов, чем Java. Недавно добавленный дополнительный модуль groovy-typecheckers представляет регекс-чекер, который поможет вам выявить ошибки в ваших регулярных выражениях во время компиляции. Как в этом примере — в регулярном выражении отсутствует закрывающая скобка. Обычно компилятор сразу не может обнаружить такую проблему, поэтому мы находим ее только во время юнит-теста или рантайма. Здесь я запускаю этот скрипт в GroovyShell, чтобы перехватить ожидаемое исключение MultipleCompilationErrorsException. groovy-typecheckers import groovy.transform.TypeChecked
+
+@TypeChecked(extensions = 'groovy.typecheckers.RegexChecker')
+def testRegexChecker() {
+    def date = '2022-04-03'
+
+    assert date ==~ /(\d{4})-(\d{1,2})-(\d{1,2}/
+} import groovy.transform.TypeChecked
+
+@TypeChecked(extensions = 'groovy.typecheckers.RegexChecker')
+def testRegexChecker() {
+    def date = '2022-04-03'
+
+    assert date ==~ /(\d{4})-(\d{1,2})-(\d{1,2}/
+} Встроенные макрометоды Макрометоды позволяют вам получать доступ к структурам данных компилятора AST и манипулировать ими. Вызов макрометода напоминает обычный вызов метода, но это не так — во время компиляции он будет заменен сгенерированным кодом. Вот несколько примеров таких макрометодов. Например, метод SV создает строку с именами переменных и связанными с ними значениями. Метод SVI использует метод Groovy inspect, который выдает немного другой результат — например, он не раскрывает объект range, как показано в этом примере. SV SVI def num = 42
+def list = [1 ,2, 3]
+def range = 0..5
+def string = 'foo'
+
+assert SV(num, list, range, string) == 'num=42, list=[1, 2, 3], range=[0, 1, 2, 3, 4, 5], string=foo'
+
+assert SVI(range) == 'range=0..5'
+
+assert NV(range) instanceof NamedValue
+
+assert NV(string).name == 'string' && NV(string).val == 'foo' def num = 42
+def list = [1 ,2, 3]
+def range = 0..5
+def string = 'foo'
+
+assert SV(num, list, range, string) == 'num=42, list=[1, 2, 3], range=[0, 1, 2, 3, 4, 5], string=foo'
+
+assert SVI(range) == 'range=0..5'
+
+assert NV(range) instanceof NamedValue
+
+assert NV(string).name == 'string' && NV(string).val == 'foo' Аннотация @POJO Если вы знакомы с Groovy, то уже знаете, что каждый класс этого языка реализует интерфейс GroovyObject. Здесь нет ничего страшного, если вы остаетесь со своим кодом только в экосистеме Groovy. Однако иногда вы хотите использовать Groovy для написания библиотечного кода, которым можно оперировать и в чистом Java-проекте. Объединить эти две области можно с помощью новой аннотации @POJO . Любой класс, аннотированный @POJO, может быть использован без добавления Groovy во время рантайма. Так же, как и класс PojoPoint, показанный в этом примере. Давайте скомпилируем его и запустим как программу на Java. GroovyObject @POJO PojoPoint import groovy.transform.CompileStatic
+import groovy.transform.Immutable
+import groovy.transform.stc.POJO
+
+@POJO
+@Immutable
+@CompileStatic
+class PojoPoint {
+    int x, y
+
+    static void main(String[] args) {
+        PojoPoint point = new PojoPoint(1,1)
+        System.out.println(point.toString())
+    }
+} import groovy.transform.CompileStatic
+import groovy.transform.Immutable
+import groovy.transform.stc.POJO
+
+@POJO
+@Immutable
+@CompileStatic
+class PojoPoint {
+    int x, y
+
+    static void main(String[] args) {
+        PojoPoint point = new PojoPoint(1,1)
+        System.out.println(point.toString())
+    }
+} Контракты Groovy Контракты Groovy могут стать для вас настоящим благом, если вы устали писать защитный код. Аннотация класса @Invariant определяет утверждения, которые проверяются во время лайфтайма объекта — после вызова конструктора, до и после вызова метода. Аннотация @Requires представляет предварительное условие метода — утверждение, выполняемое перед его вызовом. А аннотация @Ensures работает как постусловие — утверждение, выполняемое после вызова метода. Возможно, кто-то скажет, что эти аннотации с легкостью можно заменить явными утверждениями в теле метода. И это правда. Но если вы действительно хотите, чтобы контракт и бизнес-логика были хорошо разделены, то контракты Groovy — это подходящее решение для начала данного процесса. @Invariant @Requires @Ensures import groovy.contracts.Ensures
+import groovy.contracts.Invariant
+import groovy.contracts.Requires
+
+@Invariant({ speed >= 0 })
+class Rocket {
+    int speed = 0
+    boolean started = false
+
+    @Requires({ !started })
+    Rocket startEngine() { tap {started = true }}
+
+    @Requires({ started })
+    Rocket stopEngine() { tap { started = false }}
+
+    @Requires({ started })
+    @Ensures({ old.speed < speed })
+    Rocket accelerate(int value) { tap { speed += value }}
+} import groovy.contracts.Ensures
+import groovy.contracts.Invariant
+import groovy.contracts.Requires
+
+@Invariant({ speed >= 0 })
+class Rocket {
+    int speed = 0
+    boolean started = false
+
+    @Requires({ !started })
+    Rocket startEngine() { tap {started = true }}
+
+    @Requires({ started })
+    Rocket stopEngine() { tap { started = false }}
+
+    @Requires({ started })
+    @Ensures({ old.speed < speed })
+    Rocket accelerate(int value) { tap { speed += value }}
+} GINQ GINQ — Groovy-интегрированный язык запросов. Вам понравится эта фича, если вы являетесь поклонником SQL-подобных языков. GINQ позволяет запрашивать коллекции, используя SQL-подобный синтаксис. Как в этом примере. У нас есть JSON-документ, содержащий поле people (люди). Мы используем GINQ, чтобы найти всех людей в возрасте 18+ в порядке убывания, взяв первые три результата и изменив возвращаемые данные так, чтобы они были в верхнем регистре и ограничивались только первыми двумя буквами. Насколько я знаю, команда Groovy планирует расширить GINQ для поддержки баз данных SQL, чтобы вы могли писать SQL-запросы, генерируемые во время компиляции и проверяемые по типу. people import groovy.json.JsonSlurper
+
+def json = new JsonSlurper().parseText '''
+    {
+        "people": [
+            {"name": "Alan", "age": 11},
+            {"name": "Mary", "age": 26},
+            {"name": "Eric", "age": 34},
+            {"name": "Elisabeth", "age": 14},
+            {"name": "Marc", "age": 2},
+            {"name": "Robert", "age": 52},
+            {"name": "Veronica", "age": 32},
+            {"name": "Alex", "age": 17}
+        ]
+    }
+    '''
+
+assert GQ {
+    from f in json.people
+    where f.age >= 18
+    orderby f.age in desc
+    limit 3
+    select f.name.toUpperCase().take(2)
+
+}.toList() == ['RO', 'ER', 'VE'] import groovy.json.JsonSlurper
+
+def json = new JsonSlurper().parseText '''
+    {
+        "people": [
+            {"name": "Alan", "age": 11},
+            {"name": "Mary", "age": 26},
+            {"name": "Eric", "age": 34},
+            {"name": "Elisabeth", "age": 14},
+            {"name": "Marc", "age": 2},
+            {"name": "Robert", "age": 52},
+            {"name": "Veronica", "age": 32},
+            {"name": "Alex", "age": 17}
+        ]
+    }
+    '''
+
+assert GQ {
+    from f in json.people
+    where f.age >= 18
+    orderby f.age in desc
+    limit 3
+    select f.name.toUpperCase().take(2)
+
+}.toList() == ['RO', 'ER', 'VE'] Поддержка TOML В Groovy 3 была добавлена поддержка формата YAML, а теперь в Groovy 4 включена поддержка формата TOML. Это полезно, если вы работаете с таким форматом в своей кодовой базе. Стоит отметить, что вывод, создаваемый классом TomlBuilder, содержит не заголовки таблиц, а имена полей, разделенные точками. import groovy.toml.TomlBuilder
+import groovy.toml.TomlSlurper
+
+String input = '''
+# This is a TOML document (taken from https://toml.io)
+
+title = "TOML Example"
+
+[owner]
+name = "Tom Preston-Werner"
+dob = 1979-05-27T07:32:00-08:00
+
+[database]
+enabled = true
+ports = [ 8000, 8001, 8002 ]
+data = [ ["delta", "phi"], [3.14] ]
+temp_targets = { cpu = 79.5, case = 72.0 }
+
+[servers]
+
+[servers.alpha]
+ip = "10.0.0.1"
+role = "frontend"
+
+[servers.beta]
+ip = "10.0.0.2"
+role = "backend"
+'''
+
+def toml = new TomlSlurper().parseText(input)
+
+assert toml.title == 'TOML Example'
+assert toml.owner.name == 'Tom Preston-Werner'
+assert toml.database.ports == [8000, 8001, 8002]
+assert toml.servers.alpha.ip == '10.0.0.1'
+assert toml.servers.beta.ip == '10.0.0.2'
+
+
+TomlBuilder builder = new TomlBuilder()
+builder {
+    title 'This is TOML document'
+    servers {
+        alpha {
+            ip '10.0.0.1'
+        }
+        beta {
+            ip '10.0.0.2'
+        }
+    }
+}
+assert builder.toString() ==
+'''title = 'This is TOML document'
+servers.alpha.ip = '10.0.0.1'
+servers.beta.ip = '10.0.0.2'
+''' import groovy.toml.TomlBuilder
+import groovy.toml.TomlSlurper
+
+String input = '''
+# This is a TOML document (taken from https://toml.io)
+
+title = "TOML Example"
+
+[owner]
+name = "Tom Preston-Werner"
+dob = 1979-05-27T07:32:00-08:00
+
+[database]
+enabled = true
+ports = [ 8000, 8001, 8002 ]
+data = [ ["delta", "phi"], [3.14] ]
+temp_targets = { cpu = 79.5, case = 72.0 }
+
+[servers]
+
+[servers.alpha]
+ip = "10.0.0.1"
+role = "frontend"
+
+[servers.beta]
+ip = "10.0.0.2"
+role = "backend"
+'''
+
+def toml = new TomlSlurper().parseText(input)
+
+assert toml.title == 'TOML Example'
+assert toml.owner.name == 'Tom Preston-Werner'
+assert toml.database.ports == [8000, 8001, 8002]
+assert toml.servers.alpha.ip == '10.0.0.1'
+assert toml.servers.beta.ip == '10.0.0.2'
+
+
+TomlBuilder builder = new TomlBuilder()
+builder {
+    title 'This is TOML document'
+    servers {
+        alpha {
+            ip '10.0.0.1'
+        }
+        beta {
+            ip '10.0.0.2'
+        }
+    }
+}
+assert builder.toString() ==
+'''title = 'This is TOML document'
+servers.alpha.ip = '10.0.0.1'
+servers.beta.ip = '10.0.0.2'
+''' Совместимость с JDK 8 Минимальная версия Java, необходимая для работы Groovy 4, — JDK 8. Вы можете спросить — "но как Groovy обрабатывает, например, записи"? Сейчас я вам это покажу. Беру Java 17 и Groovy 4.0.1. Компилирую этот скрипт в файл класса, и когда мы откроем его в IntelliJ, то увидим, что он создает эквивалент записи на Java, как и ожидалось. Теперь перейдем на Java 8 и проделаем то же самое. Открыв файл класса в IntelliJ, можно увидеть, что теперь сгенерированный класс "эмулирует" поведение записи, но при этом не использует ее родной синтаксис. И в этом вся прелесть переносимости кода Groovy — тот же код и совершенно новые возможности языка, которые работают даже на довольно старой версии Java.  Приглашаем всех желающих DevOps-инженеров и Java-разработчиков на открытое занятие «Настройка пайплайнов в Jenkins 123». На занятии посмотрим на пайплайны в Jenkins: из каких шагов и блоков состоят; научимся писать groovy скрипты для создания пайплайнов и изучим их составные части. Регистрация открыта по ссылке. «Настройка пайплайнов в Jenkins 123» по ссылке. ]]></text>
+</doc>

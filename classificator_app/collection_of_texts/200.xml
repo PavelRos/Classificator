@@ -1,0 +1,1045 @@
+<?xml version="1.0" ?>
+<doc>
+	<label auto="true" type="str" verify="true"><![CDATA[Develop]]></label>
+	<author auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[SSul]]></item>
+	</author>
+	<date auto="true" type="str" verify="true"><![CDATA[2022-12-12, 12:16]]></date>
+	<link auto="true" type="str" verify="true"><![CDATA[https://habr.com/ru/company/simbirsoft/blog/704818/]]></link>
+	<title auto="true" type="str" verify="true"><![CDATA[Java. Работа с XML-документами]]></title>
+	<categories auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[Блог компании SimbirSoft]]></item>
+		<item type="str"><![CDATA[Тестирование IT-систем]]></item>
+		<item type="str"><![CDATA[XML]]></item>
+		<item type="str"><![CDATA[API]]></item>
+		<item type="str"><![CDATA[Микросервисы]]></item>
+	</categories>
+	<key_words auto="true" type="list" verify="true">
+		<item type="str"><![CDATA[тестирование]]></item>
+		<item type="str"><![CDATA[soap/xml]]></item>
+		<item type="str"><![CDATA[парсинг xml]]></item>
+		<item type="str"><![CDATA[jaxb]]></item>
+		<item type="str"><![CDATA[dom]]></item>
+		<item type="str"><![CDATA[xpath]]></item>
+		<item type="str"><![CDATA[маршалинг]]></item>
+		<item type="str"><![CDATA[демаршалинг]]></item>
+	</key_words>
+	<text auto="true" type="str" verify="true"><![CDATA[Привет, Хабр! Меня зовут Михаил, я SDET-специалист компании SimbirSoft. Я занимаюсь автоматизацией тестирования, в основном это работа с WEB и REST API. Но на последнем проекте использовался SOAP, поэтому при автоматизации тестирования я работал с сообщениями этого протокола, а именно:
+выполнять проверку наличия обязательных атрибутов и тегов SOAP сообщений;
+сравнивать содержание различных сообщений;
+вносить изменения или генерировать новые сообщения для исходящих запросов.
+В своей статье я поделюсь несколькими способами работы с XML-документами. Материал будет полезен тем, кто впервые сталкивается  в работе из кода с подобными документами на Java.
+Для работы я преобразовывал SOAP сообщения в Java-объекты. Этот процесс называется демаршаллинг. Обратный процесс называется маршаллинг, как десериализация и сериализация JSON.
+Отличие маршалинга от сериализации заключается в том, что сериализация предполагает упаковку лишь данных программы. Например, при сериализации объекта класса, состоящего из полей и различных методов, сохраняться будет информация только о полях, а о методах — нет.
+При маршалинге объекта запишется не только информацию о его данных (полях), но и информация по восстановлению структуры объекта — класс объекта, либо его мета-информацию для реконструирования типа.
+ В Java существует множество инструментов и способов преобразования документов формата XML в объекты. Я выбирал между использованием JAXB и DOM.
+В качестве примера приведу XML-документ со следующим содержанием:
+<?xml version="1.0" encoding="UTF-8"?>
+<Screen Stage="Main">
+    <Title>Личный кабинет</Title>
+    <Description>Выберите действие</Description>
+    <Buttons>
+        <Button Action="CREATE_NEW_OFFER" Color="blue" Condition="true">
+            <T>Новый заказ</T>
+            <D Color="red">Заказать книгу</D>
+            <D>Заказать тетрадь</D>
+        </Button>
+        <Button Action="RETURN_PRODUCT" Color="red" Condition="true">
+            <T>Возврат</T>
+            <D>Оформить возврат</D>
+        </Button>
+        <Button Action="HISTORY" Color="grey" Condition="false">
+            <T>История покупок</T>
+            <D>За весь период</D>
+            <D>За последний месяц</D>
+            <D Color="Green"> За последний год</D>
+        </Button>
+    </Buttons>
+    <Attributes>
+        <Attribute A="BC">
+            <V>Атрибут №1</V>
+        </Attribute>
+        <Attribute A="DE">
+            <V>Атрибут №2</V>
+        </Attribute>
+        <Attribute A="FG">
+            <V>Атрибут №3</V>
+        </Attribute>
+    </Attributes>
+</Screen>
+Это описание экрана некоторого продукта.
+Корневым элементом является <Screen>, содержащий в себе теги заглавия, описания экрана, а также блок кнопок и несколько атрибутов.
+Кнопки, в свою очередь, содержат заглавия и различное количество подсказок. В некоторых тегах есть атрибуты, описывающие состояние и  цвет элемента. А также команду “Action”, которую необходимо использовать при выполнении запроса на определенное действие.
+У данного продукта все формируемые экраны соответствуют единой схеме, отличия могут быть в содержании тегов, их количестве и значениях атрибутов. К примеру, на экране может быть больше или меньше кнопок с различными состояниями, атрибутами и др.
+JAXB 
+JAXB (Java Architecture for XML Binding) — это специальный инструмент для маршалинга и демаршалинга объектов.
+JAXB предоставляет аннотации, которыми размечаются поля JAVA-классов.
+Для начала необходимо создать требуемые классы.
+Принцип получается примерно следующий: если тег имеет дочерние элементы или атрибуты, значит это объект. Если тег в документе не имеет дочерних элементов, значит это поле объекта.
+Корневой класс Screen:
+public class Screen {
+    private String stage;
+    private String title;
+    private String description;
+    private List<Button> buttonList  = new ArrayList<>();
+    private List<Attribute> attributeList  = new ArrayList<>();
+}
+Он содержит в себе три строковых поля: “stage”, “title”, “description” и  коллекции “buttonList” и “attributeList”.
+3 класса вложенных элементов:
+public class Button {
+    private String action;
+    private String color;
+    private String condition;
+    private String t;
+    private List<D> dList = new ArrayList<>();
+}
+
+public class Attribute {
+    private String a;
+    private String v;
+}
+
+public class D {
+    private String color;
+    private String d;
+}
+Всего нужно 4 класса.
+Теперь нам необходимо разметить наши поля и классы аннотациями, чтобы иметь возможность выполнять операции маршаллинга и демаршаллинга.
+В этом случае нам понадобятся следующие аннотации:
+— @XmlRootElement(name = "Screen") — определяет корневой элемент. Может быть указана над классом или полем класса;
+— @XmlAccessorType(XmlAccessType.FIELD) — определяет сущности, которые используются в процессах преобразования;
+— @XmlAttribute(name = "Stage") — определяет, что поле является атрибутом, а не тегом в XML-документе;
+— @XmlElement(name = "Title") — определяет, что поле является тегом в XML-документе;
+— @XmlElementWrapper(name="Buttons") — создает некоторую обертку вокруг группы повторяющихся тегов;
+— @XMLValue — определяет, что поле содержит в себе значение тега.
+Получились следующие классы:
+@Data
+@XmlRootElement(name = "Screen")
+@XmlAccessorType(XmlAccessType.FIELD)
+public class Screen {
+    @XmlAttribute(name = "Stage")
+    private String stage;
+    @XmlElement(name = "Title")
+    private String title;
+    @XmlElement(name = "Description")
+    private String description;
+  
+  @XmlElementWrapper(name="Buttons")
+    @XmlElement(name="Button")
+    private List<Button> buttonList;
+
+    @XmlElementWrapper(name="Attributes")
+    @XmlElement(name="Attribute")
+    private List<Attribute> attributeList;
+}
+
+@Data
+@XmlAccessorType(XmlAccessType.FIELD)
+public class Attribute {
+    @XmlAttribute(name = "A")
+    private String a;
+    @XmlElement(name = "V")
+    private String v;
+}
+
+@Data
+@XmlAccessorType(XmlAccessType.FIELD)
+public class Button {
+    @XmlAttribute(name = "Action")
+    private String action;
+    @XmlAttribute(name = "Color")
+    private String color;
+    @XmlAttribute(name = "Condition")
+    private String condition;
+    @XmlElement(name = "T")
+    private String t;
+    @XmlElement(name="D")
+    private List<D> dList = new ArrayList<>();
+}
+
+
+@Data
+@XmlAccessorType(XmlAccessType.FIELD)
+public class D {
+    @XmlAttribute(name = "Color")
+    private String color;
+    @XmlValue
+    private String d;
+}
+В аннотациях, в параметре “name”, указывается имя тега XML, значение которого мы присваиваем полю объекта при маршаллинге.
+А при демаршалинге этот параметр, наоборот, задает имя тега XML для значения поля объекта.
+В примере сеттеры и геттеры реализованы через аннотацию Lombok @Data. Но в JAXB они не требуются и не используются. Таким образом, отсутствует возможность редактирования значений полей при преобразованиях. Но они нужны для других  стандартных операций с объектами.
+Для удобства во всех классах переопределен метод toString(). Вот так этот метод реализован в классе Screen:
+@Override
+    public String toString() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("<Screen Stage='");
+        sb.append((this.stage == null) ? "null" : this.stage);
+        sb.append("'> \n");
+        sb.append("    <Title>");
+        sb.append((this.title == null) ? "null" : this.title);
+        sb.append("</Title> \n");
+        sb.append("    <Description>");
+        sb.append((this.description == null) ? "null" : this.description);
+        sb.append("</Description> \n");
+        sb.append("    <Buttons> \n");
+        for(Button button : buttonList) {
+            sb.append(button);
+        }
+        sb.append("    </Buttons> \n");
+        sb.append("    <Attributes> \n");
+        for(Attribute attribute : attributeList) {
+            sb.append(attribute);
+        }
+        sb.append("    </Attributes> \n");
+        sb.append("</Screen");
+        return sb.toString();
+    }
+В остальных классах он переопределен аналогичным образом.
+Классы готовы к работе.
+Демаршаллинг
+Реализуем чтение документа XML. Для этого используем BufferedReader c чтением из файла и StringReader, который будет считывать созданную строку в процессе преобразования.
+После создаем JAXBContext — сущность, которая лежит в основе работы процессов маршаллинга и демаршаллинга. Это точка входа в API JAXB, она предоставляет абстракцию для управления информацией о привязке XML/Java. В качестве параметра при создании указываем класс получаемого объекта — Screen.class.
+С помощью JAXBContext создадим Unmarshaller, необходимый для преобразования XML-документа в объект Screen с приведением типа. Для этого в метод unmarshal() передается ранее созданный StringReader:
+public class Main {
+    public static void main(String[] args)  {
+        BufferedReader br = new BufferedReader(new FileReader("./body.xml"));
+        String body = br.lines().collect(Collectors.joining());
+        StringReader reader = new StringReader(body);
+        JAXBContext context = JAXBContext.newInstance(Screen.class);
+        Unmarshaller unmarshaller = context.createUnmarshaller();
+        Screen screen = (Screen) unmarshaller.unmarshal(reader);
+   }
+}
+Результат можно увидеть, развернув объект в окне отладки, или путем выведения в консоль — для чего и переопределялись методы toString().
+Это был процесс демаршаллинга. Из документа (сообщения SOAP) получили объект Java с методами для работы, всеми полями и атрибутами.
+Маршалинг
+Создаем StringWriter, который будет записывать строку.
+Также создадим сущность Marshaller с установкой параметров форматирования данных.
+Чтобы проверить, что все работает, внесем изменения в полученный ранее объект screen: изменяется заголовок и цвет с описанием для первой кнопки.
+После чего в метод marshal() передаем объект и StringWriter:
+ StringWriter writer = new StringWriter();
+        Marshaller marshaller = context.createMarshaller();
+        marshaller.setProperty(Marshaller.JAXB_FORMATTED_OUTPUT, Boolean.TRUE);
+        screen.setTitle("Изменили заглавие");
+        screen.getButtonList().get(0).getDList().get(0).setColor("black");
+        screen.getButtonList().get(0).getDList().get(0).setD("Цвет кнопки черный");
+        marshaller.marshal(screen, writer);
+Теперь writer хранит в себе данные объекта screen в виде строки, с помощью которой можно перезаписать или создать новый XML-документ, либо сгенерировать сообщение SOAP.
+Для просмотра результата можно воспользоваться окном отладки или вывести в консоль.
+Более подробно с JAXB можно ознакомиться тут. 
+DOM
+Второй способ преобразований с использованием DOM (Document Object Model) в сравнении с предыдущим может показаться более трудным и запутанным. Здесь не используются аннотации для поиска и определения тегов и полей классов. При использовании DOM весь XML-документ представлен в виде древовидной структуры. Для перемещения по этой модели, получения узлов, значений имен тегов, их атрибутов и т.д. существуют специальные методы и сущности.
+Сначала также создаем классы:
+@Data
+public class ScreenDom {
+    private HashMap<String, String> attributes  = new HashMap<>();
+    private String title;
+    private String description;
+    private List<ButtonDom> buttonListt = new ArrayList<>();
+    private List<AttributeDom> attributeList  = new ArrayList<>();
+}
+
+@Data
+public class ButtonDom {
+    private HashMap<String, String> attributes = new HashMap<>();
+    private String t;
+    private List<DDom> dList = new ArrayList<>();
+}
+
+@Data
+public class AttributeDom {
+    private HashMap<String, String> attributes  = new HashMap<>();
+    private String v;
+}
+
+@Data
+public class DDom {
+    private HashMap<String, String> attributes = new HashMap<>();
+    private String d;
+
+    public DDom withD(String value) {
+        this.d = value;
+        return this;
+    }
+}
+Основное отличие заключается в том, что для хранения атрибутов тега используется HashMap<> attributes. Теперь не важно, какие именно могут быть атрибуты у тега — при преобразовании они все будут добавлены в мапу в формате «ключ-значение».
+Здесь гетеры и сеттеры используются при преобразованиях. Можно написать свои и при необходимости реализовать в них изменения входных и выходных параметров. 
+Для начала немного об определениях некоторых сущностей, которые нам понадобятся.
+Важно понять, что основной «атомарной» единицей в этой модели является Node — узел.
+Узлом может быть:
+Node — класс, который предназначен для любого XML-элемента: текст, тег, или атрибут. Т.е. все в XML есть Node. Далее идет специализация.
+NamedNodeMap — сущность, в которой хранятся данные «ключ-значение», она используется при получении атрибутов тега.
+NodeList — список узлов, используемый при получении дочерних элементов и узлов с одинаковыми тегами.
+ Пример кода по заполнению объекта данными из XML-документа с использованием DOM:
+public class Main {
+    public static void main(String[] args) {     
+   //Создаем объект.
+        ScreenDom screen = new ScreenDom();
+
+        //Для создания древовидной структуры создается объект класса DocumentBuilder
+        DocumentBuilder builder = DocumentBuilderFactory.newInstance().newDocumentBuilder();
+
+        //Создается объект Document — он является представлением всей информации внутри XML
+        Document document = builder.parse("./body.xml");
+
+        //Создается узел root путем получения первого дочернего узла. Это будет тег <Screen>
+        Node root = document.getFirstChild();
+
+        //Создается нода, в которую сохраняются все атрибуты корневого тега
+        NamedNodeMap attributes = root.getAttributes();
+        for (int i = 0; i < attributes.getLength(); i++) {
+            screen.getAttributes().put(attributes.item(i).getNodeName(), attributes.item(i).getNodeValue());
+        }
+
+        //Создается список всех дочерних узлов
+        NodeList childNode = root.getChildNodes();
+
+        //В цикле выполняется поиск и присвоение значений согласно заданным условиям
+        for (int i = 0; i < childNode.getLength(); i++) {
+            Node element = childNode.item(i);
+            if (element.getNodeName().equals("Title")) {
+                screen.setTitle(element.getTextContent());
+            }
+            if (element.getNodeName().equals("Description")) {
+                screen.setDescription(element.getTextContent());
+            }
+        }
+
+        // Создается список узлов по тегу <Button>. Их может быть несколько
+        NodeList rootList = document.getDocumentElement().getElementsByTagName("Button");
+
+        //Внешний цикл списка всех узлов <Button>
+        for (int j = 0; j < rootList.getLength(); j++) {
+
+            //Извлекаются все атрибуты для тега <Button> текущей итерации
+            attributes = rootList.item(j).getAttributes();
+
+            //Создается новый объект ButtonDom для сохранения найденных значений
+            screen.getButtonList().add(new ButtonDom());
+            for (int i = 0; i < attributes.getLength(); i++) {
+                screen.getButtonList().get(j).getAttributes().put(attributes.item(i).getNodeName(), attributes.item(i).getNodeValue());
+            }
+
+            //Создается список всех дочерних узлов
+            childNode = rootList.item(j).getChildNodes();
+
+            //В цикле выполняется поиск и присвоение значений дочерних узлов
+            //к объекту ButtonDom текущей итерации
+            for (int i = 0; i < childNode.getLength(); i++) {
+                Node element = childNode.item(i);
+                NamedNodeMap attr = element.getAttributes();
+                if (element.getNodeName().equals("T")) {
+                    screen.getButtonList().get(j).setT(element.getTextContent());
+                }
+                if (element.getNodeName().equals("D")) {
+                    DDom d = new DDom();
+                    d.setD(element.getTextContent());
+
+                // В случае наличия атрибутов у тегов <D> они добавляются в мапу
+                    if (attr.getLength() != 0) {
+                        for (int k = 0; k < attr.getLength(); k++) {
+                            d.getAttributes().put(attr.item(k).getNodeName(), attr.item(k).getNodeValue());
+                        }
+                    }
+
+                // Объект DDom добавляется в ButtonsDom текущей итерации первого цикла
+                    screen.getButtonList().get(j).getDList().add(d);
+                }
+            }
+        }
+
+        rootList = document.getDocumentElement().getElementsByTagName("Attribute");
+        for (int j = 0; j < rootList.getLength(); j++) {
+            AttributeDom attributeDom = new AttributeDom();
+            attributes = rootList.item(j).getAttributes();
+            for (int i = 0; i < attributes.getLength(); i++) {
+                attributeDom.getAttributes().put(attributes.item(i).getNodeName(), attributes.item(i).getNodeValue());
+            }
+            childNode = rootList.item(j).getChildNodes();
+            for (int i = 0; i < childNode.getLength(); i++) {
+                Node element = childNode.item(i);
+                if (element.getNodeName().equals("V")) {
+                    attributeDom.setV(element.getTextContent());
+                }
+            }
+            screen.getAttributeList().add(attributeDom);
+        //Итоговым объектом является заполненная сущность screen класса Screen
+        }
+    }
+Для удобства можно написать специальные классы-парсеры. В приведенном выше коде представлены некоторые методы, которые возможно для этого использовать.
+Как такового обратного процесса, как в случае с JAXB, этот способ не подразумевает. Но есть переопределенный метод toString() объекта ScreenDom, который возвращает строку формата XML. Привести ее к нужному формату уже не составит труда.
+К дополнению метода описанного выше также используется XPath.
+XPath — это язык запросов к элементам XML. Он позволит создать выражение запроса и получить интересующие данные из документа.
+В своей работе при тестировании API я использую RestAssured и его поисковые выражения.
+Чтобы получить значение «Атрибут №1» из Response RestAssured, можно использовать следующий код:
+String value = response.xmlPath().getString(“**.find {it.@A==’BC’}”);
+Поисковое выражение прочитаем следующим образом: во всем документе найти значение первого тега, у которого есть атрибут “A”, равный значению “BC”.
+Есть и другие способы и выражения XPath, поддерживаемые RestAssured:
+root.parent.child.grandchild;.
+root.parant.child[0];
+(child[0]);
+root.parent[0];
+it.@type == 'специфическое значение';
+Вышеописанный способ отлично подходит для поиска определенных значений в XML-документе. Он не требует создания сущностей Java, применяется довольно легко и быстро. Но стоит отметить, что данный способ не подходит для полного процесса преобразования из документа в объект и обратно.
+Более подробно об использовании Xpath в RestAssured  вы можете ознакомиться в документации.
+ Весь код статьи доступен в удаленном репозитории по этой ссылке.
+Это рабочий проект, в котором реализованы оба способа маршаллинга и демаршаллинга. Кроме того, в нем реализован тест, пример возможного использования данных методов при автоматизации тестирования сообщений SOAP- или XML-документов.
+Заключение
+В этой статье я поделился своим опытом в решении некоторых задач, с которыми столкнулся при автоматизации тестирования сообщений SOAP. Это далеко не все способы и инструменты, доступные для преобразования XML на Java. Но они работают и их довольно легко понять и реализовать.
+Каждый способ имеет свои плюсы и минусы. Для удобного восприятия я представил их в таблице ниже:
+Инструмент
+Плюсы
+Минусы
+JAXB
+Прост в реализации.
+Легкочитаемый код.
+Отлично подходит, если используется XML-схема.
+Возможно частичное использование.
+Нужно точно знать возможные атрибуты тегов.
+Нет возможности редактировать значения при преобразовании объектов.
+  DOM
+Нет необходимости заранее знать возможные атрибуты тегов.
+Возможность редактирования  значений при преобразовании объектов.
+ Гибкость в использовании.
+Сложная реализация.
+Иногда трудночитаемый код.
+В своем случае я выбрал DOM из-за неизвестности атрибутов тегов в получаемых сообщениях SOAP. Мне понадобилась возможность добавлять новые узлы в древовидную структуру документа при преобразованиях. При помощи методов DOM я реализовал классы — парсеры, которые позволили достаточно легко и просто выполнить маршаллинг и демаршлаллинг по необходимым мне условиям.
+Надеюсь, эта статья была вам интересна. Спасибо за внимание!
+Рекомендуем другие наши SDET-статьи:
+Ускоряем работу с тестовой документацией. Экспорт данных из Allure-отчета в Confluence
+Как настроить Pipeline для Jenkins, Selenoid, Allure
+Что дает автоматизация тестирования
+От пирамиды тестов – к колесу автоматизации: какие проверки нужны на проекте
+Авторские материалы для разработчиков мы также публикуем в наших соцсетях – ВК и Telegram. Привет, Хабр! Меня зовут Михаил, я SDET-специалист компании SimbirSoft. Я занимаюсь автоматизацией тестирования, в основном это работа с WEB и REST API. Но на последнем проекте использовался SOAP, поэтому при автоматизации тестирования я работал с сообщениями этого протокола, а именно: выполнять проверку наличия обязательных атрибутов и тегов SOAP сообщений;
+сравнивать содержание различных сообщений;
+вносить изменения или генерировать новые сообщения для исходящих запросов. выполнять проверку наличия обязательных атрибутов и тегов SOAP сообщений; выполнять проверку наличия обязательных атрибутов и тегов SOAP сообщений; сравнивать содержание различных сообщений; сравнивать содержание различных сообщений; вносить изменения или генерировать новые сообщения для исходящих запросов. вносить изменения или генерировать новые сообщения для исходящих запросов. В своей статье я поделюсь несколькими способами работы с XML-документами. Материал будет полезен тем, кто впервые сталкивается  в работе из кода с подобными документами на Java.   Для работы я преобразовывал SOAP сообщения в Java-объекты. Этот процесс называется демаршаллинг. Обратный процесс называется маршаллинг, как десериализация и сериализация JSON.  демаршаллинг маршаллинг Отличие маршалинга от сериализации заключается в том, что сериализация предполагает упаковку лишь данных программы. Например, при сериализации объекта класса, состоящего из полей и различных методов, сохраняться будет информация только о полях, а о методах — нет. При маршалинге объекта запишется не только информацию о его данных (полях), но и информация по восстановлению структуры объекта — класс объекта, либо его мета-информацию для реконструирования типа.  В Java существует множество инструментов и способов преобразования документов формата XML в объекты. Я выбирал между использованием JAXB и DOM. JAXB DOM В качестве примера приведу XML-документ со следующим содержанием: <?xml version="1.0" encoding="UTF-8"?>
+<Screen Stage="Main">
+    <Title>Личный кабинет</Title>
+    <Description>Выберите действие</Description>
+    <Buttons>
+        <Button Action="CREATE_NEW_OFFER" Color="blue" Condition="true">
+            <T>Новый заказ</T>
+            <D Color="red">Заказать книгу</D>
+            <D>Заказать тетрадь</D>
+        </Button>
+        <Button Action="RETURN_PRODUCT" Color="red" Condition="true">
+            <T>Возврат</T>
+            <D>Оформить возврат</D>
+        </Button>
+        <Button Action="HISTORY" Color="grey" Condition="false">
+            <T>История покупок</T>
+            <D>За весь период</D>
+            <D>За последний месяц</D>
+            <D Color="Green"> За последний год</D>
+        </Button>
+    </Buttons>
+    <Attributes>
+        <Attribute A="BC">
+            <V>Атрибут №1</V>
+        </Attribute>
+        <Attribute A="DE">
+            <V>Атрибут №2</V>
+        </Attribute>
+        <Attribute A="FG">
+            <V>Атрибут №3</V>
+        </Attribute>
+    </Attributes>
+</Screen> <?xml version="1.0" encoding="UTF-8"?>
+<Screen Stage="Main">
+    <Title>Личный кабинет</Title>
+    <Description>Выберите действие</Description>
+    <Buttons>
+        <Button Action="CREATE_NEW_OFFER" Color="blue" Condition="true">
+            <T>Новый заказ</T>
+            <D Color="red">Заказать книгу</D>
+            <D>Заказать тетрадь</D>
+        </Button>
+        <Button Action="RETURN_PRODUCT" Color="red" Condition="true">
+            <T>Возврат</T>
+            <D>Оформить возврат</D>
+        </Button>
+        <Button Action="HISTORY" Color="grey" Condition="false">
+            <T>История покупок</T>
+            <D>За весь период</D>
+            <D>За последний месяц</D>
+            <D Color="Green"> За последний год</D>
+        </Button>
+    </Buttons>
+    <Attributes>
+        <Attribute A="BC">
+            <V>Атрибут №1</V>
+        </Attribute>
+        <Attribute A="DE">
+            <V>Атрибут №2</V>
+        </Attribute>
+        <Attribute A="FG">
+            <V>Атрибут №3</V>
+        </Attribute>
+    </Attributes>
+</Screen> Это описание экрана некоторого продукта. Корневым элементом является <Screen>, содержащий в себе теги заглавия, описания экрана, а также блок кнопок и несколько атрибутов. Кнопки, в свою очередь, содержат заглавия и различное количество подсказок. В некоторых тегах есть атрибуты, описывающие состояние и  цвет элемента. А также команду “Action”, которую необходимо использовать при выполнении запроса на определенное действие. У данного продукта все формируемые экраны соответствуют единой схеме, отличия могут быть в содержании тегов, их количестве и значениях атрибутов. К примеру, на экране может быть больше или меньше кнопок с различными состояниями, атрибутами и др. JAXB  JAXB (Java Architecture for XML Binding) — это специальный инструмент для маршалинга и демаршалинга объектов. JAXB (Java Architecture for XML Binding) JAXB предоставляет аннотации, которыми размечаются поля JAVA-классов. Для начала необходимо создать требуемые классы. Принцип получается примерно следующий: если тег имеет дочерние элементы или атрибуты, значит это объект. Если тег в документе не имеет дочерних элементов, значит это поле объекта. Корневой класс Screen: public class Screen {
+    private String stage;
+    private String title;
+    private String description;
+    private List<Button> buttonList  = new ArrayList<>();
+    private List<Attribute> attributeList  = new ArrayList<>();
+} public class Screen {
+    private String stage;
+    private String title;
+    private String description;
+    private List<Button> buttonList  = new ArrayList<>();
+    private List<Attribute> attributeList  = new ArrayList<>();
+} Он содержит в себе три строковых поля: “stage”, “title”, “description” и  коллекции “buttonList” и “attributeList”. 3 класса вложенных элементов: public class Button {
+    private String action;
+    private String color;
+    private String condition;
+    private String t;
+    private List<D> dList = new ArrayList<>();
+}
+
+public class Attribute {
+    private String a;
+    private String v;
+}
+
+public class D {
+    private String color;
+    private String d;
+} public class Button {
+    private String action;
+    private String color;
+    private String condition;
+    private String t;
+    private List<D> dList = new ArrayList<>();
+}
+
+public class Attribute {
+    private String a;
+    private String v;
+}
+
+public class D {
+    private String color;
+    private String d;
+} Всего нужно 4 класса. Теперь нам необходимо разметить наши поля и классы аннотациями, чтобы иметь возможность выполнять операции маршаллинга и демаршаллинга. В этом случае нам понадобятся следующие аннотации: — @XmlRootElement(name = "Screen") — определяет корневой элемент. Может быть указана над классом или полем класса; — @XmlAccessorType(XmlAccessType.FIELD) — определяет сущности, которые используются в процессах преобразования; — @XmlAttribute(name = "Stage") — определяет, что поле является атрибутом, а не тегом в XML-документе; — @XmlElement(name = "Title") — определяет, что поле является тегом в XML-документе; — @XmlElementWrapper(name="Buttons") — создает некоторую обертку вокруг группы повторяющихся тегов; — @XMLValue — определяет, что поле содержит в себе значение тега. Получились следующие классы: @Data
+@XmlRootElement(name = "Screen")
+@XmlAccessorType(XmlAccessType.FIELD)
+public class Screen {
+    @XmlAttribute(name = "Stage")
+    private String stage;
+    @XmlElement(name = "Title")
+    private String title;
+    @XmlElement(name = "Description")
+    private String description;
+  
+  @XmlElementWrapper(name="Buttons")
+    @XmlElement(name="Button")
+    private List<Button> buttonList;
+
+    @XmlElementWrapper(name="Attributes")
+    @XmlElement(name="Attribute")
+    private List<Attribute> attributeList;
+}
+
+@Data
+@XmlAccessorType(XmlAccessType.FIELD)
+public class Attribute {
+    @XmlAttribute(name = "A")
+    private String a;
+    @XmlElement(name = "V")
+    private String v;
+}
+
+@Data
+@XmlAccessorType(XmlAccessType.FIELD)
+public class Button {
+    @XmlAttribute(name = "Action")
+    private String action;
+    @XmlAttribute(name = "Color")
+    private String color;
+    @XmlAttribute(name = "Condition")
+    private String condition;
+    @XmlElement(name = "T")
+    private String t;
+    @XmlElement(name="D")
+    private List<D> dList = new ArrayList<>();
+}
+
+
+@Data
+@XmlAccessorType(XmlAccessType.FIELD)
+public class D {
+    @XmlAttribute(name = "Color")
+    private String color;
+    @XmlValue
+    private String d;
+} @Data
+@XmlRootElement(name = "Screen")
+@XmlAccessorType(XmlAccessType.FIELD)
+public class Screen {
+    @XmlAttribute(name = "Stage")
+    private String stage;
+    @XmlElement(name = "Title")
+    private String title;
+    @XmlElement(name = "Description")
+    private String description;
+  
+  @XmlElementWrapper(name="Buttons")
+    @XmlElement(name="Button")
+    private List<Button> buttonList;
+
+    @XmlElementWrapper(name="Attributes")
+    @XmlElement(name="Attribute")
+    private List<Attribute> attributeList;
+}
+
+@Data
+@XmlAccessorType(XmlAccessType.FIELD)
+public class Attribute {
+    @XmlAttribute(name = "A")
+    private String a;
+    @XmlElement(name = "V")
+    private String v;
+}
+
+@Data
+@XmlAccessorType(XmlAccessType.FIELD)
+public class Button {
+    @XmlAttribute(name = "Action")
+    private String action;
+    @XmlAttribute(name = "Color")
+    private String color;
+    @XmlAttribute(name = "Condition")
+    private String condition;
+    @XmlElement(name = "T")
+    private String t;
+    @XmlElement(name="D")
+    private List<D> dList = new ArrayList<>();
+}
+
+
+@Data
+@XmlAccessorType(XmlAccessType.FIELD)
+public class D {
+    @XmlAttribute(name = "Color")
+    private String color;
+    @XmlValue
+    private String d;
+} В аннотациях, в параметре “name”, указывается имя тега XML, значение которого мы присваиваем полю объекта при маршаллинге. А при демаршалинге этот параметр, наоборот, задает имя тега XML для значения поля объекта. В примере сеттеры и геттеры реализованы через аннотацию Lombok @Data. Но в JAXB они не требуются и не используются. Таким образом, отсутствует возможность редактирования значений полей при преобразованиях. Но они нужны для других  стандартных операций с объектами. Для удобства во всех классах переопределен метод toString(). Вот так этот метод реализован в классе Screen: @Override
+    public String toString() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("<Screen Stage='");
+        sb.append((this.stage == null) ? "null" : this.stage);
+        sb.append("'> \n");
+        sb.append("    <Title>");
+        sb.append((this.title == null) ? "null" : this.title);
+        sb.append("</Title> \n");
+        sb.append("    <Description>");
+        sb.append((this.description == null) ? "null" : this.description);
+        sb.append("</Description> \n");
+        sb.append("    <Buttons> \n");
+        for(Button button : buttonList) {
+            sb.append(button);
+        }
+        sb.append("    </Buttons> \n");
+        sb.append("    <Attributes> \n");
+        for(Attribute attribute : attributeList) {
+            sb.append(attribute);
+        }
+        sb.append("    </Attributes> \n");
+        sb.append("</Screen");
+        return sb.toString();
+    } @Override
+    public String toString() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("<Screen Stage='");
+        sb.append((this.stage == null) ? "null" : this.stage);
+        sb.append("'> \n");
+        sb.append("    <Title>");
+        sb.append((this.title == null) ? "null" : this.title);
+        sb.append("</Title> \n");
+        sb.append("    <Description>");
+        sb.append((this.description == null) ? "null" : this.description);
+        sb.append("</Description> \n");
+        sb.append("    <Buttons> \n");
+        for(Button button : buttonList) {
+            sb.append(button);
+        }
+        sb.append("    </Buttons> \n");
+        sb.append("    <Attributes> \n");
+        for(Attribute attribute : attributeList) {
+            sb.append(attribute);
+        }
+        sb.append("    </Attributes> \n");
+        sb.append("</Screen");
+        return sb.toString();
+    } В остальных классах он переопределен аналогичным образом. Классы готовы к работе. Демаршаллинг Реализуем чтение документа XML. Для этого используем BufferedReader c чтением из файла и StringReader, который будет считывать созданную строку в процессе преобразования. После создаем JAXBContext — сущность, которая лежит в основе работы процессов маршаллинга и демаршаллинга. Это точка входа в API JAXB, она предоставляет абстракцию для управления информацией о привязке XML/Java. В качестве параметра при создании указываем класс получаемого объекта — Screen.class. JAXBContext С помощью JAXBContext создадим Unmarshaller, необходимый для преобразования XML-документа в объект Screen с приведением типа. Для этого в метод unmarshal() передается ранее созданный StringReader: public class Main {
+    public static void main(String[] args)  {
+        BufferedReader br = new BufferedReader(new FileReader("./body.xml"));
+        String body = br.lines().collect(Collectors.joining());
+        StringReader reader = new StringReader(body);
+        JAXBContext context = JAXBContext.newInstance(Screen.class);
+        Unmarshaller unmarshaller = context.createUnmarshaller();
+        Screen screen = (Screen) unmarshaller.unmarshal(reader);
+   }
+} public class Main {
+    public static void main(String[] args)  {
+        BufferedReader br = new BufferedReader(new FileReader("./body.xml"));
+        String body = br.lines().collect(Collectors.joining());
+        StringReader reader = new StringReader(body);
+        JAXBContext context = JAXBContext.newInstance(Screen.class);
+        Unmarshaller unmarshaller = context.createUnmarshaller();
+        Screen screen = (Screen) unmarshaller.unmarshal(reader);
+   }
+} Результат можно увидеть, развернув объект в окне отладки, или путем выведения в консоль — для чего и переопределялись методы toString(). Это был процесс демаршаллинга. Из документа (сообщения SOAP) получили объект Java с методами для работы, всеми полями и атрибутами. Маршалинг Создаем StringWriter, который будет записывать строку. Также создадим сущность Marshaller с установкой параметров форматирования данных. Чтобы проверить, что все работает, внесем изменения в полученный ранее объект screen: изменяется заголовок и цвет с описанием для первой кнопки. После чего в метод marshal() передаем объект и StringWriter:  StringWriter writer = new StringWriter();
+        Marshaller marshaller = context.createMarshaller();
+        marshaller.setProperty(Marshaller.JAXB_FORMATTED_OUTPUT, Boolean.TRUE);
+        screen.setTitle("Изменили заглавие");
+        screen.getButtonList().get(0).getDList().get(0).setColor("black");
+        screen.getButtonList().get(0).getDList().get(0).setD("Цвет кнопки черный");
+        marshaller.marshal(screen, writer);  StringWriter writer = new StringWriter();
+        Marshaller marshaller = context.createMarshaller();
+        marshaller.setProperty(Marshaller.JAXB_FORMATTED_OUTPUT, Boolean.TRUE);
+        screen.setTitle("Изменили заглавие");
+        screen.getButtonList().get(0).getDList().get(0).setColor("black");
+        screen.getButtonList().get(0).getDList().get(0).setD("Цвет кнопки черный");
+        marshaller.marshal(screen, writer); Теперь writer хранит в себе данные объекта screen в виде строки, с помощью которой можно перезаписать или создать новый XML-документ, либо сгенерировать сообщение SOAP. Для просмотра результата можно воспользоваться окном отладки или вывести в консоль. Более подробно с JAXB можно ознакомиться тут.  тут. тут. DOM Второй способ преобразований с использованием DOM (Document Object Model) в сравнении с предыдущим может показаться более трудным и запутанным. Здесь не используются аннотации для поиска и определения тегов и полей классов. При использовании DOM весь XML-документ представлен в виде древовидной структуры. Для перемещения по этой модели, получения узлов, значений имен тегов, их атрибутов и т.д. существуют специальные методы и сущности. DOM (Document Object Model) Сначала также создаем классы: @Data
+public class ScreenDom {
+    private HashMap<String, String> attributes  = new HashMap<>();
+    private String title;
+    private String description;
+    private List<ButtonDom> buttonListt = new ArrayList<>();
+    private List<AttributeDom> attributeList  = new ArrayList<>();
+}
+
+@Data
+public class ButtonDom {
+    private HashMap<String, String> attributes = new HashMap<>();
+    private String t;
+    private List<DDom> dList = new ArrayList<>();
+}
+
+@Data
+public class AttributeDom {
+    private HashMap<String, String> attributes  = new HashMap<>();
+    private String v;
+}
+
+@Data
+public class DDom {
+    private HashMap<String, String> attributes = new HashMap<>();
+    private String d;
+
+    public DDom withD(String value) {
+        this.d = value;
+        return this;
+    }
+} @Data
+public class ScreenDom {
+    private HashMap<String, String> attributes  = new HashMap<>();
+    private String title;
+    private String description;
+    private List<ButtonDom> buttonListt = new ArrayList<>();
+    private List<AttributeDom> attributeList  = new ArrayList<>();
+}
+
+@Data
+public class ButtonDom {
+    private HashMap<String, String> attributes = new HashMap<>();
+    private String t;
+    private List<DDom> dList = new ArrayList<>();
+}
+
+@Data
+public class AttributeDom {
+    private HashMap<String, String> attributes  = new HashMap<>();
+    private String v;
+}
+
+@Data
+public class DDom {
+    private HashMap<String, String> attributes = new HashMap<>();
+    private String d;
+
+    public DDom withD(String value) {
+        this.d = value;
+        return this;
+    }
+} Основное отличие заключается в том, что для хранения атрибутов тега используется HashMap<> attributes. Теперь не важно, какие именно могут быть атрибуты у тега — при преобразовании они все будут добавлены в мапу в формате «ключ-значение». Здесь гетеры и сеттеры используются при преобразованиях. Можно написать свои и при необходимости реализовать в них изменения входных и выходных параметров.  Для начала немного об определениях некоторых сущностей, которые нам понадобятся. Важно понять, что основной «атомарной» единицей в этой модели является Node — узел. Узлом может быть: Node — класс, который предназначен для любого XML-элемента: текст, тег, или атрибут. Т.е. все в XML есть Node. Далее идет специализация.
+NamedNodeMap — сущность, в которой хранятся данные «ключ-значение», она используется при получении атрибутов тега.
+NodeList — список узлов, используемый при получении дочерних элементов и узлов с одинаковыми тегами. Node — класс, который предназначен для любого XML-элемента: текст, тег, или атрибут. Т.е. все в XML есть Node. Далее идет специализация. Node — класс, который предназначен для любого XML-элемента: текст, тег, или атрибут. Т.е. все в XML есть Node. Далее идет специализация. NamedNodeMap — сущность, в которой хранятся данные «ключ-значение», она используется при получении атрибутов тега. NamedNodeMap — сущность, в которой хранятся данные «ключ-значение», она используется при получении атрибутов тега. NodeList — список узлов, используемый при получении дочерних элементов и узлов с одинаковыми тегами. NodeList — список узлов, используемый при получении дочерних элементов и узлов с одинаковыми тегами.  Пример кода по заполнению объекта данными из XML-документа с использованием DOM: public class Main {
+    public static void main(String[] args) {     
+   //Создаем объект.
+        ScreenDom screen = new ScreenDom();
+
+        //Для создания древовидной структуры создается объект класса DocumentBuilder
+        DocumentBuilder builder = DocumentBuilderFactory.newInstance().newDocumentBuilder();
+
+        //Создается объект Document — он является представлением всей информации внутри XML
+        Document document = builder.parse("./body.xml");
+
+        //Создается узел root путем получения первого дочернего узла. Это будет тег <Screen>
+        Node root = document.getFirstChild();
+
+        //Создается нода, в которую сохраняются все атрибуты корневого тега
+        NamedNodeMap attributes = root.getAttributes();
+        for (int i = 0; i < attributes.getLength(); i++) {
+            screen.getAttributes().put(attributes.item(i).getNodeName(), attributes.item(i).getNodeValue());
+        }
+
+        //Создается список всех дочерних узлов
+        NodeList childNode = root.getChildNodes();
+
+        //В цикле выполняется поиск и присвоение значений согласно заданным условиям
+        for (int i = 0; i < childNode.getLength(); i++) {
+            Node element = childNode.item(i);
+            if (element.getNodeName().equals("Title")) {
+                screen.setTitle(element.getTextContent());
+            }
+            if (element.getNodeName().equals("Description")) {
+                screen.setDescription(element.getTextContent());
+            }
+        }
+
+        // Создается список узлов по тегу <Button>. Их может быть несколько
+        NodeList rootList = document.getDocumentElement().getElementsByTagName("Button");
+
+        //Внешний цикл списка всех узлов <Button>
+        for (int j = 0; j < rootList.getLength(); j++) {
+
+            //Извлекаются все атрибуты для тега <Button> текущей итерации
+            attributes = rootList.item(j).getAttributes();
+
+            //Создается новый объект ButtonDom для сохранения найденных значений
+            screen.getButtonList().add(new ButtonDom());
+            for (int i = 0; i < attributes.getLength(); i++) {
+                screen.getButtonList().get(j).getAttributes().put(attributes.item(i).getNodeName(), attributes.item(i).getNodeValue());
+            }
+
+            //Создается список всех дочерних узлов
+            childNode = rootList.item(j).getChildNodes();
+
+            //В цикле выполняется поиск и присвоение значений дочерних узлов
+            //к объекту ButtonDom текущей итерации
+            for (int i = 0; i < childNode.getLength(); i++) {
+                Node element = childNode.item(i);
+                NamedNodeMap attr = element.getAttributes();
+                if (element.getNodeName().equals("T")) {
+                    screen.getButtonList().get(j).setT(element.getTextContent());
+                }
+                if (element.getNodeName().equals("D")) {
+                    DDom d = new DDom();
+                    d.setD(element.getTextContent());
+
+                // В случае наличия атрибутов у тегов <D> они добавляются в мапу
+                    if (attr.getLength() != 0) {
+                        for (int k = 0; k < attr.getLength(); k++) {
+                            d.getAttributes().put(attr.item(k).getNodeName(), attr.item(k).getNodeValue());
+                        }
+                    }
+
+                // Объект DDom добавляется в ButtonsDom текущей итерации первого цикла
+                    screen.getButtonList().get(j).getDList().add(d);
+                }
+            }
+        }
+
+        rootList = document.getDocumentElement().getElementsByTagName("Attribute");
+        for (int j = 0; j < rootList.getLength(); j++) {
+            AttributeDom attributeDom = new AttributeDom();
+            attributes = rootList.item(j).getAttributes();
+            for (int i = 0; i < attributes.getLength(); i++) {
+                attributeDom.getAttributes().put(attributes.item(i).getNodeName(), attributes.item(i).getNodeValue());
+            }
+            childNode = rootList.item(j).getChildNodes();
+            for (int i = 0; i < childNode.getLength(); i++) {
+                Node element = childNode.item(i);
+                if (element.getNodeName().equals("V")) {
+                    attributeDom.setV(element.getTextContent());
+                }
+            }
+            screen.getAttributeList().add(attributeDom);
+        //Итоговым объектом является заполненная сущность screen класса Screen
+        }
+    } public class Main {
+    public static void main(String[] args) {     
+   //Создаем объект.
+        ScreenDom screen = new ScreenDom();
+
+        //Для создания древовидной структуры создается объект класса DocumentBuilder
+        DocumentBuilder builder = DocumentBuilderFactory.newInstance().newDocumentBuilder();
+
+        //Создается объект Document — он является представлением всей информации внутри XML
+        Document document = builder.parse("./body.xml");
+
+        //Создается узел root путем получения первого дочернего узла. Это будет тег <Screen>
+        Node root = document.getFirstChild();
+
+        //Создается нода, в которую сохраняются все атрибуты корневого тега
+        NamedNodeMap attributes = root.getAttributes();
+        for (int i = 0; i < attributes.getLength(); i++) {
+            screen.getAttributes().put(attributes.item(i).getNodeName(), attributes.item(i).getNodeValue());
+        }
+
+        //Создается список всех дочерних узлов
+        NodeList childNode = root.getChildNodes();
+
+        //В цикле выполняется поиск и присвоение значений согласно заданным условиям
+        for (int i = 0; i < childNode.getLength(); i++) {
+            Node element = childNode.item(i);
+            if (element.getNodeName().equals("Title")) {
+                screen.setTitle(element.getTextContent());
+            }
+            if (element.getNodeName().equals("Description")) {
+                screen.setDescription(element.getTextContent());
+            }
+        }
+
+        // Создается список узлов по тегу <Button>. Их может быть несколько
+        NodeList rootList = document.getDocumentElement().getElementsByTagName("Button");
+
+        //Внешний цикл списка всех узлов <Button>
+        for (int j = 0; j < rootList.getLength(); j++) {
+
+            //Извлекаются все атрибуты для тега <Button> текущей итерации
+            attributes = rootList.item(j).getAttributes();
+
+            //Создается новый объект ButtonDom для сохранения найденных значений
+            screen.getButtonList().add(new ButtonDom());
+            for (int i = 0; i < attributes.getLength(); i++) {
+                screen.getButtonList().get(j).getAttributes().put(attributes.item(i).getNodeName(), attributes.item(i).getNodeValue());
+            }
+
+            //Создается список всех дочерних узлов
+            childNode = rootList.item(j).getChildNodes();
+
+            //В цикле выполняется поиск и присвоение значений дочерних узлов
+            //к объекту ButtonDom текущей итерации
+            for (int i = 0; i < childNode.getLength(); i++) {
+                Node element = childNode.item(i);
+                NamedNodeMap attr = element.getAttributes();
+                if (element.getNodeName().equals("T")) {
+                    screen.getButtonList().get(j).setT(element.getTextContent());
+                }
+                if (element.getNodeName().equals("D")) {
+                    DDom d = new DDom();
+                    d.setD(element.getTextContent());
+
+                // В случае наличия атрибутов у тегов <D> они добавляются в мапу
+                    if (attr.getLength() != 0) {
+                        for (int k = 0; k < attr.getLength(); k++) {
+                            d.getAttributes().put(attr.item(k).getNodeName(), attr.item(k).getNodeValue());
+                        }
+                    }
+
+                // Объект DDom добавляется в ButtonsDom текущей итерации первого цикла
+                    screen.getButtonList().get(j).getDList().add(d);
+                }
+            }
+        }
+
+        rootList = document.getDocumentElement().getElementsByTagName("Attribute");
+        for (int j = 0; j < rootList.getLength(); j++) {
+            AttributeDom attributeDom = new AttributeDom();
+            attributes = rootList.item(j).getAttributes();
+            for (int i = 0; i < attributes.getLength(); i++) {
+                attributeDom.getAttributes().put(attributes.item(i).getNodeName(), attributes.item(i).getNodeValue());
+            }
+            childNode = rootList.item(j).getChildNodes();
+            for (int i = 0; i < childNode.getLength(); i++) {
+                Node element = childNode.item(i);
+                if (element.getNodeName().equals("V")) {
+                    attributeDom.setV(element.getTextContent());
+                }
+            }
+            screen.getAttributeList().add(attributeDom);
+        //Итоговым объектом является заполненная сущность screen класса Screen
+        }
+    } Для удобства можно написать специальные классы-парсеры. В приведенном выше коде представлены некоторые методы, которые возможно для этого использовать. Как такового обратного процесса, как в случае с JAXB, этот способ не подразумевает. Но есть переопределенный метод toString() объекта ScreenDom, который возвращает строку формата XML. Привести ее к нужному формату уже не составит труда. К дополнению метода описанного выше также используется XPath. XPath — это язык запросов к элементам XML. Он позволит создать выражение запроса и получить интересующие данные из документа. XPath В своей работе при тестировании API я использую RestAssured и его поисковые выражения. Чтобы получить значение «Атрибут №1» из Response RestAssured, можно использовать следующий код: String value = response.xmlPath().getString(“**.find {it.@A==’BC’}”); String value = response.xmlPath().getString(“**.find {it.@A==’BC’}”); Поисковое выражение прочитаем следующим образом: во всем документе найти значение первого тега, у которого есть атрибут “A”, равный значению “BC”. Есть и другие способы и выражения XPath, поддерживаемые RestAssured: root.parent.child.grandchild;.
+root.parant.child[0];
+(child[0]);
+root.parent[0];
+it.@type == 'специфическое значение'; root.parent.child.grandchild;. root.parent.child.grandchild;. root.parant.child[0]; root.parant.child[0]; (child[0]); (child[0]); root.parent[0]; root.parent[0]; it.@type == 'специфическое значение'; it.@type == 'специфическое значение'; Вышеописанный способ отлично подходит для поиска определенных значений в XML-документе. Он не требует создания сущностей Java, применяется довольно легко и быстро. Но стоит отметить, что данный способ не подходит для полного процесса преобразования из документа в объект и обратно. Более подробно об использовании Xpath в RestAssured  вы можете ознакомиться в документации. документации документации  Весь код статьи доступен в удаленном репозитории по этой ссылке. ссылке ссылке Это рабочий проект, в котором реализованы оба способа маршаллинга и демаршаллинга. Кроме того, в нем реализован тест, пример возможного использования данных методов при автоматизации тестирования сообщений SOAP- или XML-документов. Заключение В этой статье я поделился своим опытом в решении некоторых задач, с которыми столкнулся при автоматизации тестирования сообщений SOAP. Это далеко не все способы и инструменты, доступные для преобразования XML на Java. Но они работают и их довольно легко понять и реализовать. Каждый способ имеет свои плюсы и минусы. Для удобного восприятия я представил их в таблице ниже: Инструмент
+Плюсы
+Минусы
+JAXB
+Прост в реализации.
+Легкочитаемый код.
+Отлично подходит, если используется XML-схема.
+Возможно частичное использование.
+Нужно точно знать возможные атрибуты тегов.
+Нет возможности редактировать значения при преобразовании объектов.
+  DOM
+Нет необходимости заранее знать возможные атрибуты тегов.
+Возможность редактирования  значений при преобразовании объектов.
+ Гибкость в использовании.
+Сложная реализация.
+Иногда трудночитаемый код. Инструмент
+Плюсы
+Минусы
+JAXB
+Прост в реализации.
+Легкочитаемый код.
+Отлично подходит, если используется XML-схема.
+Возможно частичное использование.
+Нужно точно знать возможные атрибуты тегов.
+Нет возможности редактировать значения при преобразовании объектов.
+  DOM
+Нет необходимости заранее знать возможные атрибуты тегов.
+Возможность редактирования  значений при преобразовании объектов.
+ Гибкость в использовании.
+Сложная реализация.
+Иногда трудночитаемый код. Инструмент
+Плюсы
+Минусы
+JAXB
+Прост в реализации.
+Легкочитаемый код.
+Отлично подходит, если используется XML-схема.
+Возможно частичное использование.
+Нужно точно знать возможные атрибуты тегов.
+Нет возможности редактировать значения при преобразовании объектов.
+  DOM
+Нет необходимости заранее знать возможные атрибуты тегов.
+Возможность редактирования  значений при преобразовании объектов.
+ Гибкость в использовании.
+Сложная реализация.
+Иногда трудночитаемый код. Инструмент
+Плюсы
+Минусы
+JAXB
+Прост в реализации.
+Легкочитаемый код.
+Отлично подходит, если используется XML-схема.
+Возможно частичное использование.
+Нужно точно знать возможные атрибуты тегов.
+Нет возможности редактировать значения при преобразовании объектов.
+  DOM
+Нет необходимости заранее знать возможные атрибуты тегов.
+Возможность редактирования  значений при преобразовании объектов.
+ Гибкость в использовании.
+Сложная реализация.
+Иногда трудночитаемый код. Инструмент
+Плюсы
+Минусы Инструмент Инструмент Инструмент Плюсы Плюсы Плюсы Минусы Минусы Минусы JAXB
+Прост в реализации.
+Легкочитаемый код.
+Отлично подходит, если используется XML-схема.
+Возможно частичное использование.
+Нужно точно знать возможные атрибуты тегов.
+Нет возможности редактировать значения при преобразовании объектов.
+  JAXB JAXB JAXB Прост в реализации.
+Легкочитаемый код.
+Отлично подходит, если используется XML-схема.
+Возможно частичное использование. Прост в реализации. Легкочитаемый код. Отлично подходит, если используется XML-схема. Возможно частичное использование. Нужно точно знать возможные атрибуты тегов.
+Нет возможности редактировать значения при преобразовании объектов.
+  Нужно точно знать возможные атрибуты тегов. Нет возможности редактировать значения при преобразовании объектов.   DOM
+Нет необходимости заранее знать возможные атрибуты тегов.
+Возможность редактирования  значений при преобразовании объектов.
+ Гибкость в использовании.
+Сложная реализация.
+Иногда трудночитаемый код. DOM DOM DOM Нет необходимости заранее знать возможные атрибуты тегов.
+Возможность редактирования  значений при преобразовании объектов.
+ Гибкость в использовании. Нет необходимости заранее знать возможные атрибуты тегов. Возможность редактирования  значений при преобразовании объектов.  Гибкость в использовании. Сложная реализация.
+Иногда трудночитаемый код. Сложная реализация. Иногда трудночитаемый код. В своем случае я выбрал DOM из-за неизвестности атрибутов тегов в получаемых сообщениях SOAP. Мне понадобилась возможность добавлять новые узлы в древовидную структуру документа при преобразованиях. При помощи методов DOM я реализовал классы — парсеры, которые позволили достаточно легко и просто выполнить маршаллинг и демаршлаллинг по необходимым мне условиям. Надеюсь, эта статья была вам интересна. Спасибо за внимание! Надеюсь, эта статья была вам интересна. Спасибо за внимание! Рекомендуем другие наши SDET-статьи: Ускоряем работу с тестовой документацией. Экспорт данных из Allure-отчета в Confluence Ускоряем работу с тестовой документацией. Экспорт данных из Allure-отчета в Confluence Как настроить Pipeline для Jenkins, Selenoid, Allure Как настроить Pipeline для Jenkins, Selenoid, Allure Что дает автоматизация тестирования Что дает автоматизация тестирования От пирамиды тестов – к колесу автоматизации: какие проверки нужны на проекте От пирамиды тестов – к колесу автоматизации: какие проверки нужны на проекте Авторские материалы для разработчиков мы также публикуем в наших соцсетях – ВК и Telegram. ВК ВК Telegram Telegram ]]></text>
+</doc>
