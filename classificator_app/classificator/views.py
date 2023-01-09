@@ -16,7 +16,7 @@ def train(request):
         render(
             request,
             "errors.html",
-            {"text": "Отсутствует соединение с базой данных","code":503},
+            {"text": "Отсутствует соединение с базой данных","code": 503},
             status=503
         )
     return render(request, "train_is_complete.html")
@@ -32,7 +32,7 @@ def classificate(request):
             return render(
                 request,
                 "errors.html",
-                {"text": "Сначала обучите классификатор","code":code},
+                {"text": "Сначала обучите классификатор","code": code},
                 status=code
             )
     if request.method == "POST":

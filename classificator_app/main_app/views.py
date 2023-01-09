@@ -128,13 +128,13 @@ def saveFileInDB(request):
                 return render(
                     request,
                     "errors.html",
-                    {"text": "Отсутствует соединение с базой данных","code":503},
+                    {"text": "Отсутствует соединение с базой данных","code": 503},
                     status=503
                 )
         return render(
             request,
             "errors.html",
-            {"text": "Файл не выбран","code":422},
+            {"text": "Файл не выбран","code": 422},
             status=422
         )
     else:
@@ -146,14 +146,14 @@ def removeArticle(request, id):
         return render(
             request,
             "errors.html",
-            {"text": "Статья не выбрана","code":422},
+            {"text": "Статья не выбрана","code": 422},
             status=422
         )
     if int(id) < 0:
         return render(
             request,
             "errors.html",
-            {"text": "Выбран некорректный идентификатор статьи","code":422},
+            {"text": "Выбран некорректный идентификатор статьи","code": 422},
             status=422
         )
     try:
@@ -173,7 +173,7 @@ def removeArticle(request, id):
         return render(
             request,
             "errors.html",
-            {"text": "Отсутствует соединение с базой данных","code":503},
+            {"text": "Отсутствует соединение с базой данных","code": 503},
             status=503
         )
 
@@ -183,14 +183,14 @@ def getTextFromArticle(request, id):
         return render(
             request,
             "errors.html",
-            {"text": "Статья не выбрана","code":422},
+            {"text": "Статья не выбрана","code": 422},
             status=422
         )
     if int(id) < 0:
         return render(
             request,
             "errors.html",
-            {"text": "Выбран некорректный идентификатор статьи","code":422},
+            {"text": "Выбран некорректный идентификатор статьи","code": 422},
             status=422
         )
     try:
@@ -207,6 +207,6 @@ def getTextFromArticle(request, id):
         return render(
             request,
             "errors.html",
-            {"text": "Отсутствует соединение с базой данных","code":503},
+            {"text": "Отсутствует соединение с базой данных","code": 503},
             status=503
         )
