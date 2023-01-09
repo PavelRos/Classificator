@@ -23,6 +23,8 @@ def redirect(request):
 def index(request, page = 0):
     selected_label = request.GET.get("selected_label", None)
     direction_sort = request.GET.get("sorting", 0)
+    if direction_sort not in {0, 1}:
+        direction_sort = 0
     sort_by = "date" if int(direction_sort) else "-date"
     try:
         if selected_label in {"Develop", "Other"}:
