@@ -6,10 +6,11 @@ from main_app import views
 
 
 urlpatterns = [
-    path("", views.index),
+    path("", views.redirect),
     path("add_file", views.saveFileInDB),
     path("train", classificator_views.train),
     path("classificate", classificator_views.classificate),
+    re_path(r"^articles/(?P<page>\d+)", views.index),
     re_path(r"^text/(?P<id>.+)", views.getTextFromArticle),
     re_path(r"^remove/(?P<id>.+)", views.removeArticle),
 ] + static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)

@@ -17,6 +17,23 @@ body .alert{
     font-size: large;
 }
 
+div .page {
+    background-color: #808080;
+    color: white;
+    border-radius: 1px;
+    padding: 1px;
+    text-decoration: none;
+    text-align: center;
+    transition: all .6s ease;
+    font-size: large;
+}
+
+div[class="pagination"]{
+    background-color: #808080;
+    color: white;
+    font-size: large;
+}
+
 div .btn {
     display: inline-block; /*Строчно-блочный элемент*/
     /* background: grey; Серый цвет фона */

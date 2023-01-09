@@ -11,11 +11,16 @@ from .models import (
 )
 from re import search
 from django.db.utils import OperationalError
+from django.core.paginator import Paginator
 
 # Create your views here.
 
 
-def index(request):
+def redirect(request):
+    return HttpResponseRedirect("articles/1")
+
+
+def index(request, page = 0):
     selected_label = request.GET.get("selected_label", None)
     direction_sort = request.GET.get("sorting", 0)
     sort_by = "date" if int(direction_sort) else "-date"
@@ -26,11 +31,13 @@ def index(request):
         else:
             articles = Article.objects.all()
             category = "Все"
+        pages = Paginator(list(articles.order_by(sort_by)), 10)
+        page_obj = pages.get_page(page)
         return render(
             request,
             "index.html",
             {
-                "articles": articles.order_by(sort_by),
+                "articles": page_obj,
                 "count": articles.count(),
                 "filter_form": filterForm,
                 "category": category,
@@ -115,7 +122,15 @@ def saveFileInDB(request):
     if request.method == "POST":
         file = request.FILES.get("name", None)
         if file:
-            return parseFile(request, file)
+            try:
+                return parseFile(request, file)
+            except OperationalError:
+                return render(
+                    request,
+                    "errors.html",
+                    {"text": "Отсутствует соединение с базой данных","code":503},
+                    status=503
+                )
         return render(
             request,
             "errors.html",
@@ -134,17 +149,32 @@ def removeArticle(request, id):
             {"text": "Статья не выбрана","code":422},
             status=422
         )
-    selected_article = Article.objects.get(id=id)
-    if request.method == "POST":
-        selected_article.delete()
-        return render(request,
-            "delete_res.html",
-            {"title": selected_article.title}
+    if int(id) < 0:
+        return render(
+            request,
+            "errors.html",
+            {"text": "Выбран некорректный идентификатор статьи","code":422},
+            status=422
         )
-    else:
-        return render(request,
-            "delete_text_form.html",
-            {"title": selected_article.title}
+    try:
+        selected_article = Article.objects.get(id=id)
+        if request.method == "POST":
+            selected_article.delete()
+            return render(request,
+                "delete_res.html",
+                {"title": selected_article.title}
+            )
+        else:
+            return render(request,
+                "delete_text_form.html",
+                {"title": selected_article.title}
+            )
+    except OperationalError:
+        return render(
+            request,
+            "errors.html",
+            {"text": "Отсутствует соединение с базой данных","code":503},
+            status=503
         )
 
 
@@ -156,12 +186,27 @@ def getTextFromArticle(request, id):
             {"text": "Статья не выбрана","code":422},
             status=422
         )
-    article = Article.objects.get(id=id)
-    if request.method == "POST":
-        new_text = request.POST.get("text")
-        article.text = new_text
-        article.save()
-        return HttpResponseRedirect("/")
-    else:
-        form = textForm(initial={"text": article.text})
-        return render(request, "text_form.html", {"form": form})
+    if int(id) < 0:
+        return render(
+            request,
+            "errors.html",
+            {"text": "Выбран некорректный идентификатор статьи","code":422},
+            status=422
+        )
+    try:
+        article = Article.objects.get(id=id)
+        if request.method == "POST":
+            new_text = request.POST.get("text")
+            article.text = new_text
+            article.save()
+            return HttpResponseRedirect("/")
+        else:
+            form = textForm(initial={"text": article.text})
+            return render(request, "text_form.html", {"form": form})
+    except OperationalError:
+        return render(
+            request,
+            "errors.html",
+            {"text": "Отсутствует соединение с базой данных","code":503},
+            status=503
+        )
