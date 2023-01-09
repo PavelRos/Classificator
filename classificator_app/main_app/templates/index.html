@@ -21,7 +21,7 @@
         <div class="pagination">
             <span class="step-links">
                 {% if articles.has_previous %}
-                    {% if articles.number != 1%}
+                    {% if articles.number != 2 %}
                         <a href="1" class="page">1</a>
                     {% endif %}
                     <a href="{{ articles.previous_page_number }}" class="page">{{ articles.previous_page_number }}</a>
