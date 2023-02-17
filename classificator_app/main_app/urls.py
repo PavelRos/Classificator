@@ -11,6 +11,6 @@ urlpatterns = [
     path("train", classificator_views.train),
     path("classificate", classificator_views.classificate),
     re_path(r"^articles/(?P<page>\d+)", views.index),
-    re_path(r"^text/(?P<id>.+)", views.getTextFromArticle),
-    re_path(r"^remove/(?P<id>.+)", views.removeArticle),
+    re_path(r"^articles/text/(?P<id>.+)", views.getTextFromArticle),
+    re_path(r"^articles/remove/(?P<id>.+)", views.removeArticle),
 ] + static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
